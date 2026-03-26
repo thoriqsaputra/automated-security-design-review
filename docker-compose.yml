@@ -1,0 +1,306 @@
+services:
+  # ============================================================================
+  # API & Frontend Gateway
+  # Serves as the primary REST/GraphQL interface for enterprise users
+  # ============================================================================
+  api-gateway:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sdr-api-gateway
+    ports:
+      - "${API_PORT:-8000}:8000"
+    environment:
+      - PYTHONUNBUFFERED=1
+      - SERVICE_NAME=api-gateway
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - VECTOR_DB_HOST=vector-db
+      - VECTOR_DB_PORT=6379
+      - GRAPH_DB_HOST=graph-db
+      - GRAPH_DB_BOLT_PORT=7687
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - RABBITMQ_HOST=message-broker
+      - RABBITMQ_PORT=5672
+    depends_on:
+      postgres:
+        condition: service_healthy
+      message-broker:
+        condition: service_healthy
+      vector-db:
+        condition: service_started
+      graph-db:
+        condition: service_started
+    networks:
+      - sdr-network
+    restart: unless-stopped
+    volumes:
+      - ./api:/app/api:ro
+      - ./core:/app/core:ro
+
+  # ============================================================================
+  # Ingestion Service
+  # Handles data ingestion: text extraction, document parsing, diagram extraction
+  # ============================================================================
+  ingestion-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sdr-ingestion-service
+    environment:
+      - PYTHONUNBUFFERED=1
+      - SERVICE_NAME=ingestion-service
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - RABBITMQ_HOST=message-broker
+      - RABBITMQ_PORT=5672
+      - S3_ENDPOINT=${S3_ENDPOINT:-http://minio:9000}
+      - S3_ACCESS_KEY=${S3_ACCESS_KEY:-minioadmin}
+      - S3_SECRET_KEY=${S3_SECRET_KEY:-minioadmin}
+      - BLOB_STORAGE_PATH=/data/blobs
+    depends_on:
+      message-broker:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    networks:
+      - sdr-network
+    restart: unless-stopped
+    volumes:
+      - ./ingestion:/app/ingestion:ro
+      - ./core:/app/core:ro
+      - sdr-blob-storage:/data/blobs
+    command:
+      - sh
+      - -c
+      - python -c "print('Ingestion Service initialized and ready')" && sleep infinity
+    healthcheck:
+      disable: true
+
+  # ============================================================================
+  # Indexing Service
+  # Builds embeddings, graph knowledge base, RAPTOR hierarchies
+  # Scales horizontally via Celery workers
+  # ============================================================================
+  indexing-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sdr-indexing-service
+    environment:
+      - PYTHONUNBUFFERED=1
+      - SERVICE_NAME=indexing-service
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - VECTOR_DB_HOST=vector-db
+      - VECTOR_DB_PORT=6379
+      - GRAPH_DB_HOST=graph-db
+      - GRAPH_DB_BOLT_PORT=7687
+      - RABBITMQ_HOST=message-broker
+      - RABBITMQ_PORT=5672
+      - EMBEDDING_MODEL=${EMBEDDING_MODEL:-sentence-transformers/multi-qa-mpnet-base-cos-v1}
+    depends_on:
+      message-broker:
+        condition: service_healthy
+      vector-db:
+        condition: service_started
+      graph-db:
+        condition: service_started
+    networks:
+      - sdr-network
+    restart: unless-stopped
+    volumes:
+      - ./rag_engine:/app/rag_engine:ro
+      - ./core:/app/core:ro
+      - indexing-cache:/app/.cache
+    command:
+      - sh
+      - -c
+      - python -c "print('Indexing Service initialized and ready')" && sleep infinity
+    healthcheck:
+      disable: true
+
+  # ============================================================================
+  # Reasoning Service (Multi-Agent Debate Engine)
+  # Orchestrates Hunter, Critic, Mediator agents
+  # Consumer of Celery task queue
+  # ============================================================================
+  reasoning-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: sdr-reasoning-service
+    environment:
+      - PYTHONUNBUFFERED=1
+      - SERVICE_NAME=reasoning-service
+      - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - VECTOR_DB_HOST=vector-db
+      - VECTOR_DB_PORT=6379
+      - GRAPH_DB_HOST=graph-db
+      - GRAPH_DB_BOLT_PORT=7687
+      - RABBITMQ_HOST=message-broker
+      - RABBITMQ_PORT=5672
+      - POSTGRES_HOST=postgres
+      - POSTGRES_PORT=5432
+      - LLM_MODEL=${LLM_MODEL:-gpt-4}
+      - LMM_MODEL=${LMM_MODEL:-gpt-4-vision}
+      - OPENAI_API_KEY=${OPENAI_API_KEY}
+      - MAX_DEBATE_ITERATIONS=${MAX_DEBATE_ITERATIONS:-3}
+    depends_on:
+      message-broker:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      vector-db:
+        condition: service_started
+      graph-db:
+        condition: service_started
+    networks:
+      - sdr-network
+    restart: unless-stopped
+    volumes:
+      - ./agents:/app/agents:ro
+      - ./core:/app/core:ro
+    command:
+      - sh
+      - -c
+      - python -c "print('Reasoning Service initialized and ready')" && sleep infinity
+    healthcheck:
+      disable: true
+
+  # ============================================================================
+  # Infrastructure Services
+  # ============================================================================
+
+  # Message Broker: RabbitMQ (Async Task Queue)
+  message-broker:
+    image: rabbitmq:3.13-management-alpine
+    container_name: sdr-message-broker
+    environment:
+      - RABBITMQ_DEFAULT_USER=${RABBITMQ_USER:-guest}
+      - RABBITMQ_DEFAULT_PASS=${RABBITMQ_PASS:-guest}
+    ports:
+      - "${RABBITMQ_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+    healthcheck:
+      test: rabbitmq-diagnostics -q ping
+      interval: 30s
+      timeout: 10s
+      retries: 5
+    networks:
+      - sdr-network
+    restart: unless-stopped
+    volumes:
+      - rabbitmq-data:/var/lib/rabbitmq
+
+  # Vector Database: Redis (Embeddings & Cache)
+  vector-db:
+    image: redis:7-alpine
+    container_name: sdr-vector-db
+    ports:
+      - "${REDIS_PORT:-6379}:6379"
+    environment:
+      - REDIS_MAXMEMORY=${REDIS_MAXMEMORY:-2gb}
+      - REDIS_MAXMEMORY_POLICY=allkeys-lru
+    networks:
+      - sdr-network
+    restart: unless-stopped
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+
+  # Graph Database: Neo4j (Knowledge Graph & Relationships)
+  graph-db:
+    image: neo4j:5.20-community
+    container_name: sdr-graph-db
+    environment:
+      - NEO4J_AUTH=${NEO4J_USER:-neo4j}/${NEO4J_PASS:-password}
+      - NEO4J_PLUGINS=["apoc","graph-data-science"]
+    ports:
+      - "${NEO4J_HTTP_PORT:-7474}:7474"
+      - "${NEO4J_BOLT_PORT:-7687}:7687"
+    networks:
+      - sdr-network
+    restart: unless-stopped
+    volumes:
+      - neo4j-data:/data
+      - neo4j-logs:/logs
+
+  # Document/Blob Storage: MinIO (S3-compatible)
+  minio:
+    image: minio/minio:latest
+    container_name: sdr-object-storage
+    environment:
+      - MINIO_ROOT_USER=${S3_ACCESS_KEY:-minioadmin}
+      - MINIO_ROOT_PASSWORD=${S3_SECRET_KEY:-minioadmin}
+    ports:
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    networks:
+      - sdr-network
+    restart: unless-stopped
+    volumes:
+      - minio-data:/minio_data
+    command: server /minio_data --console-address ":9001"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Relational Database: PostgreSQL (Metadata, RBAC, Audit Logs)
+  postgres:
+    image: postgres:16-alpine
+    container_name: sdr-postgres
+    environment:
+      - POSTGRES_USER=${POSTGRES_USER:-sdr_user}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-sdr_password}
+      - POSTGRES_DB=${POSTGRES_DB:-sdr_db}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-sdr_user}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sdr-network
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres-init.sql:/docker-entrypoint-initdb.d/init.sql
+
+  # Database Administration UI (Optional)
+  adminer:
+    image: adminer:latest
+    container_name: sdr-adminer
+    ports:
+      - "${ADMINER_PORT:-8080}:8080"
+    networks:
+      - sdr-network
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+networks:
+  sdr-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.25.0.0/16
+
+volumes:
+  postgres-data:
+    driver: local
+  redis-data:
+    driver: local
+  neo4j-data:
+    driver: local
+  neo4j-logs:
+    driver: local
+  rabbitmq-data:
+    driver: local
+  minio-data:
+    driver: local
+  sdr-blob-storage:
+    driver: local
+  indexing-cache:
+    driver: local

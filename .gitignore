@@ -14,10 +14,40 @@ htmlcov/
 .venv/
 venv/
 
+# Environment and local secrets
+.env
+.env.*
+!.env.example
+
 # Tooling
 .bandit
 
 # IDE/OS
 .vscode/
+.idea/
 .DS_Store
 Thumbs.db
+
+# Logs and runtime files
+*.log
+*.out
+*.err
+
+# Python packaging/build artifacts
+build/
+dist/
+*.egg-info/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local databases and caches
+*.sqlite3
+*.db
+.cache/
+
+# Docker/local container artifacts
+.docker/
+docker-compose.override.yml
+
+

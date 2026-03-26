@@ -1,0 +1,92 @@
+# Docker Build Ignore Patterns
+# Reduce image size by excluding unnecessary files
+
+# Version control
+.git
+.github
+.gitignore
+.gitattributes
+
+# Development
+.venv
+.venv/
+venv
+venv/
+env
+env/
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Python
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.egg-info
+*.egg
+dist
+build
+.pytest_cache
+.mypy_cache
+.ruff_cache
+*.py[cod]
+*$py.class
+
+# Documentation
+docs/
+*.md
+!README.md
+!PROJECT_FOUNDATION.md
+
+# Testing
+tests/
+.coverage
+htmlcov
+
+# Temporary files
+*.tmp
+*.log
+.cache
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Documentation build output
+site/
+
+# Node (if using frontend tools)
+node_modules
+npm-debug.log
+yarn-error.log
+
+# Kubernetes
+k8s/
+
+# Terraform
+*.tfstate*
+.terraform/
+
+# CI/CD
+.github/
+.gitlab-ci.yml
+
+# Large files and datasets
+dataset/
+*.tar.gz
+*.zip
+
+# IDE temporary files
+.*.swp
+.*.swo
+*~.nib
