@@ -1,8 +1,21 @@
 from fastapi import FastAPI
+from core.config import settings
+from api.routers import kb
+from db.session import init_db
 
-app = FastAPI(title="Automated SDR API", version="0.1.0")
+try:
+    init_db()
+except Exception as e:
+    print(f"Warning: Could not initialize database (maybe starting without postgres?): {e}")
 
+app = FastAPI(
+    title=settings.PROJECT_NAME,
+    version=settings.VERSION,
+    debug=settings.DEBUG
+)
 
-@app.get("/health", tags=["health"])
-def health() -> dict[str, str]:
-    return {"status": "ok"}
+app.include_router(kb.router)
+
+@app.get("/api/v1/health")
+def health_check():
+    return {"status": "healthy", "project": settings.PROJECT_NAME}

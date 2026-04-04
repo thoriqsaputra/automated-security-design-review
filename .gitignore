@@ -1,53 +1,72 @@
-# Python artifacts
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+Desktop.ini
+
+# Python
 __pycache__/
 *.py[cod]
-*.pyo
-*.pyd
+*$py.class
 *.so
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
+.Python
+build/
+develop/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Virtual environments
+# Virtual environments (uv, venv, etc.)
 .venv/
 venv/
+env/
+ENV/
 
-# Environment and local secrets
-.env
-.env.*
-!.env.example
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+coverage.xml
 
-# Tooling
-.bandit
-
-# IDE/OS
-.vscode/
+# IDE / Editor
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
 .idea/
-.DS_Store
-Thumbs.db
+*.swp
+*.swo
 
-# Logs and runtime files
-*.log
-*.out
-*.err
+# Environment variables & Secrets
+.env
+.env.local
+.env.*.local
+*.pem
 
-# Python packaging/build artifacts
-build/
-dist/
-*.egg-info/
+# Celery
+celerybeat-schedule
+celerybeat.pid
 
-# Jupyter
-.ipynb_checkpoints/
-
-# Local databases and caches
-*.sqlite3
-*.db
-.cache/
-
-# Docker/local container artifacts
-.docker/
-docker-compose.override.yml
-
-
+# AI / LlamaIndex / Local Storage
+storage/
+vector_store/
+chroma/

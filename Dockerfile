@@ -1,53 +1,50 @@
-# Stage 1: Build stage
-FROM python:3.11-slim AS builder
+FROM python:3.12-slim AS builder
 
-WORKDIR /app
+# Set environment variables for optimal Python execution
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1 \
+    UV_COMPILE_BYTECODE=1 \
+    UV_LINK_MODE=copy
 
-# Install build dependencies
-RUN python -m pip install --no-cache-dir --upgrade pip uv
-
-# Copy project metadata and source required for editable install
-COPY pyproject.toml uv.lock* PROJECT_FOUNDATION.md ./
-COPY api/ ./api/
-COPY core/ ./core/
-COPY agents/ ./agents/
-COPY ingestion/ ./ingestion/
-COPY rag_engine/ ./rag_engine/
-
-# Create virtual environment and install dependencies using uv
-RUN uv venv /opt/venv && \
-    uv pip install --python /opt/venv/bin/python -e .
-
-# Stage 2: Runtime stage
-FROM python:3.11-slim
-
-# Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PATH="/opt/venv/bin:$PATH" \
-    VIRTUAL_ENV="/opt/venv"
-
-# Install runtime dependencies
+# Install necessary build tools and copy uv
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
 
 WORKDIR /app
 
-# Copy virtual environment from builder
+# Copy dependency files first
+COPY pyproject.toml uv.lock ./
+
+# Create virtual environment and install dependencies cleanly
+ENV VIRTUAL_ENV=/opt/venv
+ENV UV_PROJECT_ENVIRONMENT=/opt/venv
+RUN uv venv $VIRTUAL_ENV && \
+    uv sync --frozen --no-dev
+
+# ==========================================
+# Stage 2: Production Image
+# ==========================================
+FROM python:3.12-slim
+
+# Security: Create a non-root user
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+WORKDIR /app
+
+# Set environments to look at the isolated virtualenv
+ENV VIRTUAL_ENV=/opt/venv \
+    PATH="/opt/venv/bin:$PATH" \
+    PYTHONUNBUFFERED=1
+
+# Copy the lightweight built virtual environment from the builder stage
 COPY --from=builder /opt/venv /opt/venv
 
-# Copy source code
-COPY api/ ./api/
-COPY core/ ./core/
-COPY agents/ ./agents/
-COPY ingestion/ ./ingestion/
-COPY rag_engine/ ./rag_engine/
-COPY pyproject.toml ./
+# Copy the actual application code
+COPY --chown=appuser:appuser . /app/
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+# Switch to the non-root user
+USER appuser
 
-# Default command
-CMD ["uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+EXPOSE 8000
