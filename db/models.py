@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, func
+from sqlalchemy import Column, Integer, String, Text, ForeignKey, DateTime, func, JSON
 from sqlalchemy.orm import declarative_base, relationship
 from pgvector.sqlalchemy import Vector
 import uuid
@@ -61,6 +61,7 @@ class ArchitectureEntity(Base):
     entity_type = Column(String)
     description = Column(Text)
     embedding = Column(Vector(768))
+    spatial_metadata = Column(JSON, nullable=True)  # Stores coordinates, trust_zone, labels_on_diagram from vision extraction
     
     document = relationship("TSDDocument", back_populates="entities")
     outgoing_edges = relationship("ArchitectureEdge", foreign_keys="[ArchitectureEdge.source_id]", back_populates="source", cascade="all, delete-orphan")
