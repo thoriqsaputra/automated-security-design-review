@@ -5,7 +5,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')
 import uuid
 import logging
 from unittest.mock import patch, MagicMock
-from db.session import SessionLocal
+from db.session import SessionLocal, init_db
 from db.models import TSDDocument, ArchitectureEntity, ArchitectureEdge, DocumentNode
 from rag_engine.settings import configure_rag_settings
 from rag_engine.vision.processor import process_architecture_diagram
@@ -56,6 +56,8 @@ def test_milestone_4_vision_processing(mock_completion):
     mock_response.choices[0].message.content = MOCK_GEMINI_JSON
     mock_completion.return_value = mock_response
 
+    # Ensure extension/tables exist before running assertions in local environments.
+    init_db()
     configure_rag_settings()
     db = SessionLocal()
     doc_id = str(uuid.uuid4())
@@ -107,15 +109,21 @@ def test_milestone_4_vision_processing(mock_completion):
         logger.info("SUCCESS: All deduplication, spatial mapping, and synthetic node logic works perfectly!")
         
     except AssertionError as e:
+        db.rollback()
         logger.error(f"TEST FAILED ON ASSERTION: {e}")
+        raise
     except Exception as e:
+        db.rollback()
         logger.error(f"TEST CRASHED: {e}")
+        raise
         
     finally:
+        # If a prior flush/commit failed, session is in pending rollback state.
+        db.rollback()
         doc_to_delete = db.query(TSDDocument).filter(TSDDocument.id == doc_id).first()
         if doc_to_delete:
             db.delete(doc_to_delete)
-        db.commit()
+            db.commit()
         db.close()
 
 if __name__ == "__main__":
