@@ -77,9 +77,10 @@ def extract_security_graph(text_content: str, max_retries: int = 4) -> Requireme
         )
 
     primary_model = "gemini/gemini-2.5-flash"
-    # primary_model = "openrouter/qwen/qwen3.6-plus:free"
+    # primary_model = "openrouter/google/gemma-4-26b-a4b-it:free"
+    # primary_model = "openrouter/nvidia/nemotron-3-super-120b-a12b:free"
     fallbacks = [
-        "openrouter/qwen/qwen3.6-plus:free"
+        "openrouter/google/gemma-4-31b-it:free"
     ]
 
     for attempt in range(max_retries):
@@ -88,7 +89,7 @@ def extract_security_graph(text_content: str, max_retries: int = 4) -> Requireme
             
             response = completion(
                 model=primary_model,
-                fallbacks=fallbacks,
+                # fallbacks=fallbacks,
                 messages=[
                     {"role": "system", "content": system_prompt},
                     {"role": "user", "content": f"Extract rules from this text:\n\n{safe_text}"}
