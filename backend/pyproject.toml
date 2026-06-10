@@ -1,0 +1,132 @@
+[project]
+name = "automated-sdr"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.14"
+dependencies = [
+    "deptry>=0.23.1",
+    "drf-spectacular>=0.28.0",
+    "pdf2image>=1.17.0",
+    "pdfminer-six>=20250506",
+    "pillow>=11.3.0",
+    "psycopg-binary>=3.2.9",
+    "psycopg2-binary>=2.9.10",
+    "pypdf2>=3.0.1",
+    "pytesseract>=0.3.13",
+    "pytest>=8.4.1",
+    "pytz>=2025.2",
+    "sqlalchemy>=2.0.43",
+    "bleach>=6.0.0",
+    "python-magic>=0.4.27",
+    "uvicorn[standard]>=0.29.0",
+    "gunicorn>=22.0.0",
+    "requests>=2.32.5",
+    "openai>=1.86.0",
+    "pyjwt[crypto]>=2.10.1",
+    "celery[redis]>=5.4.0",
+    "bs4>=0.0.2",
+    "langchain-text-splitters>=1.1.2",
+    "tiktoken>=0.12.0",
+    "pymupdf>=1.27.2.3",
+    "pymupdf4llm>=0.0.27",
+    "pgvector>=0.4.2",
+    "environ>=1.0",
+    "weasyprint>=68.1",
+    "litellm>=1.85.0",
+    "alembic>=1.18.4",
+    "fastapi>=0.136.3",
+    "pydantic-settings>=2.14.1",
+    "python-multipart>=0.0.32",
+    "pydantic[email]>=2.13.4",
+    "minio>=7.2.14",
+    "langchain-nvidia-ai-endpoints>=0.3.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "black>=24.0.0",
+    "isort>=5.13.0",
+    "flake8>=7.0.0",
+    "mypy>=1.8.0",
+    "bandit>=1.7.5",
+    "safety>=3.0.0",
+    "coverage>=7.4.0",
+]
+
+[tool.black]
+line-length = 88
+target-version = ['py313']
+include = '\.pyi?$'
+extend-exclude = '''
+/(
+  # directories
+  \.eggs
+  | \.git
+  | \.hg
+  | \.mypy_cache
+  | \.tox
+  | \.venv
+  | build
+  | dist
+)/
+'''
+
+[tool.isort]
+profile = "black"
+multi_line_output = 3
+line_length = 88
+known_first_party = ["apps"]
+sections = ["FUTURE", "STDLIB", "THIRDPARTY", "FIRSTPARTY", "LOCALFOLDER"]
+
+[tool.mypy]
+python_version = "3.13"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = true
+disallow_incomplete_defs = true
+check_untyped_defs = true
+disallow_untyped_decorators = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+warn_no_return = true
+warn_unreachable = true
+strict_equality = true
+
+[[tool.mypy.overrides]]
+module = [
+    "pdf2image.*",
+    "pdfminer.*",
+    "pytesseract.*",
+]
+ignore_missing_imports = true
+
+[tool.bandit]
+exclude_dirs = ["tests", "migrations"]
+skips = ["B101", "B601"]
+
+[tool.coverage.run]
+source = "."
+omit = [
+    "*/migrations/*",
+    "*/venv/*",
+    "*/env/*",
+    "manage.py",
+    "*/settings/*",
+    "*/tests/*",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if self.debug:",
+    "if settings.DEBUG",
+    "raise AssertionError",
+    "raise NotImplementedError",
+    "if 0:",
+    "if __name__ == .__main__.:",
+    "class .*\\bProtocol\\):",
+    "@(abc\\.)?abstractmethod",
+]
