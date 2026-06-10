@@ -1,0 +1,68 @@
+# Git
+.git
+.gitignore
+.gitattributes
+
+# IDE / Editor
+.idea
+.vscode
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Frontend – exclude from root context (huge; frontend has its own context when needed)
+frontend/node_modules
+frontend/.next
+frontend/out
+frontend/.bun
+frontend/.turbo
+frontend/build
+frontend/dist
+# frontend/.env*.local
+frontend/coverage
+frontend/.cache
+
+# Backend – Python
+backend/**/__pycache__
+backend/**/*.pyc
+backend/**/*.pyo
+backend/**/.pytest_cache
+backend/**/.mypy_cache
+backend/**/.ruff_cache
+backend/**/htmlcov
+backend/**/.coverage
+backend/**/venv
+backend/**/.venv
+backend/media
+backend/staticfiles
+backend/logs
+# backend/.env
+# backend/.env.*
+!backend/.env.example
+
+# Docs / misc (not needed in image)
+docs
+*.md
+!backend/sdr/**/*.md
+
+# Tests (optional: include if you run tests in Docker)
+# backend/**/tests
+# frontend/**/__tests__
+# frontend/**/*.test.*
+# frontend/**/*.spec.*
+
+# CI / deployment config (not needed inside image)
+.github
+.cursor
+agent-transcripts
+terminals
+assets
+
+# Env files (secrets; use build args instead)
+# .env
+# .env.*
+# !.env.example
