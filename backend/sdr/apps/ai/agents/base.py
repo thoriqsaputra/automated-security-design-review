@@ -1,12 +1,19 @@
 from __future__ import annotations
 
+import sys
 import json
 import logging
+
+try:
+    sys.set_int_max_str_digits(0)
+except AttributeError:
+    pass  # For older Python versions
+
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
 
 from sdr.apps.ai.client import AIResponse, chat_completion
-from sdr.apps.ai.utils.parsing import strip_markdown_code_blocks
+from sdr.apps.ai.utils.parsing import strip_markdown_code_blocks, strip_thinking_block
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +115,7 @@ class CriticResult(AgentReasoningMixin):
 class MediatorResult(AgentReasoningMixin):
     final_verdict: str = VERDICT_NOT_MET
     confidence: float = 0.0
+    finding_description: str = ""
     final_citations: List[Citation] = field(default_factory=list)
     severity: Optional[str] = None
     recommendation: Optional[str] = None
@@ -173,7 +181,8 @@ class BaseAgent:
         return response
 
     def _parse_json_response(self, response: AIResponse) -> Optional[Dict[str, Any]]:
-        content = strip_markdown_code_blocks(response.content or "")
+        content = strip_thinking_block(response.content or "")
+        content = strip_markdown_code_blocks(content)
         if not content.strip():
             self.logger.warning(
                 "%s._parse_json_response: empty response content.",
@@ -183,11 +192,12 @@ class BaseAgent:
 
         try:
             parsed = json.loads(content)
-        except json.JSONDecodeError as exc:
+        except (json.JSONDecodeError, ValueError) as exc:
+            err_pos = getattr(exc, "pos", "unknown")
             self.logger.warning(
-                "%s._parse_json_response: json decode failed at pos=%s: %s. Attempting repair.",
+                "%s._parse_json_response: json decode/value failed at pos=%s: %s. Attempting repair.",
                 self.__class__.__name__,
-                exc.pos,
+                err_pos,
                 exc,
             )
             repair_prompt = (
@@ -206,9 +216,10 @@ class BaseAgent:
                 self.logger.warning("%s._parse_json_response: JSON repair API error.", self.__class__.__name__)
                 return None
             try:
-                parsed = json.loads(strip_markdown_code_blocks(repair_resp.content or ""))
+                clean_repair = strip_thinking_block(repair_resp.content or "")
+                parsed = json.loads(strip_markdown_code_blocks(clean_repair))
                 self.logger.info("%s._parse_json_response: successfully repaired JSON via LLM fallback.", self.__class__.__name__)
-            except json.JSONDecodeError:
+            except (json.JSONDecodeError, ValueError):
                 self.logger.warning("%s._parse_json_response: JSON repair failed.", self.__class__.__name__)
                 return None
 

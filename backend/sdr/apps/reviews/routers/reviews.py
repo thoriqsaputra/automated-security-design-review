@@ -50,7 +50,8 @@ def create_review(payload: ReviewCreateSchema, db: Session = Depends(get_db)):
     review = Review(
         design_id=payload.design_id,
         ingestion_job_id=job.id,
-        status=Review.STATUS_PENDING
+        status=Review.STATUS_PENDING,
+        asvs_level_override=payload.asvs_level_override,
     )
     db.add(review)
     db.flush()
@@ -68,6 +69,18 @@ def get_review(review_id: int, db: Session = Depends(get_db)):
     if not review:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review not found")
     return review
+
+
+@router.get("/{review_id}/retrieval-visualization")
+def get_review_retrieval_visualization(review_id: int, db: Session = Depends(get_db)):
+    review = db.get(Review, review_id)
+    if not review:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review not found")
+
+    snapshot = review.retrieval_snapshot_json
+    if snapshot:
+        return snapshot
+    return {"status": "pending", "generated_at": None, "raptor": None, "graph": None}
 
 
 @router.get("/{review_id}/findings", response_model=List[FindingSchema])
@@ -109,7 +122,8 @@ def trigger_review(review_id: int, db: Session = Depends(get_db)):
         review.error_message = None
         review.completed_at = None
         review.summary_json = {}
-        
+        review.retrieval_snapshot_json = None
+
         review.status = Review.STATUS_RUNNING
         dispatch_res = dispatch_review_analysis(review.id)
         review.celery_task_id = dispatch_res.get("task_id")
@@ -123,6 +137,7 @@ def trigger_review(review_id: int, db: Session = Depends(get_db)):
 
 @router.post("/{review_id}/cancel", response_model=ReviewSchema)
 def cancel_review(review_id: int, db: Session = Depends(get_db)):
+    from datetime import datetime, timezone
     from sdr.celery_app import celery_app
     
     review = db.get(Review, review_id)
@@ -143,9 +158,11 @@ def cancel_review(review_id: int, db: Session = Depends(get_db)):
         
     # Kill the background task if it exists
     if review.celery_task_id:
-        celery_app.control.revoke(review.celery_task_id, terminate=True)
+        celery_app.control.revoke(review.celery_task_id, terminate=True, signal="SIGTERM")
         
     review.status = ReviewStatus.CANCELLED.value
+    review.completed_at = datetime.now(timezone.utc)
+    review.error_message = "Analysis was cancelled by user."
     db.commit()
     db.refresh(review)
     return review

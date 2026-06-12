@@ -18,13 +18,6 @@ from datetime import datetime, timezone
 from sdr.apps.reviews.models import Review
 from sdr.apps.reviews.models.choices import ReviewStatus
 from sdr.apps.standards.utils import build_parameter_analysis_text
-from sdr.apps.ai.telemetry import (
-    ai_usage_context,
-    capture_ai_usage_context,
-    reset_ai_usage_context,
-    run_with_ai_usage_context,
-    set_ai_usage_context,
-)
 from sdr.apps.ai.utils.concurrency import ConcurrencyProbe
 from .dto import AnalysisSummary, DebateInput, DebateOutput, PersistenceInput
 from .ingestion_service import IngestionService
@@ -33,8 +26,13 @@ from .debate_service import DebateService
 from .persistence_service import PersistenceService
 from .contract_synthesizer import ContractSynthesizer
 from .domain_classification import classify_requirement_domain, DOMAIN_KEYWORDS
+from .asvs_level import classify_tsd_asvs_level, filter_parameters_for_asvs_level
 
 logger = logging.getLogger(__name__)
+
+
+class AnalysisCancelledError(RuntimeError):
+    """Raised when the user has cancelled the review."""
 
 
 class TSDAnalysisPipeline:
@@ -64,29 +62,6 @@ class TSDAnalysisPipeline:
         self._last_batch_concurrency_stats: Dict[str, Dict[str, Any]] = {}
 
     def run(self, review: Review) -> AnalysisSummary:
-        """
-        Runs the full TSD security analysis pipeline for a Review.
-
-        Pipeline steps:
-            1. Mark review as RUNNING
-            2. Ingest TSD document
-            3. Screen document
-            4. Build retrieval indexes (RAPTOR, GraphRAG)
-            5. Pre-filter N/A parameters
-            6. Persist pre-filtered findings
-            7. For each applicable parameter:
-               a. Retrieve context
-               b. Run Hunter → Critic → Mediator debate
-               c. Persist findings and citations
-            8. Generate executive overview
-            9. Mark review as COMPLETED
-
-        Args:
-            review: The Review to analyze.
-
-        Returns:
-            AnalysisSummary with aggregated statistics.
-        """
         self.logger.info(
             "TSDAnalysisPipeline.run: [START] review_id=%s design='%s'",
             review.id,
@@ -94,10 +69,19 @@ class TSDAnalysisPipeline:
         )
 
         summary = AnalysisSummary()
-        telemetry_token = set_ai_usage_context(review=review, review_id=review.id)
         from sdr.core.database import SessionLocal
-        from sqlalchemy import update
+        from sqlalchemy import select, update
         with SessionLocal() as db:
+            latest = db.execute(select(Review).where(Review.id == review.id)).scalars().first()
+            if latest and latest.status == ReviewStatus.CANCELLED.value:
+                self.logger.warning(
+                    "TSDAnalysisPipeline.run: review_id=%s already cancelled before start; aborting run",
+                    review.id,
+                )
+                review.status = latest.status
+                review.completed_at = getattr(latest, "completed_at", None)
+                review.error_message = getattr(latest, "error_message", None)
+                return summary
             new_status = ReviewStatus.RUNNING.value if hasattr(ReviewStatus, 'value') else ReviewStatus.RUNNING
             now = datetime.now(timezone.utc)
             db.execute(update(Review).where(Review.id == review.id).values(status=new_status, started_at=now))
@@ -108,7 +92,7 @@ class TSDAnalysisPipeline:
         try:
             # ---- STEP 1: Ingest ----
             self.logger.info("TSDAnalysisPipeline.run: [STEP 1] Ingestion")
-            with ai_usage_context(stage="ingestion", component="tsd_ingestion"):
+            if True:
                 ingestion_output = self.ingestion.ingest(review)
 
             if ingestion_output is None:
@@ -128,11 +112,27 @@ class TSDAnalysisPipeline:
 
             # ---- STEP 3: Build Indexes ----
             self.logger.info("TSDAnalysisPipeline.run: [STEP 3] Building Retrieval Indexes")
-            with ai_usage_context(stage="index_building", component="retrieval_index"):
+            if True:
                 indexes = self.retrieval.build_indexes(tsd_document)
 
-            # ---- STEP 4: Resolve Parameters (ALL selected categories) ----
-            self.logger.info("TSDAnalysisPipeline.run: [STEP 4] Resolving Parameters for all selected categories")
+            self.logger.info("TSDAnalysisPipeline.run: [STEP 4] Classifying ASVS Level")
+            asvs_classification = self._classify_review_asvs_level(review, tsd_document)
+            effective_asvs_level = self._resolve_effective_asvs_level(review, asvs_classification)
+            summary.asvs = {
+                "classified_level": asvs_classification.get("level"),
+                "classification_confidence": asvs_classification.get("confidence"),
+                "classification_reasoning": asvs_classification.get("reasoning"),
+                "classification_evidence": asvs_classification.get("evidence", []),
+                "classification_error": asvs_classification.get("error"),
+                "definition_source": asvs_classification.get("definition_source"),
+                "definition_count": asvs_classification.get("definition_count"),
+                "override_level": getattr(review, "asvs_level_override", None),
+                "effective_level": effective_asvs_level,
+                "categories": {},
+            }
+
+            # ---- STEP 5: Resolve Parameters (ALL selected categories) ----
+            self.logger.info("TSDAnalysisPipeline.run: [STEP 5] Resolving Parameters for all selected categories")
 
             # Build categories list in priority: selected_categories -> review.ingestion_job.category -> first standard.category
             selected_categories = list(review.selected_categories)
@@ -164,7 +164,7 @@ class TSDAnalysisPipeline:
                 # Resolve ingestion job for this category
                 from sdr.core.database import SessionLocal
                 from sqlalchemy import select
-                
+
                 with SessionLocal() as db:
                     if review.ingestion_job:
                         ingestion_job = review.ingestion_job
@@ -207,32 +207,38 @@ class TSDAnalysisPipeline:
 
                 summary.total_parameters += len(parameters)
 
-                # ---- STEP 5: Pre-filter for this category ----
-                self.logger.info("TSDAnalysisPipeline.run: [STEP 5] Pre-filtering %d parameters for category=%s",
-                    len(parameters), getattr(category, "code", None))
-                with ai_usage_context(stage="pre_filtering", category=category, component="orchestrator"):
-                    applicability_result = self.retrieval.pre_filter_parameters(
-                        parameters,
-                        indexes,
-                        category_code=getattr(category, "code", "") or "",
-                    )
-                applicable_parameters = applicability_result.applicable_parameters
-                pre_filtered_parameters = applicability_result.pre_filtered_parameters
-
-                summary.pre_filtered_count += len(pre_filtered_parameters)
-
-                # ---- STEP 6: Persist Pre-filtered ----
-                for param in pre_filtered_parameters:
-                    self.persistence.persist_pre_filtered_finding(
-                        review,
-                        param,
-                        summary,
-                        prefilter_details=applicability_result.pre_filter_details.get(str(param.id), {}),
-                    )
-
-                # ---- STEP 7: Debate Loop for this category ----
+                parameters, asvs_filter_stats = filter_parameters_for_asvs_level(parameters, effective_asvs_level)
+                category_code = getattr(category, "code", None) or "unknown"
+                summary.asvs["categories"][category_code] = asvs_filter_stats
                 self.logger.info(
-                    "TSDAnalysisPipeline.run: [STEP 7] Debate Loop — %d parameter(s) for category=%s",
+                    "TSDAnalysisPipeline.run: ASVS filter category=%s effective_level=L%s before=%d after=%d excluded=%d unknown_included=%d",
+                    category_code,
+                    effective_asvs_level,
+                    asvs_filter_stats["before_count"],
+                    asvs_filter_stats["after_count"],
+                    asvs_filter_stats["excluded_by_level_count"],
+                    asvs_filter_stats["unknown_level_included_count"],
+                )
+
+                if not parameters:
+                    self.logger.info(
+                        "TSDAnalysisPipeline.run: ASVS filter removed all parameters for category=%s — skipping",
+                        getattr(category, "code", None),
+                    )
+                    continue
+
+                applicable_parameters = parameters
+                summary.analysis_total_parameters += len(applicable_parameters)
+                summary.analysis_remaining_parameters += len(applicable_parameters)
+                self._initialize_category_progress(
+                    summary=summary,
+                    category_code=category_code,
+                    total_count=len(applicable_parameters),
+                )
+
+                # ---- STEP 6: Debate Loop for this category ----
+                self.logger.info(
+                    "TSDAnalysisPipeline.run: [STEP 6] Debate Loop — %d parameter(s) for category=%s",
                     len(applicable_parameters), getattr(category, "code", None),
                 )
 
@@ -260,9 +266,9 @@ class TSDAnalysisPipeline:
                         killed_assumptions_memory=killed_assumptions_memory,
                     )
 
-            # ---- STEP 8: Generate Overview ----
-            self.logger.info("TSDAnalysisPipeline.run: [STEP 8] Generating Overview")
-            with ai_usage_context(stage="overview", component="orchestrator"):
+            # ---- STEP 7: Generate Overview ----
+            self.logger.info("TSDAnalysisPipeline.run: [STEP 7] Generating Overview")
+            if True:
                 overview = self._generate_overview(review, summary)
             if overview:
                 from sdr.core.database import SessionLocal
@@ -272,24 +278,33 @@ class TSDAnalysisPipeline:
                     db.commit()
                     review.overview = overview
 
-            # ---- STEP 9: Mark Completed ----
-            self.logger.info("TSDAnalysisPipeline.run: [STEP 9] Marking Completed")
+            # ---- STEP 8: Mark Completed ----
+            self.logger.info("TSDAnalysisPipeline.run: [STEP 8] Marking Completed")
             self._complete_review(review, summary)
 
             self.logger.info(
                 "TSDAnalysisPipeline.run: [SUCCESS] review_id=%s "
-                "met=%d not_met=%d na=%d pre_filtered=%d errors=%d",
+                "met=%d not_met=%d na=%d errors=%d analysis_total=%d analysis_processed=%d analysis_remaining=%d",
                 review.id,
                 summary.met_count,
                 summary.not_met_count,
                 summary.na_count,
-                summary.pre_filtered_count,
                 summary.error_count,
+                summary.analysis_total_parameters,
+                summary.analysis_processed_parameters,
+                summary.analysis_remaining_parameters,
             )
 
             return summary
 
         except Exception as exc:
+            if self._is_cancelled(review):
+                self.logger.warning(
+                    "TSDAnalysisPipeline.run: [CANCELLED] review_id=%s stopping after cancellation signal: %s",
+                    review.id,
+                    exc,
+                )
+                return summary
             self.logger.exception(
                 "TSDAnalysisPipeline.run: [FATAL] review_id=%s: %s",
                 review.id,
@@ -299,7 +314,6 @@ class TSDAnalysisPipeline:
             return summary
 
         finally:
-            reset_ai_usage_context(telemetry_token)
             if 'tsd_document' in locals():
                 self.logger.info(
                     "TSDAnalysisPipeline.run: [CLEANUP] review_id=%s",
@@ -308,6 +322,145 @@ class TSDAnalysisPipeline:
                 tsd_document.cleanup_temporary_artifacts()
 
     # ---- Private Helpers ----
+
+    def _classify_review_asvs_level(self, review: Review, tsd_document) -> Dict[str, Any]:
+        try:
+            from sdr.core.database import SessionLocal
+            from sqlalchemy import select
+            from sdr.apps.standards.models import ASVSLevel, ASVSLevelDefinition
+
+            with SessionLocal() as db:
+                levels = []
+                definition_source = "missing"
+                ingestion_job_id = getattr(review, "ingestion_job_id", None)
+                if ingestion_job_id is None and getattr(review, "ingestion_job", None):
+                    ingestion_job_id = getattr(review.ingestion_job, "id", None)
+                if ingestion_job_id is not None:
+                    levels = db.execute(
+                        select(ASVSLevelDefinition)
+                        .where(ASVSLevelDefinition.ingestion_job_id == ingestion_job_id)
+                        .order_by(ASVSLevelDefinition.level)
+                    ).scalars().all()
+                    if levels:
+                        definition_source = "standard_document"
+                if not levels:
+                    levels = db.execute(select(ASVSLevel).order_by(ASVSLevel.level)).scalars().all()
+                    definition_source = "static_fallback" if levels else "missing"
+            classification = classify_tsd_asvs_level(getattr(tsd_document, "full_text", "") or "", levels)
+            result = classification.to_dict()
+            result["definition_source"] = definition_source
+            result["definition_count"] = len(levels)
+            return result
+        except Exception as exc:
+            self.logger.exception(
+                "TSDAnalysisPipeline._classify_review_asvs_level: failed for review_id=%s",
+                getattr(review, "id", None),
+            )
+            return {
+                "level": 1,
+                "confidence": 0.0,
+                "reasoning": "ASVS classification failed; defaulted to L1.",
+                "evidence": [],
+                "error": str(exc),
+                "definition_source": "error",
+                "definition_count": 0,
+            }
+
+    def _resolve_effective_asvs_level(self, review: Review, classification: Dict[str, Any]) -> int:
+        override = getattr(review, "asvs_level_override", None)
+        try:
+            override_int = int(override) if override is not None else None
+        except (TypeError, ValueError):
+            override_int = None
+        if override_int in (1, 2, 3):
+            return override_int
+        level = classification.get("level")
+        try:
+            level_int = int(level) if level is not None else None
+        except (TypeError, ValueError):
+            level_int = None
+        if level_int in (1, 2, 3):
+            return level_int
+        return 1
+
+    def _initialize_category_progress(
+        self,
+        *,
+        summary: AnalysisSummary,
+        category_code: str,
+        total_count: int,
+    ) -> None:
+        category_stats = summary.asvs.setdefault("categories", {}).setdefault(category_code, {})
+        category_stats["analysis_total_count"] = int(total_count)
+        category_stats["analysis_processed_count"] = 0
+        category_stats["analysis_remaining_count"] = int(total_count)
+
+    def _record_parameter_progress(
+        self,
+        *,
+        summary: AnalysisSummary,
+        category_code: str,
+        parameter_id: Optional[Any] = None,
+        log_prefix: str = "TSDAnalysisPipeline.run",
+        extra_fields: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        category_stats = summary.asvs.setdefault("categories", {}).setdefault(category_code, {})
+        total_count = int(category_stats.get("analysis_total_count") or 0)
+        processed_count = int(category_stats.get("analysis_processed_count") or 0) + 1
+        remaining_count = max(total_count - processed_count, 0)
+        category_stats["analysis_processed_count"] = processed_count
+        category_stats["analysis_remaining_count"] = remaining_count
+
+        summary.analysis_processed_parameters += 1
+        summary.analysis_remaining_parameters = max(summary.analysis_remaining_parameters - 1, 0)
+
+        extra_fields = dict(extra_fields or {})
+        extra_suffix = ""
+        if extra_fields:
+            extra_suffix = " " + " ".join(f"{key}={value}" for key, value in extra_fields.items())
+
+        self.logger.info(
+            "%s: category=%s progress processed=%d remaining=%d total=%d parameter id=%s%s",
+            log_prefix,
+            category_code,
+            processed_count,
+            remaining_count,
+            total_count,
+            parameter_id,
+            extra_suffix,
+        )
+
+    def _cancel_pending_futures(
+        self,
+        *,
+        executor: ThreadPoolExecutor,
+        future_map: Dict[Any, Any],
+        review_id: Any,
+        phase: str,
+    ) -> None:
+        cancelled_count = 0
+        for future in future_map:
+            if future.done():
+                continue
+            if future.cancel():
+                cancelled_count += 1
+        executor.shutdown(wait=False, cancel_futures=True)
+        self.logger.warning(
+            "TSDAnalysisPipeline.%s: cancellation detected review_id=%s pending_futures_cancelled=%d",
+            phase,
+            review_id,
+            cancelled_count,
+        )
+
+    def _raise_if_cancelled(self, review: Review, *, phase: str) -> None:
+        if not self._is_cancelled(review):
+            return
+        self.logger.warning(
+            "TSDAnalysisPipeline.%s: cancellation detected review_id=%s",
+            phase,
+            review.id,
+        )
+        raise AnalysisCancelledError("Analysis was cancelled by user.")
 
     def _resolve_parameters(self, review: Review) -> tuple:
         """Resolves category, ingestion_job, and parameters for the review."""
@@ -399,13 +552,18 @@ class TSDAnalysisPipeline:
         summary: AnalysisSummary,
         killed_assumptions_memory: deque,
     ) -> None:
+        category_code = getattr(category, "code", None) or "unknown"
+        category_stats = summary.asvs.setdefault("categories", {}).setdefault(category_code, {})
+        if int(category_stats.get("analysis_total_count") or 0) == 0 and parameters:
+            self._initialize_category_progress(
+                summary=summary,
+                category_code=category_code,
+                total_count=len(parameters),
+            )
+            summary.analysis_total_parameters += len(parameters)
+            summary.analysis_remaining_parameters += len(parameters)
         for idx, parameter in enumerate(parameters, start=1):
-            if self._is_cancelled(review):
-                self.logger.warning(
-                    "TSDAnalysisPipeline.run: cancellation detected during parameter loop for review_id=%s",
-                    review.id,
-                )
-                return
+            self._raise_if_cancelled(review, phase="run.parameter_loop")
             self.logger.info(
                 "TSDAnalysisPipeline.run: category=%s [%d/%d] parameter id=%s",
                 getattr(category, "code", None),
@@ -422,6 +580,7 @@ class TSDAnalysisPipeline:
                     tsd_document=tsd_document,
                     killed_assumptions=list(killed_assumptions_memory),
                 )
+                self._raise_if_cancelled(review, phase="run.after_debate")
                 debate_output = self._retry_if_needed(
                     category=category,
                     ingestion_job=ingestion_job,
@@ -445,12 +604,23 @@ class TSDAnalysisPipeline:
                     debate_output=debate_output,
                     summary=summary,
                 )
+                self._record_parameter_progress(
+                    summary=summary,
+                    category_code=category_code,
+                    parameter_id=parameter.id,
+                )
             except Exception as exc:
                 summary.error_count += 1
                 self.logger.exception(
                     "TSDAnalysisPipeline.run: failed for parameter id=%s: %s",
                     parameter.id,
                     exc,
+                )
+                self._record_parameter_progress(
+                    summary=summary,
+                    category_code=category_code,
+                    parameter_id=parameter.id,
+                    extra_fields={"status": "error"},
                 )
 
     def _run_batched_analysis_for_category(
@@ -466,6 +636,16 @@ class TSDAnalysisPipeline:
         killed_assumptions_memory: deque,
     ) -> None:
         start_ts = time.monotonic()
+        category_code = getattr(category, "code", None) or "unknown"
+        category_stats = summary.asvs.setdefault("categories", {}).setdefault(category_code, {})
+        if int(category_stats.get("analysis_total_count") or 0) == 0 and parameters:
+            self._initialize_category_progress(
+                summary=summary,
+                category_code=category_code,
+                total_count=len(parameters),
+            )
+            summary.analysis_total_parameters += len(parameters)
+            summary.analysis_remaining_parameters += len(parameters)
         batch_size = self._batch_size()
         max_concurrency = self._batch_max_concurrency()
         parent_groups = self._group_parameters_by_parent(parameters)
@@ -481,11 +661,12 @@ class TSDAnalysisPipeline:
             len(batches),
             batch_size,
             max_concurrency,
-            getattr(category, "code", None),
+            category_code,
         )
 
         accepted_outputs: Dict[str, DebateOutput] = {}
         invalid_reasons: Dict[str, List[str]] = {}
+        terminal_error_ids: set[str] = set()
         parent_context_cache: Dict[Tuple[Any, Any, Any], Any] = {}
         parent_context_by_key: Dict[Any, Any] = {}
         self._last_batch_concurrency_stats = {}
@@ -494,22 +675,14 @@ class TSDAnalysisPipeline:
             "TSDAnalysisPipeline.batch.phase=parent_retrieval submitted=%d max_concurrency=%d category=%s",
             len(parent_groups),
             max_concurrency,
-            getattr(category, "code", None),
+            category_code,
         )
         with ThreadPoolExecutor(max_workers=max_concurrency, thread_name_prefix="ThreadPoolExecutor-7") as executor:
             parent_future_map = {}
             for parent, children in parent_groups:
-                if self._is_cancelled(review):
-                    self.logger.warning(
-                        "TSDAnalysisPipeline.batch: cancellation detected before parent retrieval review_id=%s",
-                        review.id,
-                    )
-                    return
-                context_snapshot = capture_ai_usage_context()
+                self._raise_if_cancelled(review, phase="batch.before_parent_retrieval")
                 future = executor.submit(
-                    parent_probe.wrap(run_with_ai_usage_context),
-                    context_snapshot,
-                    self._get_parent_retrieval_result,
+                    parent_probe.wrap(self._get_parent_retrieval_result),
                     parent=parent,
                     child_parameters=children,
                     category=category,
@@ -522,6 +695,14 @@ class TSDAnalysisPipeline:
             parent_probe.mark_submitted(len(parent_future_map))
 
             for future in as_completed(parent_future_map):
+                if self._is_cancelled(review):
+                    self._cancel_pending_futures(
+                        executor=executor,
+                        future_map=parent_future_map,
+                        review_id=review.id,
+                        phase="batch.parent_retrieval",
+                    )
+                    raise AnalysisCancelledError("Analysis was cancelled by user.")
                 parent = parent_future_map[future]
                 parent_key = getattr(parent, "id", None) or id(parent)
                 parent_context_by_key[parent_key] = future.result()
@@ -537,10 +718,12 @@ class TSDAnalysisPipeline:
             parent_stats["peak_in_flight"],
             parent_stats["max_concurrency"],
             parent_stats["elapsed_seconds"],
-            getattr(category, "code", None),
+            category_code,
         )
 
         def _run_batch(parent, batch_parameters, killed_snapshot):
+            if self._is_cancelled(review):
+                return {}
             retrieval_result = parent_context_by_key[getattr(parent, "id", None) or id(parent)]
             debate_inputs = [
                 self._build_debate_input_for_parameter(
@@ -564,22 +747,14 @@ class TSDAnalysisPipeline:
             "TSDAnalysisPipeline.batch.phase=batch_debate submitted=%d max_concurrency=%d category=%s",
             len(batches),
             max_concurrency,
-            getattr(category, "code", None),
+            category_code,
         )
         with ThreadPoolExecutor(max_workers=max_concurrency, thread_name_prefix="ThreadPoolExecutor-8") as executor:
             future_map = {}
             for parent, batch_parameters in batches:
-                if self._is_cancelled(review):
-                    self.logger.warning(
-                        "TSDAnalysisPipeline.batch: cancellation detected before batch submission review_id=%s",
-                        review.id,
-                    )
-                    return
-                context_snapshot = capture_ai_usage_context()
+                self._raise_if_cancelled(review, phase="batch.before_batch_submission")
                 future = executor.submit(
-                    batch_probe.wrap(run_with_ai_usage_context),
-                    context_snapshot,
-                    _run_batch,
+                    batch_probe.wrap(_run_batch),
                     parent,
                     batch_parameters,
                     list(killed_assumptions_memory),
@@ -588,6 +763,14 @@ class TSDAnalysisPipeline:
             batch_probe.mark_submitted(len(future_map))
 
             for future in as_completed(future_map):
+                if self._is_cancelled(review):
+                    self._cancel_pending_futures(
+                        executor=executor,
+                        future_map=future_map,
+                        review_id=review.id,
+                        phase="batch.batch_debate",
+                    )
+                    raise AnalysisCancelledError("Analysis was cancelled by user.")
                 batch_parameters = future_map[future]
                 try:
                     batch_outputs = future.result()
@@ -619,7 +802,7 @@ class TSDAnalysisPipeline:
             batch_stats["peak_in_flight"],
             batch_stats["max_concurrency"],
             batch_stats["elapsed_seconds"],
-            getattr(category, "code", None),
+            category_code,
         )
 
         fallback_count = 0
@@ -649,9 +832,11 @@ class TSDAnalysisPipeline:
                     continue
                 elif output is None:
                     summary.error_count += 1
+                    terminal_error_ids.add(child_id)
                     continue
             if output is None:
                 summary.error_count += 1
+                terminal_error_ids.add(child_id)
                 self.logger.warning(
                     "TSDAnalysisPipeline.batch: no final output for parameter=%s",
                     child_id,
@@ -661,6 +846,8 @@ class TSDAnalysisPipeline:
 
         if fallback_parameters:
             def _run_fallback(parameter, killed_snapshot):
+                if self._is_cancelled(review):
+                    return None
                 parent = getattr(parameter, "parent", None)
                 parent_key = getattr(parent, "id", None) or id(parent)
                 retrieval_result = parent_context_by_key.get(parent_key)
@@ -686,34 +873,37 @@ class TSDAnalysisPipeline:
                 "TSDAnalysisPipeline.batch.phase=fallback submitted=%d max_concurrency=%d category=%s",
                 len(fallback_parameters),
                 max_concurrency,
-                getattr(category, "code", None),
+                category_code,
             )
             with ThreadPoolExecutor(max_workers=max_concurrency, thread_name_prefix="ThreadPoolExecutor-9") as executor:
                 future_map = {}
                 for parameter in fallback_parameters:
-                    if self._is_cancelled(review):
-                        self.logger.warning(
-                            "TSDAnalysisPipeline.batch: cancellation detected before fallback submission review_id=%s",
-                            review.id,
-                        )
-                        return
-                    context_snapshot = capture_ai_usage_context()
+                    self._raise_if_cancelled(review, phase="batch.before_fallback_submission")
                     future = executor.submit(
-                        fallback_probe.wrap(run_with_ai_usage_context),
-                        context_snapshot,
-                        _run_fallback,
+                        fallback_probe.wrap(_run_fallback),
                         parameter,
                         list(killed_assumptions_memory),
                     )
                     future_map[future] = parameter
                 fallback_probe.mark_submitted(len(future_map))
                 for future in as_completed(future_map):
+                    if self._is_cancelled(review):
+                        self._cancel_pending_futures(
+                            executor=executor,
+                            future_map=future_map,
+                            review_id=review.id,
+                            phase="batch.fallback",
+                        )
+                        raise AnalysisCancelledError("Analysis was cancelled by user.")
                     parameter = future_map[future]
                     child_id = str(parameter.id)
                     try:
-                        final_outputs[child_id] = future.result()
+                        output = future.result()
+                        if output is not None:
+                            final_outputs[child_id] = output
                     except Exception as exc:
                         summary.error_count += 1
+                        terminal_error_ids.add(child_id)
                         self.logger.exception(
                             "TSDAnalysisPipeline.batch: fallback failed parameter=%s: %s",
                             child_id,
@@ -731,16 +921,11 @@ class TSDAnalysisPipeline:
                 fallback_stats["peak_in_flight"],
                 fallback_stats["max_concurrency"],
                 fallback_stats["elapsed_seconds"],
-                getattr(category, "code", None),
+                category_code,
             )
 
         for parameter in parameters:
-            if self._is_cancelled(review):
-                self.logger.warning(
-                    "TSDAnalysisPipeline.batch: cancellation detected before persistence review_id=%s",
-                    review.id,
-                )
-                return
+            self._raise_if_cancelled(review, phase="batch.before_persistence")
             output = final_outputs.get(str(parameter.id))
             if output is None:
                 continue
@@ -767,6 +952,27 @@ class TSDAnalysisPipeline:
                 debate_output=output,
                 summary=summary,
             )
+            self._record_parameter_progress(
+                summary=summary,
+                category_code=category_code,
+                parameter_id=parameter.id,
+                log_prefix="TSDAnalysisPipeline.batch",
+                extra_fields={"final_child_output_count": len(final_outputs)},
+            )
+
+        for parameter in parameters:
+            child_id = str(parameter.id)
+            if child_id in final_outputs:
+                continue
+            if child_id not in terminal_error_ids:
+                continue
+            self._record_parameter_progress(
+                summary=summary,
+                category_code=category_code,
+                parameter_id=parameter.id,
+                log_prefix="TSDAnalysisPipeline.batch",
+                extra_fields={"status": "terminal_error"},
+            )
 
         self.logger.info(
             "TSDAnalysisPipeline.batch: fallback_count=%d final_child_output_count=%d elapsed_seconds=%.4f",
@@ -786,12 +992,7 @@ class TSDAnalysisPipeline:
         killed_assumptions: List[Dict[str, Any]],
         enable_vision: bool = False,
     ) -> DebateOutput:
-        with ai_usage_context(
-            stage="retrieval",
-            category=category,
-            parameter=parameter,
-            component="single_child_analysis",
-        ):
+        if True:
             debate_input, retrieval_result = self._build_single_child_debate_input(
                 parameter=parameter,
                 category=category,
@@ -800,7 +1001,7 @@ class TSDAnalysisPipeline:
                 tsd_document=tsd_document,
                 killed_assumptions=killed_assumptions,
             )
-        with ai_usage_context(stage="debate", category=category, parameter=parameter):
+        if True:
             return self.debate.run_debate(
                 debate_input=debate_input,
                 retrieval_result=retrieval_result,
@@ -825,7 +1026,7 @@ class TSDAnalysisPipeline:
             tsd_document=tsd_document,
             killed_assumptions=killed_assumptions,
         )
-        with ai_usage_context(stage="debate", category=category, parameter=parameter):
+        if True:
             return self.debate.run_debate(
                 debate_input=debate_input,
                 retrieval_result=retrieval_result,
@@ -845,12 +1046,7 @@ class TSDAnalysisPipeline:
     ) -> Tuple[DebateInput, Any]:
         parameter_text = build_parameter_analysis_text(parameter).strip()
         parameter_section = parameter.parent.title if parameter.parent else "General"
-        with ai_usage_context(
-            stage="contract_synthesis",
-            category=category,
-            parameter=parameter,
-            component="contract_synthesizer",
-        ):
+        if True:
             contract = self._build_contract(
                 parameter_text=parameter_text,
                 parameter_section=parameter_section,
@@ -1170,7 +1366,6 @@ class TSDAnalysisPipeline:
             category=category,
             ingestion_job=ingestion_job,
             debate_output=gated_output,
-            is_pre_filtered=False,
         )
         self.persistence.persist_finding(review, persistence_input, summary)
 
@@ -1483,11 +1678,10 @@ class TSDAnalysisPipeline:
             from sdr.core.database import SessionLocal
             from sqlalchemy import update
             with SessionLocal() as db:
-                new_status = (
-                    ReviewStatus.COMPLETED_WITH_FINDINGS.value if hasattr(ReviewStatus, 'value') else ReviewStatus.COMPLETED_WITH_FINDINGS
-                    if int(summary.not_met_count or 0) > 0
-                    else ReviewStatus.COMPLETED_CLEAN.value if hasattr(ReviewStatus, 'value') else ReviewStatus.COMPLETED_CLEAN
-                )
+                if int(summary.not_met_count or 0) > 0:
+                    new_status = ReviewStatus.COMPLETED_WITH_FINDINGS.value
+                else:
+                    new_status = ReviewStatus.COMPLETED_CLEAN.value
                 now = datetime.now(timezone.utc)
                 summary_dict = summary.to_dict()
                 db.execute(update(Review).where(Review.id == review.id).values(
@@ -1511,6 +1705,12 @@ class TSDAnalysisPipeline:
     def _fail_review(self, review: Review, error_message: str) -> None:
         """Marks review as FAILED."""
         try:
+            if self._is_cancelled(review):
+                self.logger.warning(
+                    "TSDAnalysisPipeline._fail_review: skipping failed status because review_id=%s is cancelled",
+                    review.id,
+                )
+                return
             from sdr.core.database import SessionLocal
             from sqlalchemy import update
             with SessionLocal() as db:
@@ -1545,6 +1745,8 @@ class TSDAnalysisPipeline:
             latest = db.execute(select(Review).where(Review.id == review.id)).scalars().first()
             if not latest:
                 return False
+            if latest.status == ReviewStatus.CANCELLED.value:
+                return True
             return (
                 latest.status == (ReviewStatus.FAILED.value if hasattr(ReviewStatus, 'value') else ReviewStatus.FAILED)
                 and (latest.error_message or "").strip().lower().startswith("analysis was cancelled")

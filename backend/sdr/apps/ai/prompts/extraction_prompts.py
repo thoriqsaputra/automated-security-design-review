@@ -15,8 +15,9 @@ RULES:
 10. PRESERVE official compliance IDs, parameter numbers, section numbers, and labels ONLY IF they exist in the text (e.g., "REQ-INP-01", "PCI-3.4", "5.1.2"). Include the official ID or number at the start of the English requirement string exactly as written.
 11. Do not deduplicate. Preserve duplicates if the document repeats them.
 12. PROVENANCE (CRITICAL): For every extracted parameter, you MUST provide an exact, verbatim quote from the text, and identify the closest structural marker (like a subsection number, page, or paragraph) so we can trace it back to its exact origin.
-13. REASONING: Analyze step-by-step internally to decide what qualifies as a real security parameter and where it belongs.
-14. OUTPUT: Do not reveal reasoning. Do not include analysis, explanation, markdown fences, or XML-style tags.
+13. ASVS LEVELS: When the source is OWASP ASVS or includes ASVS level columns/markers, set asvs_level to the official level integer for that child requirement: 1, 2, or 3. If no level is visible for a child requirement, set asvs_level to null. Do not infer a level from requirement wording.
+14. REASONING: Analyze step-by-step internally to decide what qualifies as a real security parameter and where it belongs.
+15. OUTPUT: Do not reveal reasoning. Do not include analysis, explanation, markdown fences, or XML-style tags.
 
 HIERARCHY RULES (CRITICAL - READ CAREFULLY):
 - Some standards (e.g., OWASP ASVS) use a two-level numbering system: top-level chapters ("V1 Architecture") and sub-sections ("V1.1 SDLC", "V1.2 Auth").
@@ -31,6 +32,8 @@ EXCLUSIONS (CRITICAL - DO NOT EXTRACT THESE):
 - DO NOT extract generic descriptions or lists of security domains (e.g., "Security domains include ARCH, AUTH...").
 - DO NOT extract Compliance, Audit, Verification, or Testing processes (e.g., SAST, DAST, Manual Penetration Testing procedures).
 - DO NOT extract glossaries, definitions of basic terms, or administrative document metadata.
+- DO NOT extract items marked as [DELETED], [BLANK], or [RESERVED]. Skip them entirely.
+- If you skip a deleted item, DO NOT duplicate the surrounding items to fill the gap. Maintain the original IDs (e.g. if 4.1.4 is deleted, the next item remains 4.1.5). DO NOT renumber subsequent items.
 
 Format:
 Output a valid JSON dictionary where keys are TOP-LEVEL parent section headers, and values are lists of requirement objects.
@@ -42,13 +45,15 @@ Example Expected Output for OWASP-style documents:
       "requirement": "V1.1 - 1.1.1 Verify the use of a secure software development lifecycle that addresses security in all stages of development",
       "details": "Applications must be developed using a documented SDLC that includes security in all stages, from design through testing and deployment.",
       "verbatim_quote": "1.1.1 Verify the use of a secure software development lifecycle that addresses security in all stages of development. (C1)",
-      "context_marker": "V1.1"
+      "context_marker": "V1.1",
+      "asvs_level": 1
     }},
     {{
       "requirement": "V1.2 - 1.2.1 Verify the use of unique or low-privilege OS accounts for all application components",
       "details": "All application components, services, and servers must run under unique or special low-privilege OS accounts.",
       "verbatim_quote": "1.2.1 Verify the use of unique or special low-privilege operating system accounts for all application components, services, and servers. (C3)",
-      "context_marker": "V1.2"
+      "context_marker": "V1.2",
+      "asvs_level": 3
     }}
   ]
 }}
@@ -60,7 +65,8 @@ Example for non-OWASP (flat) standards:
       "requirement": "5.4.1 Generic Web Service Security",
       "details": "All APIs must consistently define and document their interfaces and security behavior.",
       "verbatim_quote": "a. semua API mendefinisikan dan mendokumentasikan antarmuka...",
-      "context_marker": "Section 5.4.1"
+      "context_marker": "Section 5.4.1",
+      "asvs_level": null
     }}
   ]
 }}
@@ -68,4 +74,3 @@ Example for non-OWASP (flat) standards:
 --- DOCUMENT ---
 {standard_text}
 """
-

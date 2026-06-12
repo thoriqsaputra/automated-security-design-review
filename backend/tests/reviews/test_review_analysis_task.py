@@ -130,3 +130,36 @@ def test_dispatch_review_analysis_task_marks_failed_and_retries(monkeypatch):
     assert persisted_review.status == ReviewStatus.FAILED.value
     assert persisted_review.error_message == "pipeline failed"
     assert save_session.committed is True
+
+
+def test_dispatch_review_analysis_task_does_not_retry_cancelled_review(monkeypatch):
+    review = _build_review()
+    cancelled_review = _build_review(review.id)
+    cancelled_review.status = ReviewStatus.CANCELLED.value
+    cancelled_review.error_message = "Analysis was cancelled by user."
+    load_session = _Session(execute_value=review)
+    cancel_session = _Session(get_value=cancelled_review)
+    monkeypatch.setattr(
+        review_tasks,
+        "SessionLocal",
+        _SessionFactory([load_session, cancel_session]),
+    )
+
+    def _boom(_review):
+        raise RuntimeError("pipeline failed after cancel")
+
+    monkeypatch.setattr("sdr.apps.ai.services.analysis.run_tsd_analysis", _boom)
+
+    retry_called = {"value": False}
+
+    def _retry(*, exc, countdown):
+        retry_called["value"] = True
+        raise AssertionError("retry should not be called for cancelled review")
+
+    monkeypatch.setattr(review_tasks.dispatch_review_analysis_task, "retry", _retry)
+
+    review_tasks.dispatch_review_analysis_task.run(review.id)
+
+    assert retry_called["value"] is False
+    assert cancel_session.committed is False
+    assert cancelled_review.status == ReviewStatus.CANCELLED.value

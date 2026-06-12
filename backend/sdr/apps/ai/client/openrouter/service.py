@@ -1,9 +1,11 @@
 import logging
 from typing import Dict, List, Optional, Any, Generator, Union
 
+import time
+import json
 from billiard.exceptions import SoftTimeLimitExceeded
 from sdr.core.config import settings
-from openai import OpenAI
+from openai import OpenAI, APIError, APIConnectionError
 
 from sdr.apps.ai.client.base import (
     AIServiceInterface, AIResponse, AIProvider, AIModel,
@@ -82,32 +84,39 @@ class OpenRouterAIService(AIServiceInterface):
                         raise
                 return generate()
             
-            # Standard request
-            response = self.client.chat.completions.create(**request_kwargs)
-            content_text = response.choices[0].message.content or ""
-            
-            # Extract usage if available
-            usage = None
-            if response.usage:
-                usage = {
-                    "prompt_tokens": response.usage.prompt_tokens,
-                    "completion_tokens": response.usage.completion_tokens,
-                    "total_tokens": response.usage.total_tokens
-                }
-                
-            return AIResponse(
-                content=content_text,
-                model=model_to_use,
-                provider=AIProvider.OPENROUTER,
-                usage=usage,
-                raw_usage=usage
-            )
+            # Standard request with custom retry for JSONDecodeError
+            for attempt in range(3):
+                try:
+                    response = self.client.chat.completions.create(**request_kwargs)
+                    content_text = response.choices[0].message.content or ""
+                    
+                    # Extract usage if available
+                    usage = None
+                    if response.usage:
+                        usage = {
+                            "prompt_tokens": response.usage.prompt_tokens,
+                            "completion_tokens": response.usage.completion_tokens,
+                            "total_tokens": response.usage.total_tokens
+                        }
+                        
+                    return AIResponse(
+                        content=content_text,
+                        model=model_to_use,
+                        provider=AIProvider.OPENROUTER,
+                        usage=usage,
+                        raw_usage=usage
+                    )
+                except (json.JSONDecodeError, APIConnectionError, APIError) as e:
+                    if attempt == 2:
+                        raise
+                    logger.warning(f"OpenRouter API glitch (attempt {attempt+1}/3): {e}")
+                    time.sleep(2 ** attempt)
 
         except SoftTimeLimitExceeded:
             logger.warning("Completion interrupted by SoftTimeLimitExceeded; propagating.")
             raise
         except Exception as e:
-            logger.error(f"OpenRouter chat completion error: {e}", exc_info=True)
+            logger.error(f"OpenRouter chat completion error: {e}")
             if stream:
                 def error_generator(): yield f"Error: {str(e)}"
                 return error_generator()

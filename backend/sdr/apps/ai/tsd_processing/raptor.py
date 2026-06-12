@@ -1,53 +1,3 @@
-# apps/ai/tsd_processing/raptor.py
-
-"""
-RAPTOR — Recursive Abstractive Processing for Tree-Organised Retrieval.
-
-Responsibility:
-    Builds a multi-level summarisation tree from TSD text blocks so the
-    Multi-Agent pipeline can retrieve context at the right level of
-    abstraction — a single requirement sentence, a section summary, or
-    a document-wide summary — without the middle of the document getting
-    lost during analysis.
-
-Why RAPTOR?
-    Standard flat chunking loses document structure. A security parameter
-    about "data encryption at rest" might need evidence from three separate
-    sections of a TSD. RAPTOR's tree allows the retrieval router to pull
-    a Level-2 chapter summary that synthesises all three sections into a
-    single context window, then drill down to Level-0 leaf blocks for
-    precise citation metadata.
-
-Tree structure:
-    Level 0 (leaves):  Individual TextBlock chunks (~400 tokens each)
-                       ← raw text from TSDIngestor [ingestor.py]
-    Level 1:           Section summaries (~800 tokens)
-                       ← summarise clusters of Level-0 leaves
-    Level 2:           Chapter summaries (~1200 tokens)
-                       ← summarise clusters of Level-1 nodes
-    Level 3 (root):    Document summary
-                       ← summarise all Level-2 nodes
-
-Each node stores:
-    - Its summarised text
-    - Its embedding vector (from Amazon Titan via client.py [4])
-    - References to its child nodes (for drill-down)
-    - The source block_ids it covers (for citation tracing)
-
-Dependency chain:
-    ingestor.py     (TSDDocument, TextBlock)
-         ↓
-    client.py [4]   (get_embedding — Amazon Titan)
-         ↓
-    raptor.py       ← YOU ARE HERE
-         ↓
-    retrieval/raptor_search.py
-         ↓
-    retrieval/router.py
-         ↓
-    analysis_service.py
-"""
-
 from __future__ import annotations
 
 import logging
@@ -62,6 +12,7 @@ from sdr.core.config import settings
 
 from sdr.apps.ai.client import chat_completion, get_embeddings
 from sdr.apps.ai.tsd_processing.ingestor import TextBlock, TSDDocument
+from sdr.apps.ai.tsd_processing.content_filter import build_filtered_tsd_view
 from sdr.apps.ai.utils.concurrency import ConcurrencyProbe
 
 logger = logging.getLogger(__name__)
@@ -117,18 +68,6 @@ def _bounded_worker_count(configured: int, default: int) -> int:
 
 @dataclass
 class RAPTORNode:
-    """
-    A single node in the RAPTOR summarisation tree.
-
-    Level-0 nodes are leaf nodes — they contain raw TextBlock text and
-    carry the original block_ids for citation tracing.
-
-    Level 1+ nodes are summary nodes — they contain AI-generated summaries
-    of their child nodes and carry the union of all descendant block_ids.
-
-    The embedding vector enables cosine similarity search at any tree level
-    via the retrieval layer (retrieval/raptor_search.py).
-    """
     node_id: str                              # "level{L}_node{idx}"
     level: int                                # 0 = leaf, 1+ = summary
     text: str                                 # raw text or AI summary
@@ -178,22 +117,12 @@ class RAPTORNode:
 
 @dataclass
 class RAPTORTree:
-    """
-    The complete RAPTOR summarisation tree for a single TSD document.
-
-    Produced by RAPTORTreeBuilder.build() and passed to:
-        - retrieval/raptor_search.py  (level-aware similarity search)
-        - analysis_service.py         (context retrieval per parameter)
-
-    The tree is organised as a list of levels — each level is a list of
-    RAPTORNode instances at that depth. Level 0 is the leaves (raw chunks),
-    higher levels are progressively coarser summaries.
-    """
     document_name: str
     levels: List[List[RAPTORNode]] = field(default_factory=list)
     root_node: Optional[RAPTORNode] = None
     total_nodes: int = 0
     max_level: int = 0
+    build_stats: Dict[str, Any] = field(default_factory=dict)
 
     def get_nodes_at_level(self, level: int) -> List[RAPTORNode]:
         """Returns all nodes at the specified level. Empty list if out of range."""
@@ -225,28 +154,6 @@ class RAPTORTree:
 # ---------------------------------------------------------------------------
 
 class RAPTORTreeBuilder:
-    """
-    Builds a RAPTOR summarisation tree from a TSDDocument.
-
-    Algorithm:
-        1. Create Level-0 leaf nodes from TSD text blocks — each node
-           covers one or more TextBlocks grouped by section heading.
-        2. Cluster Level-0 nodes into groups of ~_TARGET_CLUSTER_SIZE.
-        3. Summarise each cluster using Claude [4] → Level-1 nodes.
-        4. Repeat clustering and summarisation up to _MAX_TREE_DEPTH.
-        5. Generate embeddings for every node using Amazon Titan [4].
-
-    The resulting tree enables retrieval at multiple granularities:
-        - Level 0: precise citation-level evidence
-        - Level 1: section-level context
-        - Level 2: chapter-level context
-        - Level 3: document-level context
-
-    Usage:
-        builder = RAPTORTreeBuilder()
-        tree = builder.build(tsd_document)
-    """
-
     def __init__(
         self,
         target_cluster_size: int = _TARGET_CLUSTER_SIZE,
@@ -293,21 +200,21 @@ class RAPTORTreeBuilder:
     # ------------------------------------------------------------------
 
     def build(self, tsd_document: TSDDocument, progress_callback=None) -> RAPTORTree:
-        """
-        Builds the complete RAPTOR tree from a TSDDocument.
-
-        Args:
-            tsd_document: The fully parsed TSDDocument from TSDIngestor [ingestor.py].
-
-        Returns:
-            A populated RAPTORTree ready for the retrieval layer.
-            Returns an empty RAPTORTree if the document has too few
-            text blocks to build a meaningful tree.
-        """
         tree = RAPTORTree(document_name=tsd_document.document_name)
 
-        all_blocks = tsd_document.all_text_blocks
-        valid_blocks = [b for b in all_blocks if b.is_valid()]
+        filtered_view = build_filtered_tsd_view(tsd_document)
+        tree.build_stats.update(
+            {
+                f"content_filter_{key}": value
+                for key, value in filtered_view.stats.items()
+            }
+        )
+        valid_blocks = [
+            b
+            for page in filtered_view.pages
+            for b in page.text_blocks
+            if b.is_valid()
+        ]
 
         if len(valid_blocks) < _MIN_LEAF_NODES:
             self.logger.warning(
@@ -345,7 +252,7 @@ class RAPTORTreeBuilder:
         # ------------------------------------------------------------------
         # Step 1: Build Level-0 leaf nodes from text blocks
         # ------------------------------------------------------------------
-        leaf_nodes = self._build_leaf_nodes(valid_blocks, tsd_document)
+        leaf_nodes = self._build_leaf_nodes(valid_blocks, tsd_document, filtered_view.pages)
         tree.levels.append(leaf_nodes)
         if progress_callback:
             progress_callback(
@@ -497,38 +404,25 @@ class RAPTORTreeBuilder:
         self,
         text_blocks: List[TextBlock],
         tsd_document: TSDDocument,
+        pages: Optional[List[Any]] = None,
     ) -> List[RAPTORNode]:
-        """
-        Groups TextBlocks by section heading and creates one Level-0
-        leaf node per section group.
-
-        Grouping by section heading ensures that related blocks stay
-        together at Level 0 — a security parameter about authentication
-        retrieves the full authentication section, not just one block.
-
-        If a section group exceeds _LEVEL_TOKEN_BUDGETS[0] tokens,
-        it is further split into sub-chunks so no leaf node exceeds
-        the budget.
-
-        Args:
-            text_blocks:  All valid TextBlock instances from the TSD [ingestor.py].
-            tsd_document: The parent TSDDocument for section heading lookup.
-
-        Returns:
-            A list of Level-0 RAPTORNode instances ordered by document position.
-        """
         # Group page-level markdown by section heading so retrieval uses the
         # markdown-first ingestion output, including image references.
         section_groups: List[Dict[str, Any]] = []
 
-        for page in tsd_document.pages:
+        source_pages = pages if pages is not None else tsd_document.pages
+        allowed_block_ids = {block.block_id for block in text_blocks if block.is_valid()}
+
+        for page in source_pages:
             page_text = page.all_text.strip()
             if not page_text:
                 continue
 
             heading_key = page.section_heading or f"__page_{page.page_number}__"
             page_block_ids = [
-                block.block_id for block in page.text_blocks if block.is_valid()
+                block.block_id
+                for block in page.text_blocks
+                if block.is_valid() and block.block_id in allowed_block_ids
             ]
 
             if (
@@ -595,28 +489,6 @@ class RAPTORTreeBuilder:
         self,
         nodes: List[RAPTORNode],
     ) -> List[List[RAPTORNode]]:
-        """
-        Partitions a flat list of RAPTORNodes into clusters of approximately
-        _target_cluster_size nodes each.
-
-        Uses sequential (document-order) clustering rather than k-means
-        because:
-        - Document order preserves narrative/structural coherence —
-          adjacent sections in a TSD are semantically related.
-        - k-means requires embeddings which are generated AFTER clustering.
-        - Sequential clustering is O(n) vs O(n×k×iterations) for k-means.
-
-        Clusters smaller than _min_cluster_size are merged into their
-        preceding cluster to avoid creating summary nodes from a single
-        source node.
-
-        Args:
-            nodes: Flat list of RAPTORNode instances at the current level.
-
-        Returns:
-            A list of clusters, where each cluster is a non-empty list
-            of RAPTORNode instances. Returns an empty list if input is empty.
-        """
         if not nodes:
             return []
 
@@ -667,23 +539,6 @@ class RAPTORTreeBuilder:
         level: int,
         progress_callback=None,
     ) -> List[RAPTORNode]:
-        """
-        Summarises each cluster of child nodes into a single parent
-        RAPTORNode at the specified level using Claude via client.py [4].
-
-        Each summary node carries the union of all source_block_ids and
-        page_numbers from its children — this is how citation traceability
-        is maintained up the tree. A Level-2 node knows exactly which
-        Level-0 leaf block_ids it covers.
-
-        Args:
-            clusters: List of node clusters from _cluster_nodes().
-            level:    The tree level for the new summary nodes (1, 2, or 3).
-
-        Returns:
-            List of summary RAPTORNode instances — one per cluster.
-            Clusters that fail summarisation are skipped with a warning.
-        """
         token_budget = _LEVEL_TOKEN_BUDGETS.get(level, 1200)
         if not clusters:
             return []
@@ -774,6 +629,14 @@ class RAPTORTreeBuilder:
         level: int,
         token_budget: int,
     ) -> Optional[RAPTORNode]:
+        import threading
+        thread_name = threading.current_thread().name
+        self.logger.info(
+            "RAPTORTreeBuilder._summarise_cluster [%s]: processing cluster %d at level %d",
+            thread_name,
+            cluster_idx,
+            level,
+        )
         node_id = f"level{level}_node{cluster_idx}"
 
         all_block_ids: List[str] = []
@@ -823,22 +686,6 @@ class RAPTORTreeBuilder:
         level: int,
         token_budget: int,
     ) -> Optional[str]:
-        """
-        Calls Claude via chat_completion() [4] to summarise a cluster
-        of RAPTORNodes into a single coherent summary.
-
-        The prompt is calibrated by level — Level-1 summaries focus on
-        section-level detail, Level-2 summaries on chapter themes, and
-        Level-3 on the document's overall security posture.
-
-        Args:
-            cluster:      The nodes to summarise.
-            level:        The target tree level — controls prompt verbosity.
-            token_budget: Maximum tokens for the summary output.
-
-        Returns:
-            The summary string, or None if the LLM call fails.
-        """
         combined_text = "\n\n---\n\n".join(
             f"[Node {n.node_id}]\n{n.text}" for n in cluster
         )
@@ -936,22 +783,6 @@ class RAPTORTreeBuilder:
         level: int,
         document_name: str,
     ) -> Optional[RAPTORNode]:
-        """
-        Creates a single root node from multiple top-level nodes when
-        recursive clustering does not converge to a single node.
-
-        This happens when the document is too large for the tree to
-        converge within _MAX_TREE_DEPTH levels. The root synthesises
-        all top-level nodes into one document-wide summary.
-
-        Args:
-            top_level_nodes: The remaining nodes at the highest completed level.
-            level:           The level index for the new root node.
-            document_name:   Used in logging only.
-
-        Returns:
-            A single root RAPTORNode, or None if summarisation fails.
-        """
         self.logger.info(
             "RAPTORTreeBuilder._synthesise_root: synthesising root from "
             "%d top-level node(s) for '%s'.",
@@ -1004,23 +835,6 @@ class RAPTORTreeBuilder:
     # ------------------------------------------------------------------
 
     def _embed_all_nodes(self, nodes: List[RAPTORNode], progress_callback=None) -> None:
-        """
-        Generates embedding vectors for every RAPTORNode in the tree
-        using Amazon Titan via get_embedding() from client.py [4].
-
-        Embeddings are stored in-place on each node. Nodes that fail
-        embedding generation have has_embedding=False and an empty
-        embedding list — they are still usable for text-based retrieval
-        but will be excluded from vector similarity search by the
-        retrieval layer (retrieval/raptor_search.py).
-
-        This method mutates the nodes in-place and does not return a value.
-        It never raises — individual embedding failures are logged and
-        skipped without aborting the remaining nodes.
-
-        Args:
-            nodes: All RAPTORNode instances across all tree levels.
-        """
         if not nodes:
             return
 
@@ -1155,33 +969,6 @@ def _split_text_to_budget(
     text: str,
     token_budget: int,
 ) -> List[str]:
-    """
-    Splits a text string into sub-chunks that each fit within the given
-    token budget, using a simple word-boundary split strategy.
-
-    Used by _build_leaf_nodes() to ensure no Level-0 RAPTOR node exceeds
-    the leaf token budget (_LEVEL_TOKEN_BUDGETS[0] = 400 tokens).
-
-    Why not use RecursiveCharacterTextSplitter here?
-    This function runs during tree construction before any LLM calls —
-    it must be fast and have zero external dependencies. The
-    RecursiveCharacterTextSplitter from langchain is used in the standards
-    extraction pipeline [1] where semantic coherence matters more. Here,
-    word-boundary splitting is sufficient because RAPTOR's summarisation
-    step (Level 1+) re-establishes semantic coherence across the chunks.
-
-    Token estimation: 1 token ≈ 4 characters — consistent with the
-    fallback in chunk_text_with_context() [1] when tiktoken is unavailable.
-
-    Args:
-        text:         The input text string to split.
-        token_budget: Maximum number of tokens per chunk.
-
-    Returns:
-        A list of non-empty text chunks, each within the token budget.
-        Returns a list with the original text if it already fits.
-        Returns an empty list if the input text is empty.
-    """
     if not text or not text.strip():
         return []
 
@@ -1221,24 +1008,6 @@ def _compute_cosine_similarity(
     vec_a: List[float],
     vec_b: List[float],
 ) -> float:
-    """
-    Computes the cosine similarity between two embedding vectors.
-
-    Used by retrieval/raptor_search.py for level-aware similarity ranking.
-    Defined here so it can be imported alongside the tree dataclasses
-    without creating a circular import through the retrieval layer.
-
-    Returns 0.0 if either vector is empty or has zero magnitude —
-    consistent with the safe fallback pattern used across the codebase.
-
-    Args:
-        vec_a: First embedding vector (List[float]).
-        vec_b: Second embedding vector (List[float]).
-
-    Returns:
-        Cosine similarity in range [0.0, 1.0] for normalised vectors.
-        Vectors from Amazon Titan are normalised by default [4].
-    """
     if not vec_a or not vec_b or len(vec_a) != len(vec_b):
         return 0.0
 

@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from collections import deque
 from types import SimpleNamespace
 
 from sdr.apps.ai.agents.base import Citation, CriticResult, HunterResult, MediatorResult
 from sdr.apps.ai.retrieval.router import RetrievalResult
 from sdr.apps.ai.services.analysis.debate_service import DebateService
-from sdr.apps.ai.services.analysis.dto import DebateOutput
+from sdr.apps.ai.services.analysis.dto import AnalysisSummary, DebateOutput
 from sdr.apps.ai.services.analysis.pipeline import TSDAnalysisPipeline
 
 
@@ -17,6 +18,44 @@ def _pipeline():
         debate_service=SimpleNamespace(),
         persistence_service=SimpleNamespace(),
     )
+
+
+class _ScalarResult:
+    def __init__(self, value):
+        self.value = value
+
+    def scalars(self):
+        return self
+
+    def first(self):
+        return self.value
+
+
+class _Session:
+    def __init__(self, execute_value=None):
+        self.execute_value = execute_value
+
+    def execute(self, _statement):
+        return _ScalarResult(self.execute_value)
+
+
+class _SessionContext:
+    def __init__(self, session):
+        self.session = session
+
+    def __enter__(self):
+        return self.session
+
+    def __exit__(self, exc_type, exc, tb):
+        return False
+
+
+class _SessionFactory:
+    def __init__(self, sessions):
+        self._sessions = list(sessions)
+
+    def __call__(self):
+        return _SessionContext(self._sessions.pop(0))
 
 
 def _parent(parent_id=1, *, title="Authentication", description="Parent scope"):
@@ -192,12 +231,118 @@ def test_split_batches_uses_requested_size():
     assert [[p.id for p in batch] for batch in batches] == [[1, 2, 3], [4, 5, 6], [7]]
 
 
+def test_is_cancelled_detects_cancelled_status(monkeypatch):
+    review = SimpleNamespace(id=77)
+    latest = SimpleNamespace(status="cancelled", error_message="Analysis was cancelled by user.")
+    monkeypatch.setattr(
+        "sdr.core.database.SessionLocal",
+        _SessionFactory([_Session(execute_value=latest)]),
+    )
+
+    assert _pipeline()._is_cancelled(review) is True
+
+
+def test_is_cancelled_supports_legacy_failed_marker(monkeypatch):
+    review = SimpleNamespace(id=78)
+    latest = SimpleNamespace(status="failed", error_message="Analysis was cancelled by user.")
+    monkeypatch.setattr(
+        "sdr.core.database.SessionLocal",
+        _SessionFactory([_Session(execute_value=latest)]),
+    )
+
+    assert _pipeline()._is_cancelled(review) is True
+
+
+def test_batched_analysis_uses_wrapped_concurrency_probes(monkeypatch, settings_override):
+    settings_override(
+        AI_BATCH_DEBATE_ENABLED=True,
+        AI_BATCH_DEBATE_BATCH_SIZE=10,
+        AI_BATCH_DEBATE_MAX_CONCURRENCY=2,
+    )
+
+    parent = _parent(1, title="Authentication")
+    parameters = [
+        _parameter(1, parent=parent, text="Require MFA for admin access."),
+        _parameter(2, parent=parent, text="Require session timeout."),
+    ]
+    review = SimpleNamespace(id=99)
+    category = SimpleNamespace(id=7, code="web_application")
+    ingestion_job = SimpleNamespace(id=11)
+    tsd_document = SimpleNamespace(
+        get_diagram_by_id=lambda *_args, **_kwargs: None,
+    )
+    indexes = SimpleNamespace()
+    summary = AnalysisSummary()
+
+    parent_result = RetrievalResult(
+        context_chunks=["--- DOCUMENT CHUNK 1 OF 1 ---\np1_b1 Authentication evidence."],
+        source_block_ids=["p1_b1"],
+        evidence_metadata={},
+    )
+
+    class _BatchRetrievalService:
+        def retrieve_for_parent_group(self, **kwargs):
+            return parent_result
+
+    class _BatchDebateService:
+        def run_batch_debate(self, **kwargs):
+            return {}
+
+    pipeline = TSDAnalysisPipeline(
+        ingestion_service=SimpleNamespace(),
+        retrieval_service=_BatchRetrievalService(),
+        debate_service=_BatchDebateService(),
+        persistence_service=SimpleNamespace(),
+    )
+
+    persisted = []
+
+    monkeypatch.setattr(TSDAnalysisPipeline, "_is_cancelled", lambda self, review: False)
+    monkeypatch.setattr(
+        TSDAnalysisPipeline,
+        "_persist_debate_output",
+        lambda self, **kwargs: persisted.append(kwargs["parameter"].id),
+    )
+    monkeypatch.setattr(
+        TSDAnalysisPipeline,
+        "_analyze_single_child_with_retrieval_result",
+        lambda self, **kwargs: _debate_output(
+            kwargs["parameter"],
+            verdict="met",
+            citations=[Citation(block_id="p1_b1", page_number=1)],
+            reasoning="Explicit implementation evidence is present.",
+        ),
+    )
+
+    pipeline._run_batched_analysis_for_category(
+        review=review,
+        category=category,
+        ingestion_job=ingestion_job,
+        parameters=parameters,
+        indexes=indexes,
+        tsd_document=tsd_document,
+        summary=summary,
+        killed_assumptions_memory=deque(maxlen=16),
+    )
+
+    assert persisted == [1, 2]
+    assert summary.analysis_total_parameters == 2
+    assert summary.analysis_processed_parameters == 2
+    assert summary.analysis_remaining_parameters == 0
+    assert summary.asvs["categories"]["web_application"]["analysis_total_count"] == 2
+    assert summary.asvs["categories"]["web_application"]["analysis_processed_count"] == 2
+    assert summary.asvs["categories"]["web_application"]["analysis_remaining_count"] == 0
+    assert pipeline._last_batch_concurrency_stats["parent_retrieval"]["submitted"] == 1
+    assert pipeline._last_batch_concurrency_stats["batch_debate"]["submitted"] == 1
+    assert pipeline._last_batch_concurrency_stats["fallback"]["submitted"] == 2
+
+
 def test_validate_batch_outputs_rejects_missing_and_generic_results(settings_override):
     settings_override(
-        AI_BATCH_ANALYSIS_CONFIDENCE_THRESHOLD=0.75,
-        AI_BATCH_ANALYSIS_SOFT_CONFIDENCE_THRESHOLD=0.65,
-        AI_BATCH_ANALYSIS_REQUIRE_CITATIONS_FOR_NOT_MET=True,
-        AI_BATCH_UNGROUNDED_NOT_MET_POLICY="selective_fallback",
+        AI_BATCH_DEBATE_CONFIDENCE_THRESHOLD=0.75,
+        AI_BATCH_DEBATE_SOFT_CONFIDENCE_THRESHOLD=0.65,
+        AI_BATCH_DEBATE_REQUIRE_CITATIONS_FOR_NOT_MET=True,
+        AI_BATCH_DEBATE_UNGROUNDED_NOT_MET_POLICY="selective_fallback",
     )
     pipeline = _pipeline()
     params = [_parameter(i) for i in range(1, 5)]
@@ -229,7 +374,7 @@ def test_validate_batch_outputs_rejects_missing_and_generic_results(settings_ove
 
 
 def test_evidence_gate_preserves_not_met_without_retry_context(settings_override):
-    settings_override(AI_BATCH_UNGROUNDED_NOT_MET_POLICY="downgrade_na")
+    settings_override(AI_BATCH_DEBATE_UNGROUNDED_NOT_MET_POLICY="downgrade_na")
     pipeline = _pipeline()
     parameter = _parameter(1, text="Use locking and idempotency keys")
     output = _debate_output(parameter, verdict="not_met", citations=[])

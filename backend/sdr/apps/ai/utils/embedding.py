@@ -9,7 +9,6 @@ from sdr.apps.standards.models import CategoryParameterEmbedding
 
 logger = logging.getLogger(__name__)
 
-_EMBEDDING_BULK_BATCH = 500
 _EMBEDDING_DIMENSIONS = 1024                               
                                 
 # ---------------------------------------------------------------------------

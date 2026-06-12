@@ -62,6 +62,7 @@ class AIServiceManager:
             'embedding': getattr(settings, 'AI_MODEL_EMBEDDING', 'nvidia/nv-embedqa-e5-v5'),
             'fallback': getattr(settings, 'AI_MODEL_FALLBACK', 'meta/llama-3.1-8b-instruct'),
             'long_context': getattr(settings, 'AI_MODEL_LONG_CONTEXT', 'meta/llama-3.1-70b-instruct'),
+            'tsd_asvs_level_classification': getattr(settings, 'AI_MODEL_TSD_ASVS_LEVEL_CLASSIFICATION', 'meta/llama-3.1-8b-instruct'),
         }
         return models.get(component)
 
@@ -109,7 +110,7 @@ class AIServiceManager:
             
         # Global fallback based on provider
         if provider == AIProvider.OPENROUTER:
-            if component == "standard_extraction":
+            if component in {"standard_extraction"}:
                 return getattr(settings, 'OPENROUTER_FAST_MODEL', 'meta-llama/llama-3.1-8b-instruct')
             return getattr(settings, 'OPENROUTER_DEFAULT_MODEL', 'meta-llama/llama-3.1-70b-instruct')
         

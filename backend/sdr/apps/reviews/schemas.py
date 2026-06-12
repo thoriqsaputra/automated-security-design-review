@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any
 
-from pydantic import BaseModel, ConfigDict, Field, EmailStr
+from pydantic import BaseModel, ConfigDict, Field, EmailStr, computed_field
 
 # ---------------------------------------------------------------------------
 # Citation Anchor
@@ -31,6 +31,9 @@ class FindingSchema(BaseModel):
     review_id: int
     
     # Relationships
+    category_id: Optional[int] = None
+    parent_parameter_id: Optional[int] = None
+    child_parameter_id: Optional[int] = None
     category_name: Optional[str] = None
     category_code: Optional[str] = None
     parent_parameter_title: Optional[str] = None
@@ -39,7 +42,6 @@ class FindingSchema(BaseModel):
     
     # Classification
     finding_type: str
-    status: str
     met_status: Optional[str] = None
     severity: Optional[str] = None
     severity_score: Optional[float] = None
@@ -56,11 +58,24 @@ class FindingSchema(BaseModel):
     hunter_reasoning: Optional[str] = None
     critic_reasoning: Optional[str] = None
     mediator_reasoning: Optional[str] = None
+    hunter_thought_process: Optional[str] = None
+    critic_thought_process: Optional[str] = None
+    mediator_thought_process: Optional[str] = None
     
     # Diagram-specific fields
     diagram_id: Optional[str] = None
     diagram_caption: Optional[str] = None
     vision_reasoning: Optional[str] = None
+    vision_thought_process: Optional[str] = None
+
+    @computed_field
+    @property
+    def diagram_image_url(self) -> Optional[str]:
+        metadata = self.requirement_metadata or {}
+        image_metadata = metadata.get("diagram_image") if isinstance(metadata, dict) else None
+        if not isinstance(image_metadata, dict) or not image_metadata.get("object_name"):
+            return None
+        return f"/api/v1/reviews/findings/{self.id}/diagram-image"
     
     # Requirement traceability
     requirement_reference: Optional[str] = None
@@ -88,6 +103,7 @@ class FindingSchema(BaseModel):
 class ReviewCreateSchema(BaseModel):
     design_id: int
     category_id: int
+    asvs_level_override: Optional[int] = Field(default=None, ge=1, le=3)
 
 
 class ReviewProgressSchema(BaseModel):
@@ -117,7 +133,9 @@ class ReviewSchema(BaseModel):
     error_message: Optional[str] = None
     
     summary_json: Dict[str, Any] = Field(default_factory=dict)
+    retrieval_snapshot_json: Optional[Dict[str, Any]] = None
     overview: Optional[str] = None
+    asvs_level_override: Optional[int] = None
     
     finding_counts: Dict[str, int] = Field(default_factory=dict)
     parent_rollups: List[Any] = Field(default_factory=list)

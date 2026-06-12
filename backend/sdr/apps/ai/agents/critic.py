@@ -1,36 +1,3 @@
-# apps/ai/agents/critic.py
-
-"""
-Critic Agent — second stage of the Multi-Agent TSD Security Review Pipeline.
-
-Responsibility:
-    Receives the Hunter's initial HunterResult and the same TSD context
-    chunks, then challenges the finding for hallucinations, over-claims,
-    and misinterpretations. Verifies every cited block_id actually contains
-    the claimed evidence before passing a CriticResult to the MediatorAgent.
-
-Bias:
-    Assume the Hunter has OVER-CLAIMED compliance. Every "met" verdict
-    must be verified — citations must be traceable to real content in
-    the context window before they are considered valid.
-
-Output:
-    CriticResult dataclass — passed directly to MediatorAgent as input.
-
-Dependency chain:
-    agent_prompts.py          (pure prompt strings)
-         ↓
-    base.py                   (BaseAgent, CriticResult, HunterResult, Citation)
-         ↓
-    hunter.py                 (HunterAgent — produces HunterResult input)
-         ↓
-    critic.py                 ← YOU ARE HERE
-         ↓
-    mediator.py
-         ↓
-    analysis_service.py
-"""
-
 from __future__ import annotations
 
 import json

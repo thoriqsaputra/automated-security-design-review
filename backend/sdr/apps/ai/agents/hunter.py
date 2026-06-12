@@ -1,32 +1,3 @@
-"""
-Hunter Agent — first stage of the Multi-Agent TSD Security Review Pipeline.
-
-Responsibility:
-    Given a security parameter (CategoryParameterChild) and retrieved TSD
-    context chunks, the Hunter produces an initial compliance verdict with
-    cited source block IDs.
-
-Bias:
-    Assume NON-COMPLIANCE unless explicit, unambiguous evidence is found.
-    Implicit or assumed compliance does not count.
-
-Output:
-    HunterResult dataclass — passed directly to CriticAgent as input.
-
-Dependency chain:
-    agent_prompts.py          (pure prompt strings)
-         ↓
-    base.py                   (BaseAgent, HunterResult, Citation)
-         ↓
-    hunter.py                 ← YOU ARE HERE
-         ↓
-    critic.py
-         ↓
-    mediator.py
-         ↓
-    analysis_service.py
-"""
-
 from __future__ import annotations
 
 import json

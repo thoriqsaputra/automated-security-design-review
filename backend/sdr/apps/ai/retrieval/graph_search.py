@@ -1,39 +1,3 @@
-"""
-Graph Search — relationship-aware retrieval against the TSDGraph built
-by TSDGraphBuilder (tsd_processing/graph_builder.py).
-
-Responsibility:
-    Given a security parameter (CategoryParameterChild [3]), traverse the
-    TSDGraph to find architectural evidence that pure vector search would
-    miss — specifically inter-service relationships, authentication paths,
-    encryption edges, and data flow chains that are implicit in the
-    document's structure rather than stated in any single text block.
-
-Why graph search alongside vector and RAPTOR search?
-    Vector search (retrieval/vector_search.py) finds semantically similar
-    text chunks — it answers "what does this section say about encryption?"
-    RAPTOR search (retrieval/raptor_search.py) finds relevant TSD passages
-    at multiple abstraction levels.
-    Graph search answers a different class of question entirely:
-    "Does Service A enforce authentication on ALL paths to Service B?" —
-    this requires traversing the call graph, not matching text similarity.
-
-Search strategies:
-    ENTITY_MATCH    — find entities whose name matches parameter keywords
-    RELATION_FILTER — find edges of a specific relation type
-    PATH_ANALYSIS   — find all paths between two entities and audit them
-    NEIGHBOURHOOD   — find the immediate neighbourhood of a key entity
-
-Dependency chain:
-    tsd_processing/graph_builder.py  (TSDGraph, GraphEntity, GraphRelation)
-         ↓
-    graph_search.py                  ← YOU ARE HERE
-         ↓
-    retrieval/router.py
-         ↓
-    analysis_service.py
-"""
-
 from __future__ import annotations
 
 import logging
@@ -50,7 +14,7 @@ from sdr.apps.ai.tsd_processing.graph_builder import (
     TSDGraph,
     TSDGraphBuilder,
 )
-from .policy import UserContext
+from .candidate import RetrievalCandidate
 
 logger = logging.getLogger(__name__)
 
@@ -745,14 +709,12 @@ class GraphSearcher:
         query_entities: List[str],
         graph: TSDGraph,
         query_embedding: Optional[List[float]] = None,
-        user_context: Optional[UserContext] = None,
         traversal_config: Optional[GraphTraversalConfig] = None,
     ) -> GraphSearchResponse:
         if graph.is_empty() or not query_entities:
             return GraphSearchResponse(error="Graph local search requires graph and query entities.")
 
         cfg = traversal_config or self.traversal_config
-        ctx = user_context or UserContext()
 
         start_entities: List[GraphEntity] = []
         for q in query_entities:
@@ -789,8 +751,6 @@ class GraphSearcher:
             entity = graph.get_entity(entity_id)
             if entity is None:
                 continue
-            if cfg.require_authorized and not self._is_authorized(entity.sensitivity, entity.tenant_id, ctx):
-                continue
 
             visited.add(entity_id)
             expanded += 1
@@ -798,8 +758,6 @@ class GraphSearcher:
             allowed_relations: List[GraphRelation] = []
             for rel in relations:
                 if rel.weight < cfg.min_edge_weight:
-                    continue
-                if cfg.require_authorized and not self._is_authorized(rel.sensitivity, rel.tenant_id, ctx):
                     continue
                 allowed_relations.append(rel)
                 edge_ids.add(f"{rel.source_entity_id}->{rel.target_entity_id}")
@@ -832,14 +790,6 @@ class GraphSearcher:
             graph_edge_ids=sorted(edge_ids),
             grounded_texts=grounded_texts,
         )
-
-    def _is_authorized(self, sensitivity: Optional[str], tenant_id: Optional[str], user_context: UserContext) -> bool:
-        rank = {"public": 0, "internal": 1, "confidential": 2, "restricted": 3}
-        user_rank = rank.get(user_context.clearance, 1)
-        candidate_rank = rank.get((sensitivity or "internal"), 1)
-        if user_context.tenant_id and tenant_id and user_context.tenant_id != tenant_id:
-            return False
-        return candidate_rank <= user_rank
 
     # ------------------------------------------------------------------
     # Private strategy implementations

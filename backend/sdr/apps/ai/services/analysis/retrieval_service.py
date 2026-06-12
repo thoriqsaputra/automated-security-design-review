@@ -1,9 +1,3 @@
-# apps/ai/services/retrieval_service.py
-"""
-Retrieval Service — Builds indexes and retrieves context for debate.
-Responsibility: RAPTOR tree, GraphRAG, parameter pre-filtering.
-No agent logic. No database writes.
-"""
 from __future__ import annotations
 
 import json
@@ -11,37 +5,36 @@ import logging
 import re
 import time
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Optional, Dict, Any, Tuple
+from collections import defaultdict
+from typing import List, Optional, Dict, Any, Tuple, Iterable
+
 
 from sdr.core.config import settings
 
 from sdr.apps.ai.tsd_processing.ingestor import TSDDocument
+from sdr.apps.ai.tsd_processing.content_filter import (
+    content_filter_enabled,
+    iter_filtered_scope_parts,
+)
 from sdr.apps.ai.tsd_processing.raptor import RAPTORTree, RAPTORTreeBuilder
 from sdr.apps.ai.tsd_processing.graph_builder import TSDGraph, TSDGraphBuilder
 from sdr.apps.ai.retrieval.router import HybridRetrievalRouter, RetrievalResult
+from sdr.apps.ai.utils.parsing import strip_thinking_block
 from sdr.apps.ai.client import chat_completion
-from sdr.apps.ai.prompts.analysis_prompts import (
-    PARAMETER_APPLICABILITY_SYSTEM_PROMPT,
-    build_parameter_applicability_prompt,
-)
 from sdr.apps.standards.models import (
+    CategoryParameterParent,
     CategoryParameterChild,
     StandardCategory,
     StandardIngestionJob,
 )
 from sdr.apps.standards.utils import build_parameter_analysis_text
-from .dto import RetrievalIndexes, ParameterApplicabilityResult
-
+from .dto import RetrievalIndexes
 
 logger = logging.getLogger(__name__)
 
-_APPLICABILITY_TEMPERATURE = 0.0
-_APPLICABILITY_MAX_TOKENS = 2048
-_APPLICABILITY_DEFAULT_CONFIDENCE_THRESHOLD = 0.75
-_APPLICABILITY_PREFILTER_SHARE_BREAKER = 0.8
-_APPLICABILITY_PREFILTER_SHARE_BREAKER_MIN_BATCH = 4
 _TEXT_BLOCK_ID_PATTERN = re.compile(r"^p(?P<page>\d+)_b\d+$")
 _MAX_INFERRED_DIAGRAMS = 3
+_MAX_SCOPE_EVIDENCE_TERMS = 6
 
 
 class RetrievalService:
@@ -62,16 +55,6 @@ class RetrievalService:
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     def build_indexes(self, tsd_document: TSDDocument, progress_callbacks: Optional[Dict[str, Any]] = None) -> RetrievalIndexes:
-        """
-        Builds RAPTOR and GraphRAG indexes from the TSD document.
-        Both are best-effort — failures are logged but don't raise.
-
-        Args:
-            tsd_document: Parsed TSD document.
-
-        Returns:
-            RetrievalIndexes with (optional) RAPTOR tree and graph.
-        """
         self.logger.info(
             "RetrievalService.build_indexes: building for '%s'",
             tsd_document.document_name,
@@ -127,18 +110,6 @@ class RetrievalService:
         tsd_document: Optional[TSDDocument] = None,
         query_details: Optional[Dict[str, Any]] = None,
     ) -> RetrievalResult:
-        """
-        Retrieves context for a single parameter using the hybrid router.
-
-        Args:
-            parameter: The CategoryParameterChild to retrieve context for.
-            category: The StandardCategory scope.
-            ingestion_job: The active StandardIngestionJob.
-            indexes: Pre-built RetrievalIndexes.
-
-        Returns:
-            RetrievalResult with context chunks and diagram block_ids.
-        """
         self.logger.info(
             "RetrievalService.retrieve_for_parameter: parameter id=%s",
             parameter.id,
@@ -380,13 +351,6 @@ class RetrievalService:
         tsd_document: Optional[TSDDocument] = None,
         query_details: Optional[Dict[str, Any]] = None,
     ) -> RetrievalResult:
-        """
-        Retrieves shared context for a parent section and its child parameters.
-
-        The router still requires a parameter object for strategy selection, so
-        the first child is used as the representative while the override query
-        carries the parent title/description plus child requirement snippets.
-        """
         if not child_parameters:
             return RetrievalResult(error="No child parameters supplied for parent retrieval.")
 
@@ -422,237 +386,17 @@ class RetrievalService:
             query_details=details,
         )
 
-    def pre_filter_parameters(
-        self,
-        parameters: List[CategoryParameterChild],
-        indexes: RetrievalIndexes,
-        *,
-        category_code: str = "",
-    ) -> ParameterApplicabilityResult:
-        """
-        Pre-filters parameters that are clearly N/A using RAPTOR root summary.
-
-        Args:
-            parameters: All CategoryParameterChild records to evaluate.
-            indexes: Pre-built RetrievalIndexes (for RAPTOR tree).
-
-        Returns:
-            ParameterApplicabilityResult with applicable and pre-filtered lists.
-        """
-        self.logger.info(
-            "RetrievalService.pre_filter_parameters: filtering %d parameter(s)",
-            len(parameters),
-        )
-
-        if not getattr(settings, "AI_PARAMETER_APPLICABILITY_PREFILTER_ENABLED", False):
-            self.logger.debug(
-                "RetrievalService.pre_filter_parameters: disabled by setting for category=%s",
-                category_code or "unknown",
-            )
-            return ParameterApplicabilityResult(
-                applicable_parameters=parameters,
-                pre_filtered_parameters=[],
-                pre_filter_details={},
-            )
-
-        if not indexes.raptor_tree or indexes.raptor_tree.is_empty():
-            self.logger.debug(
-                "RetrievalService.pre_filter_parameters: no RAPTOR tree — "
-                "skipping pre-filter"
-            )
-            return ParameterApplicabilityResult(
-                applicable_parameters=parameters,
-                pre_filtered_parameters=[],
-                pre_filter_details={},
-            )
-
-        root = indexes.raptor_tree.root_node
-        if not root or not root.text:
-            self.logger.debug(
-                "RetrievalService.pre_filter_parameters: no root node text — "
-                "skipping pre-filter"
-            )
-            return ParameterApplicabilityResult(
-                applicable_parameters=parameters,
-                pre_filtered_parameters=[],
-                pre_filter_details={},
-            )
-
-        confidence_threshold = float(
-            getattr(
-                settings,
-                "AI_PARAMETER_APPLICABILITY_CONFIDENCE_THRESHOLD",
-                _APPLICABILITY_DEFAULT_CONFIDENCE_THRESHOLD,
-            )
-        )
-        param_dicts = [
-            {
-                "id": str(p.id),
-                "requirement_text": build_parameter_analysis_text(p),
-                "parent_title": getattr(getattr(p, "parent", None), "title", "") or "",
-                "domain_keywords": list(self._build_parameter_domain_keywords(p)),
-                "contract_summary": self._build_parameter_contract_summary(p),
-            }
-            for p in parameters
-        ]
-
-        prompt = build_parameter_applicability_prompt(
-            document_summary=root.text,
-            parameters=param_dicts,
-            category_code=category_code,
-        )
-
-        try:
-            response = chat_completion(
-                messages=[
-                    {
-                        "role": "system",
-                        "content": PARAMETER_APPLICABILITY_SYSTEM_PROMPT,
-                    },
-                    {"role": "user", "content": prompt},
-                ],
-                component="tsd_ingestion",
-                temperature=_APPLICABILITY_TEMPERATURE,
-                max_tokens=_APPLICABILITY_MAX_TOKENS,
-                response_format={"type": "json_object"},
-            )
-
-            if response.error or not response.content:
-                self.logger.warning(
-                    "RetrievalService.pre_filter_parameters: LLM error — "
-                    "returning all parameters as applicable: %s",
-                    response.error,
-                )
-                return ParameterApplicabilityResult(
-                    applicable_parameters=parameters,
-                    pre_filtered_parameters=[],
-                    pre_filter_details={},
-                )
-
-            try:
-                result = json.loads(response.content.strip())
-            except json.JSONDecodeError:
-                self.logger.warning("RetrievalService.pre_filter_parameters: JSON decode error. Attempting LLM repair.")
-                repair_prompt = (
-                    "The following JSON has syntax errors (e.g. missing commas, unescaped quotes). "
-                    "Fix it and return ONLY valid JSON without any markdown or conversational text.\n\n"
-                    f"{response.content.strip()}"
-                )
-                repair_resp = chat_completion(
-                    messages=[{"role": "user", "content": repair_prompt}],
-                    component="fallback",
-                    temperature=0.0,
-                    max_tokens=_APPLICABILITY_MAX_TOKENS
-                )
-                if repair_resp.error:
-                    self.logger.warning("RetrievalService.pre_filter_parameters: JSON repair API error: %s", repair_resp.error)
-                    return ParameterApplicabilityResult(applicable_parameters=parameters, pre_filtered_parameters=[], pre_filter_details={})
-                try:
-                    result = json.loads((repair_resp.content or "").strip())
-                    self.logger.info("RetrievalService.pre_filter_parameters: successfully repaired JSON via LLM fallback.")
-                except json.JSONDecodeError:
-                    self.logger.warning("RetrievalService.pre_filter_parameters: JSON repair failed.")
-                    return ParameterApplicabilityResult(applicable_parameters=parameters, pre_filtered_parameters=[], pre_filter_details={})
-            pre_filter_details: Dict[str, Dict[str, Any]] = {}
-            not_applicable_ids = {
-                r["id"]
-                for r in result.get("results", [])
-                if not r.get("applicable", True)
-                and float(r.get("confidence", 0)) >= confidence_threshold
-            }
-            for item in result.get("results", []):
-                item_id = str(item.get("id", "")).strip()
-                if not item_id:
-                    continue
-                pre_filter_details[item_id] = {
-                    "applicable": bool(item.get("applicable", True)),
-                    "prefilter_reason": item.get("reason"),
-                    "prefilter_confidence": float(item.get("confidence", 0) or 0),
-                    "category_code": category_code or None,
-                }
-
-            applicable = [
-                p for p in parameters if str(p.id) not in not_applicable_ids
-            ]
-            pre_filtered = [
-                p for p in parameters if str(p.id) in not_applicable_ids
-            ]
-
-            if (
-                len(parameters) >= _APPLICABILITY_PREFILTER_SHARE_BREAKER_MIN_BATCH
-                and pre_filtered
-                and (len(pre_filtered) / len(parameters)) >= _APPLICABILITY_PREFILTER_SHARE_BREAKER
-            ):
-                self.logger.warning(
-                    "RetrievalService.pre_filter_parameters: breaker tripped for category=%s total=%d pre_filtered=%d",
-                    category_code or "unknown",
-                    len(parameters),
-                    len(pre_filtered),
-                )
-                return ParameterApplicabilityResult(
-                    applicable_parameters=parameters,
-                    pre_filtered_parameters=[],
-                    pre_filter_details={},
-                )
-
-            self.logger.info(
-                "RetrievalService.pre_filter_parameters: [SUCCESS] "
-                "applicable=%d pre_filtered=%d",
-                len(applicable),
-                len(pre_filtered),
-            )
-
-            return ParameterApplicabilityResult(
-                applicable_parameters=applicable,
-                pre_filtered_parameters=pre_filtered,
-                pre_filter_details=pre_filter_details,
-            )
-
-        except Exception as exc:
-            self.logger.exception(
-                "RetrievalService.pre_filter_parameters: error — returning all: %s",
-                exc,
-            )
-            return ParameterApplicabilityResult(
-                applicable_parameters=parameters,
-                pre_filtered_parameters=[],
-                pre_filter_details={},
-            )
-
-    # ---- Private helpers ----
-
-    def _build_parameter_domain_keywords(self, parameter: CategoryParameterChild) -> List[str]:
-        parent = getattr(parameter, "parent", None)
-        query_details = {
-            "parent_title": (getattr(parent, "title", "") or "").strip(),
-            "parent_description": (getattr(parent, "description", "") or "").strip(),
-            "child_requirement": build_parameter_analysis_text(parameter).strip(),
-        }
-        domain_keywords = [
-            term
-            for term in (
-                query_details["parent_title"],
-                query_details["parent_description"],
-            )
-            if term
-        ]
-        normalized_child = query_details["child_requirement"].lower()
-        for keyword in re.findall(r"[a-zA-Z][a-zA-Z0-9_+-]{2,}", normalized_child):
-            if keyword not in {item.lower() for item in domain_keywords}:
-                domain_keywords.append(keyword)
-            if len(domain_keywords) >= 10:
-                break
-        return domain_keywords[:10]
-
-    def _build_parameter_contract_summary(self, parameter: CategoryParameterChild) -> str:
-        parent = getattr(parameter, "parent", None)
-        parts = [
-            (getattr(parent, "title", "") or "").strip(),
-            (getattr(parent, "description", "") or "").strip(),
-            build_parameter_analysis_text(parameter).strip(),
-        ]
-        summary = " | ".join(part for part in parts if part)
-        return summary[:400]
+    def _extract_json_payload(self, text: str) -> str:
+        text = strip_thinking_block(text)
+        text = text.strip()
+        if text.startswith("```"):
+            lines = text.splitlines()
+            if lines and lines[0].startswith("```"):
+                lines = lines[1:]
+            if lines and lines[-1].startswith("```"):
+                lines = lines[:-1]
+            text = "\n".join(lines).strip()
+        return text
 
     def _build_raptor_tree(self, tsd_document: TSDDocument, progress_callback=None) -> Optional[RAPTORTree]:
         try:

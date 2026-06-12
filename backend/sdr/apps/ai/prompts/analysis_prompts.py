@@ -1,22 +1,6 @@
-# apps/ai/prompts/analysis_prompts.py
-
-"""
-Analysis prompts for the TSD security review pipeline.
-
-These prompts are distinct from agent_prompts.py in scope:
-    agent_prompts.py     → per-parameter debate prompts (Hunter/Critic/Mediator/Vision)
-    analysis_prompts.py  → pre-analysis and post-analysis prompts that operate
-                           at the document level, not the per-parameter level.
-
-Currently houses:
-    - TSD relevance screening prompt
-    - Parameter applicability pre-filter prompt
-    - Severity justification prompt
-"""
-
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Optional
 
 
 # ---------------------------------------------------------------------------
@@ -44,16 +28,16 @@ def build_tsd_screening_prompt(document_text_sample: str) -> str:
     N×3 agent API calls.
 
     Args:
-        document_text_sample: First ~3000 chars of the TSD document text
+        document_text_sample: Representative excerpts from the TSD document
                               from TSDIngestor.ingest() [ingestor.py].
 
     Returns:
         A fully formed prompt string.
     """
     return f"""\
-## DOCUMENT SAMPLE (first 3000 characters)
+## DOCUMENT SAMPLE (representative excerpts)
 
-{document_text_sample[:3000]}
+{document_text_sample}
 
 ## YOUR TASK
 
@@ -74,111 +58,14 @@ Rules:
 - is_tsd = true  → document describes a software system's design or architecture
 - is_tsd = false → document is a contract, policy, standard, marketing material, etc.
 - confidence     → your certainty (1.0 = certain, 0.5 = ambiguous)
+- Do not classify a document as non-TSD only because the excerpt contains
+  table-of-contents, revision-history, approval, glossary, or front-matter text.
+- If any excerpt describes architecture, components, APIs, data flows,
+  infrastructure, databases, security controls, authentication, authorization,
+  or deployment of a software system, classify it as a TSD.
+- If the evidence is mixed or ambiguous, prefer is_tsd = true with lower
+  confidence instead of blocking analysis.
 """
-
-
-# ---------------------------------------------------------------------------
-# Parameter Applicability Pre-Filter
-# ---------------------------------------------------------------------------
-
-PARAMETER_APPLICABILITY_SYSTEM_PROMPT = """\
-You are a security analyst pre-filtering security parameters before a full
-compliance review. Your job is to quickly determine which parameters are
-clearly not applicable to a given TSD based on a high-level document summary.
-
-OUTPUT: Strict JSON only. No prose outside the JSON object.
-"""
-
-
-def build_parameter_applicability_prompt(
-    document_summary: str,
-    parameters: List[dict],
-    category_code: str = "",
-) -> str:
-    """
-    Pre-filters a batch of security parameters against a TSD summary
-    to identify parameters that are clearly N/A before running the
-    full Hunter/Critic/Mediator debate.
-
-    This is an optional optimisation step called by
-    TSDAnalysisOrchestrator.run() before the per-parameter loop.
-    By identifying clearly out-of-scope parameters upfront, it avoids
-    running 3 LLM calls (Hunter + Critic + Mediator) per N/A parameter.
-
-    For example — if the TSD describes a mobile app, all web
-    parameters can be pre-filtered as N/A
-    without running the full debate on each one.
-
-    Args:
-        document_summary:  The root-level RAPTORTree summary (Level-3 node text)
-                           which describes the overall TSD scope [raptor.py].
-        parameters:        List of dicts with 'id' and 'requirement_text' keys
-                           from CategoryParameterChild [3].
-        category_code:     The category identifier.
-
-    Returns:
-        A fully formed prompt string.
-    """
-    import json
-
-    params_text = json.dumps(
-        [
-            {
-                "id": str(p.get("id", "")),
-                "text": (p.get("requirement_text") or "")[:200],
-                "parent_title": (p.get("parent_title") or "")[:120],
-                "domain_keywords": list(p.get("domain_keywords") or []),
-                "contract_summary": (p.get("contract_summary") or "")[:240],
-            }
-            for p in parameters
-        ],
-        indent=2,
-    )
-
-    return f"""\
-## TSD DOCUMENT SUMMARY
-
-{document_summary}
-
-## CATEGORY CONTEXT
-
-Category code: {category_code or "unknown"}
-
-## SECURITY PARAMETERS TO PRE-FILTER
-
-{params_text}
-
-## YOUR TASK
-
-For each parameter, determine whether it is CLEARLY not applicable to this
-TSD based on the document summary above.
-
-Only mark a parameter as not applicable if the document summary explicitly
-rules out the technology, platform, or control domain named in the parameter
-context, and you are highly confident that the TSD's scope makes it irrelevant.
-When in doubt, mark it as applicable — the full debate pipeline will
-make the final determination.
-
-Respond with a single JSON object:
-
-{{
-  "results": [
-    {{
-      "id": "<parameter id>",
-      "applicable": <true | false>,
-      "confidence": <float 0.0–1.0>,
-      "reason": "<one sentence if not applicable, else null>"
-    }}
-  ]
-}}
-
-Rules:
-- applicable = true  → run the full Hunter/Critic/Mediator debate
-- applicable = false → skip debate, verdict is automatically "na"
-- Only set applicable=false when the summary explicitly excludes the parameter's technology or control domain
-- Do not infer "not applicable" from missing detail, weak mention, or incomplete summaries
-"""
-
 
 # ---------------------------------------------------------------------------
 # Severity Justification
@@ -273,10 +160,8 @@ Rules:
 __all__ = [
     # System prompts
     "TSD_SCREENING_SYSTEM_PROMPT",
-    "PARAMETER_APPLICABILITY_SYSTEM_PROMPT",
     "SEVERITY_JUSTIFICATION_SYSTEM_PROMPT",
     # Prompt builders
     "build_tsd_screening_prompt",
-    "build_parameter_applicability_prompt",
     "build_severity_justification_prompt",
 ]

@@ -1,19 +1,27 @@
 import logging
+import json
+import threading
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 from celery import shared_task
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 
 from sdr.core.database import SessionLocal
+from sdr.core.config import settings
 from sdr.apps.standards.utils import (
     build_parameter_analysis_text,
     stable_key,
     normalize_requirement_text,
 )
 # Note: assuming extraction and embedding services are refactored to use SQLAlchemy or don't rely on ORM models
+from sdr.apps.ai.client import chat_completion
+
+from sdr.apps.ai.rate_limiter import get_rate_limiter
 from sdr.apps.ai.utils.embedding import generate_and_store_embeddings
 from .models import (
+    ASVSLevelDefinition,
     CategoryParameterChild,
     CategoryParameterParent,
     StandardIngestionJob,
@@ -117,10 +125,6 @@ def _natural_keys(text: str):
     """
     return [_atoi(c) for c in re.split(r'(\d+)', text)]
 
-# ---------------------------------------------------------------------------
-# Main ingestion function — refactored with Map-Reduce embedding step
-# ---------------------------------------------------------------------------
-
 
 def _coerce_requirement_text(requirement_item: Any) -> str:
     """
@@ -142,13 +146,32 @@ def _coerce_requirement_details(requirement_item: Any) -> str:
     return ""
 
 
+def _coerce_asvs_level(requirement_item: Any) -> Optional[int]:
+    if not isinstance(requirement_item, dict):
+        return None
+    raw_level = requirement_item.get("asvs_level")
+    if raw_level is None:
+        return None
+    if isinstance(raw_level, int) and raw_level in (1, 2, 3):
+        return raw_level
+    text = str(raw_level).strip().upper()
+    if text.startswith("L"):
+        text = text[1:].strip()
+    if text in {"1", "2", "3"}:
+        return int(text)
+    return None
+
+
 def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] = None) -> Dict[str, Any]:
     """
     Ingests all StandardSourceDocuments attached to an ingestion job and
     optionally generates + stores vector embeddings for every extracted
     requirement child.
     """
-    from sdr.apps.ai.services.extraction_services import extract_requirements_from_document
+    from sdr.apps.ai.services.extraction_services import (
+        extract_asvs_level_definitions_from_document,
+        extract_requirements_from_document,
+    )
     
     with SessionLocal() as db:
         job = db.get(StandardIngestionJob, int(job_id))
@@ -163,6 +186,8 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
         old_summary = job.summary_json or {}
         start_page = old_summary.get("start_page")
         end_page = old_summary.get("end_page")
+        level_definition_start_page = old_summary.get("level_definition_start_page")
+        level_definition_end_page = old_summary.get("level_definition_end_page")
 
         summary: Dict[str, Any] = {
             'inserted': 0,
@@ -175,6 +200,13 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
             'version_no': getattr(job, 'version_no', 1),
             'start_page': start_page,
             'end_page': end_page,
+            'level_definition_start_page': level_definition_start_page,
+            'level_definition_end_page': level_definition_end_page,
+            'asvs_level_definitions': {
+                'status': 'pending',
+                'count': 0,
+                'source': 'not_started',
+            },
         }
         if celery_task_id:
             summary['celery_task_id'] = celery_task_id
@@ -227,6 +259,51 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
 
                 start_page = summary.get("start_page")
                 end_page = summary.get("end_page")
+                level_definition_start_page = summary.get("level_definition_start_page")
+                level_definition_end_page = summary.get("level_definition_end_page")
+
+                if level_definition_start_page or level_definition_end_page:
+                    _update_progress("Extracting ASVS level definitions", 10)
+                    level_definitions = extract_asvs_level_definitions_from_document(
+                        source_doc,
+                        start_page=level_definition_start_page,
+                        end_page=level_definition_end_page,
+                    )
+                    db.execute(
+                        delete(ASVSLevelDefinition)
+                        .where(ASVSLevelDefinition.ingestion_job_id == job.id)
+                    )
+                    for item in level_definitions:
+                        db.add(
+                            ASVSLevelDefinition(
+                                ingestion_job_id=job.id,
+                                level=item["level"],
+                                code=item["code"],
+                                name=item["name"],
+                                description=item["description"],
+                                classification_guidance=item["classification_guidance"],
+                                source_quote=item.get("source_quote") or None,
+                                context_marker=item.get("context_marker") or None,
+                            )
+                        )
+                    summary['asvs_level_definitions'] = {
+                        'status': 'extracted' if level_definitions else 'fallback',
+                        'count': len(level_definitions),
+                        'source': 'standard_document' if level_definitions else 'static_fallback',
+                        'reason': None if level_definitions else 'No ASVS level definitions extracted from configured page range.',
+                    }
+                    job.summary_json = summary
+                    from sqlalchemy.orm.attributes import flag_modified
+                    flag_modified(job, "summary_json")
+                    db.commit()
+                else:
+                    summary['asvs_level_definitions'] = {
+                        'status': 'fallback',
+                        'count': 0,
+                        'source': 'static_fallback',
+                        'reason': 'No ASVS level definition page range configured.',
+                    }
+
                 requirements_by_section = extract_requirements_from_document(
                     source_doc,
                     start_page=start_page,
@@ -295,6 +372,7 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                     for req in sorted_requirements:
                         raw_text = _coerce_requirement_text(req)
                         details = _coerce_requirement_details(req)
+                        asvs_level = _coerce_asvs_level(req)
                         analysis_text = build_parameter_analysis_text(raw_text, details)
                         normalized = normalize_requirement_text(analysis_text)
                         
@@ -309,6 +387,7 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                         child = CategoryParameterChild(
                             parent_id=parent.id,
                             stable_key=child_key,
+                            asvs_level=asvs_level,
                             requirement_text=raw_text,
                             details=details,
                             requirement_text_normalized=normalized,

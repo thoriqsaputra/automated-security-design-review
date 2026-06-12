@@ -10,8 +10,8 @@ from sqlalchemy import select, func
 from sdr.core.database import get_db
 from sdr.core.config import settings
 from ..utils import infer_category_code, get_category
-from ..models import StandardIngestionJob, StandardSourceDocument
-from ..schemas import StandardIngestionJobSchema, CategoryCodeEnum, CategoryCodeWithAutoEnum
+from ..models import ASVSLevelDefinition, StandardIngestionJob, StandardSourceDocument
+from ..schemas import ASVSLevelDefinitionSchema, StandardIngestionJobSchema, CategoryCodeEnum, CategoryCodeWithAutoEnum
 from ..tasks import dispatch_standard_ingestion
 from ..validators import validate_standard_file
 from sdr.apps.workspace.services.storage import storage_service
@@ -46,6 +46,8 @@ def create_ingestion_job(
     document: UploadFile = File(...),
     start_page: Optional[int] = Form(None),
     end_page: Optional[int] = Form(None),
+    level_definition_start_page: Optional[int] = Form(None),
+    level_definition_end_page: Optional[int] = Form(None),
     db: Session = Depends(get_db)
 ):
     """Create a new ingestion job with a document upload."""
@@ -96,6 +98,8 @@ def create_ingestion_job(
                 "resolved_categories": resolved_categories,
                 "start_page": start_page,
                 "end_page": end_page,
+                "level_definition_start_page": level_definition_start_page,
+                "level_definition_end_page": level_definition_end_page,
             }
         )
         db.add(job)
@@ -151,6 +155,19 @@ def get_ingestion_job(job_id: int, db: Session = Depends(get_db)):
     if not job:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
     return job
+
+
+@router.get("/{job_id}/asvs-level-definitions", response_model=List[ASVSLevelDefinitionSchema])
+def get_ingestion_job_asvs_level_definitions(job_id: int, db: Session = Depends(get_db)):
+    """Get ASVS level definitions extracted for a specific ingestion job."""
+    job = db.get(StandardIngestionJob, job_id)
+    if not job:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Job not found.")
+    return db.execute(
+        select(ASVSLevelDefinition)
+        .where(ASVSLevelDefinition.ingestion_job_id == job.id)
+        .order_by(ASVSLevelDefinition.level)
+    ).scalars().all()
 
 
 @router.delete("/{job_id}", status_code=status.HTTP_204_NO_CONTENT)

@@ -17,6 +17,10 @@ def _default_preparation_builders() -> List[Dict[str, Any]]:
     ]
 
 
+def _review_is_cancelled(review: Review | None) -> bool:
+    return bool(review and getattr(review, "status", None) == ReviewStatus.CANCELLED.value)
+
+
 @shared_task(bind=True, max_retries=3)
 def dispatch_review_analysis_task(self, review_id: int):
     """
@@ -53,12 +57,29 @@ def dispatch_review_analysis_task(self, review_id: int):
         try:
             with SessionLocal() as db:
                 review = db.get(Review, review_id)
+                if _review_is_cancelled(review):
+                    logger.warning(
+                        "dispatch_review_analysis_task: review_id=%s already cancelled; suppressing failure/retry",
+                        review_id,
+                    )
+                    return
                 if review:
                     review.status = ReviewStatus.FAILED.value
                     review.error_message = str(exc)
                     db.commit()
         except Exception as inner_exc:
             logger.error(f"Failed to record failure for review {review_id}: {inner_exc}")
+        try:
+            with SessionLocal() as db:
+                review = db.get(Review, review_id)
+                if _review_is_cancelled(review):
+                    logger.warning(
+                        "dispatch_review_analysis_task: review_id=%s cancelled after exception; suppressing retry",
+                        review_id,
+                    )
+                    return
+        except Exception as inner_exc:
+            logger.error(f"Failed to re-check cancellation for review {review_id}: {inner_exc}")
         raise self.retry(exc=exc, countdown=60)
 
 

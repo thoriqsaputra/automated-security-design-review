@@ -1,43 +1,3 @@
-# apps/ai/tsd_processing/ingestor.py
-
-"""
-TSD Document Ingestor — first stage of the TSD analysis pipeline.
-
-Responsibility:
-    Parses a Technical Software Document (TSD) PDF into structured,
-    page-aware data objects that carry:
-        - Extracted text with block-level bounding boxes
-        - Extracted diagram images with page coordinates
-        - Section heading detection
-        - Block IDs in the format "p{page}_b{idx}" and "p{page}_d{idx}"
-          that map directly to CitationAnchor.block_id in the review
-          models for click-to-source frontend navigation.
-
-Why block-level granularity?
-    The Multi-Agent pipeline needs precise source locations so the
-    Mediator's final citations can be traced back to exact PDF regions.
-    Page-level granularity is insufficient for the "click-to-source"
-    feature — the frontend needs bbox coordinates to scroll and highlight
-    the exact evidence region in the PDF viewer.
-
-Dependency chain:
-    document_processing.py [2]   (existing PDF extraction foundation)
-         ↓
-    ingestor.py                  ← YOU ARE HERE
-         ↓
-    raptor.py                    (needs TSDPage, TextBlock)
-    graph_builder.py             (needs TSDPage, TextBlock, DiagramBlock)
-         ↓
-    retrieval/router.py
-         ↓
-    analysis_service.py
-
-Tech stack:
-    PyMuPDF (fitz) — same library already used in document_processing.py [2]
-    base64           — for encoding diagram image bytes
-    dataclasses      — for typed, immutable data containers
-"""
-
 from __future__ import annotations
 
 import base64
@@ -101,19 +61,6 @@ _FORMAT_NORMALISATION = {"jpg": "jpeg"}
 
 @dataclass
 class TextBlock:
-    """
-    A single block of text extracted from one page of the TSD PDF.
-
-    block_id format: "p{page_number}_b{block_index}"
-    Example:         "p3_b12"
-
-    This ID is stored in CitationAnchor.block_id in the review models
-    to enable click-to-source navigation in the frontend PDF viewer.
-
-    bbox coordinates are in PDF coordinate space (points from bottom-left
-    of the page for PyMuPDF's default coordinate system).
-    """
-
     block_id: str  # "p{page}_b{idx}"
     text: str  # cleaned, stripped text content
     page_number: int  # 1-based page number
@@ -163,23 +110,6 @@ class TextBlock:
 
 @dataclass
 class DiagramBlock:
-    """
-    A single diagram or architectural image extracted from one page
-    of the TSD PDF.
-
-    diagram_id format: "p{page_number}_d{diagram_index}"
-    Example:           "p5_d2"
-
-    This ID maps to:
-        - CitationAnchor.block_id in the review models
-        - Finding.diagram_id in the review models
-        - DiagramInput.diagram_id in agents/vision.py
-
-    Diagram metadata is extracted eagerly during ingest, but image bytes are
-    materialized lazily from a preserved source PDF only when downstream
-    consumers actually resolve this diagram for Vision or review tasks.
-    """
-
     diagram_id: str  # "p{page}_d{idx}"
     page_number: int  # 1-based page number
     bbox_x0: float  # left edge in PDF points
@@ -311,19 +241,6 @@ class DiagramBlock:
 
 @dataclass
 class TSDPage:
-    """
-    Structured representation of a single page from the TSD PDF.
-
-    Produced by TSDIngestor.ingest() and consumed by:
-        - raptor.py       (builds summarisation tree from text_blocks)
-        - graph_builder.py (extracts entities/relations from text_blocks)
-        - analysis_service.py (retrieves context, passes diagrams to Vision)
-
-    text_blocks are ordered by their vertical position on the page
-    (bbox_y0 ascending) so downstream consumers can process content
-    in natural reading order.
-    """
-
     page_number: int  # 1-based
     text_blocks: List[TextBlock] = field(default_factory=list)
     diagrams: List[DiagramBlock] = field(default_factory=list)
@@ -358,17 +275,6 @@ class TSDPage:
         bbox: Tuple[float, float, float, float],
         radius_pt: float = 50.0,
     ) -> List[TextBlock]:
-        """
-        Returns text blocks whose bounding box falls within `radius_pt`
-        points of the given bbox. Used to find caption text near diagrams.
-
-        Args:
-            bbox:      (x0, y0, x1, y1) reference bounding box.
-            radius_pt: Search radius in PDF points.
-
-        Returns:
-            List of TextBlock instances within the radius, sorted by y0.
-        """
         _, _, _, ref_y1 = bbox
         nearby = []
         for block in self.text_blocks:
@@ -380,13 +286,6 @@ class TSDPage:
 
 @dataclass
 class TSDDocument:
-    """
-    Complete structured representation of an ingested TSD PDF.
-
-    Produced by TSDIngestor.ingest() and passed to analysis_service.py
-    as the top-level input to the Multi-Agent analysis pipeline.
-    """
-
     file_path: str
     document_name: str
     pages: List[TSDPage] = field(default_factory=list)
@@ -448,17 +347,6 @@ class TSDDocument:
                     self.temp_directories.remove(temp_dir)
 
     def get_block_by_id(self, block_id: str) -> Optional[TextBlock]:
-        """
-        Looks up a TextBlock by its block_id.
-        Used by analysis_service.py to resolve CitationAnchor block_ids
-        back to source content for the click-to-source feature.
-
-        Args:
-            block_id: "p{page}_b{idx}" format string.
-
-        Returns:
-            The matching TextBlock, or None if not found.
-        """
         for page in self.pages:
             for block in page.text_blocks:
                 if block.block_id == block_id:
@@ -466,17 +354,6 @@ class TSDDocument:
         return None
 
     def get_diagram_by_id(self, diagram_id: str) -> Optional[DiagramBlock]:
-        """
-        Looks up a DiagramBlock by its diagram_id.
-        Used by analysis_service.py to resolve Vision agent diagram IDs.
-
-        Args:
-            diagram_id: "p{page}_d{idx}" format string.
-
-        Returns:
-            The matching DiagramBlock with image bytes materialized on demand,
-            or None if not found.
-        """
         for page in self.pages:
             for diagram in page.diagrams:
                 if diagram.diagram_id == diagram_id:
@@ -491,27 +368,6 @@ class TSDDocument:
 
 
 class TSDIngestor:
-    """
-    Parses a TSD PDF into a structured TSDDocument using PyMuPDF.
-
-    Extends the existing document_processing.py [2] foundation with:
-        - Block-level text extraction with bounding boxes
-        - Heading detection via font size heuristics
-        - Diagram metadata extraction with lazy image loading
-        - Caption extraction for diagrams
-        - Section heading tracking across pages
-
-    Usage:
-        ingestor = TSDIngestor()
-        tsd_document = ingestor.ingest(file_path, document_name)
-
-    The returned TSDDocument is passed to:
-        - RAPTORTreeBuilder (raptor.py)
-        - TSDGraphBuilder (graph_builder.py)
-        - HybridRetrievalRouter (retrieval/router.py)
-        - VisionAgent (agents/vision.py) via analysis_service.py
-    """
-
     def __init__(
         self,
         min_block_text_length: int = _MIN_BLOCK_TEXT_LENGTH,
@@ -519,18 +375,6 @@ class TSDIngestor:
         caption_search_radius: float = _CAPTION_SEARCH_RADIUS_PT,
         heading_font_multiplier: float = _HEADING_FONT_SIZE_MULTIPLIER,
     ) -> None:
-        """
-        Args:
-            min_block_text_length: Minimum characters for a text block to
-                                   be included. Filters page numbers and
-                                   single-word artefacts.
-            min_diagram_bytes:     Minimum raw image size in bytes. Filters
-                                   icons and decorative elements.
-            caption_search_radius: Points below a diagram bbox to search
-                                   for caption text.
-            heading_font_multiplier: Font size multiplier above page median
-                                     to classify a block as a heading.
-        """
         if not FITZ_AVAILABLE:
             raise RuntimeError(
                 "TSDIngestor requires PyMuPDF. Install with: pip install pymupdf"
@@ -551,35 +395,6 @@ class TSDIngestor:
         file_path: str,
         document_name: Optional[str] = None,
     ) -> TSDDocument:
-        """
-        Parses a TSD PDF into a fully structured TSDDocument.
-
-        This is the single public entry point for the TSD ingestion pipeline.
-        Called by analysis_service.py before building the RAPTOR tree,
-        the GraphRAG index, and running the Multi-Agent debate.
-
-        Pipeline per page:
-            1. Extract raw text blocks with bounding boxes via PyMuPDF.
-            2. Compute page font size median for heading detection.
-            3. Classify each block as heading or body text.
-            4. Extract diagram metadata and preserve lazy image references.
-            5. Extract captions for each diagram from nearby text blocks.
-            6. Build TSDPage and append to TSDDocument.
-
-        Args:
-            file_path:     Absolute path to the PDF file on disk.
-                           Produced by get_local_file_path() from
-                           document_processing.py [2].
-            document_name: Human-readable name for the document.
-                           Defaults to the filename stem if not provided.
-
-        Returns:
-            A fully populated TSDDocument ready for downstream processing.
-
-        Raises:
-            FileNotFoundError: If file_path does not exist.
-            RuntimeError:      If PyMuPDF fails to open the file.
-        """
         if not os.path.exists(file_path):
             raise FileNotFoundError(
                 f"TSDIngestor.ingest: file not found at '{file_path}'."
@@ -723,18 +538,6 @@ class TSDIngestor:
         page_markdown_text: str,
         source_pdf_path: str,
     ) -> TSDPage:
-        """
-        Processes a single PyMuPDF page into a TSDPage dataclass.
-
-        Args:
-            fitz_page:              The PyMuPDF page object.
-            pdf:                    The open PyMuPDF document for page processing.
-            page_number:            1-based page number.
-            current_section_heading: Heading carried over from the previous page.
-
-        Returns:
-            A populated TSDPage instance.
-        """
         page_rect = fitz_page.rect
         raw_text = fitz_page.get_text("text") or ""
 
@@ -787,20 +590,6 @@ class TSDIngestor:
         fitz_page: "fitz.Page",
         page_number: int,
     ) -> List[TextBlock]:
-        """
-        Extracts all meaningful text blocks from a PyMuPDF page.
-
-        Uses PyMuPDF's dict extraction mode to get per-span font metadata
-        (size, bold flag) for heading detection. Falls back to the simpler
-        block extraction if dict mode fails.
-
-        Args:
-            fitz_page:   The PyMuPDF page object.
-            page_number: 1-based page number for block_id generation.
-
-        Returns:
-            List of TextBlock instances ordered by vertical position (y0).
-        """
         try:
             return self._extract_blocks_from_dict(fitz_page, page_number)
         except Exception as exc:
@@ -963,21 +752,6 @@ class TSDIngestor:
         tsd_page: TSDPage,
         source_pdf_path: str,
     ) -> List[DiagramBlock]:
-        """
-        Extracts diagram metadata from the PyMuPDF page without eagerly
-        materializing image bytes. Image data is loaded later when a
-        diagram is explicitly resolved.
-
-        Args:
-            fitz_page:   The PyMuPDF page object.
-            pdf:         The open PyMuPDF document. Retained for interface
-                         compatibility with existing call sites.
-            page_number: 1-based page number for diagram_id generation.
-            tsd_page:    The partially built TSDPage — used for caption lookup.
-
-        Returns:
-            List of DiagramBlock instances ordered by vertical position.
-        """
         diagrams: List[DiagramBlock] = []
         image_list = fitz_page.get_images(full=True)
 
@@ -1024,21 +798,6 @@ class TSDIngestor:
         fitz_page: "fitz.Page",
         xref: int,
     ) -> Tuple[float, float, float, float]:
-        """
-        Retrieves the bounding box of an image on the page using
-        PyMuPDF's get_image_rects() method.
-
-        Falls back to a zero bbox if the image cannot be located —
-        this is non-fatal since the image bytes are still extracted
-        and the bbox is only used for caption lookup and click-to-source.
-
-        Args:
-            fitz_page: The PyMuPDF page object.
-            xref:      The image cross-reference number.
-
-        Returns:
-            (x0, y0, x1, y1) bounding box tuple in PDF points.
-        """
         try:
             rects = fitz_page.get_image_rects(xref)
             if rects:
@@ -1058,22 +817,6 @@ class TSDIngestor:
         tsd_page: TSDPage,
         bbox: Tuple[float, float, float, float],
     ) -> Optional[str]:
-        """
-        Extracts a caption for a diagram by searching for short text blocks
-        immediately below the diagram's bounding box.
-
-        A block is considered a caption candidate if:
-            - It falls within _CAPTION_SEARCH_RADIUS_PT points below the bbox
-            - It is short (<=  20 words) — captions are rarely long paragraphs
-            - It is not already classified as a heading
-
-        Args:
-            tsd_page: The TSDPage containing extracted text blocks.
-            bbox:     The diagram's bounding box (x0, y0, x1, y1).
-
-        Returns:
-            The caption string, or None if no suitable candidate is found.
-        """
         nearby_blocks = tsd_page.get_blocks_near_bbox(
             bbox=bbox,
             radius_pt=self.caption_search_radius,
@@ -1099,22 +842,6 @@ class TSDIngestor:
         tsd_page: TSDPage,
         bbox: Tuple[float, float, float, float],
     ) -> Optional[str]:
-        """
-        Extracts text blocks within an extended radius around the diagram
-        to provide the Vision agent with architectural context — service
-        names, protocol descriptions, and component labels that may not
-        appear inside the diagram image itself.
-
-        Uses 2x the caption search radius to cast a wider net than
-        caption extraction.
-
-        Args:
-            tsd_page: The TSDPage containing extracted text blocks.
-            bbox:     The diagram's bounding box (x0, y0, x1, y1).
-
-        Returns:
-            Combined surrounding text as a single string, or None if empty.
-        """
         extended_radius = self.caption_search_radius * 2.0
         nearby_blocks = tsd_page.get_blocks_near_bbox(
             bbox=bbox,
@@ -1143,28 +870,6 @@ class TSDIngestor:
         median_font_size: float,
         is_bold: bool,
     ) -> bool:
-        """
-        Heuristically classifies a text block as a section heading.
-
-        A block is considered a heading if it satisfies ANY of:
-            1. Font size exceeds the page median by the configured multiplier
-               (default: 15% larger than median).
-            2. Font is bold AND the text is short (<= 12 words) AND
-               the text does not end with a full stop — headings rarely
-               end with periods.
-            3. Text matches a common numbered heading pattern
-               (e.g. "1.", "2.3", "A.1.2") — common in security standards
-               and TSDs.
-
-        Args:
-            text:             The block's cleaned text content.
-            font_size:        The dominant font size in this block (points).
-            median_font_size: The median font size across the page.
-            is_bold:          Whether the dominant font is bold.
-
-        Returns:
-            True if the block is likely a section heading.
-        """
         if not text or not text.strip():
             return False
 
@@ -1195,20 +900,6 @@ class TSDIngestor:
         self,
         pdf: "fitz.Document",
     ) -> Dict[str, Any]:
-        """
-        Extracts document-level metadata from the PDF file.
-
-        Fields extracted (all may be empty strings in poorly-formed PDFs):
-            title, author, subject, creator, producer, creation_date,
-            modification_date, total_pages.
-
-        Args:
-            pdf: The open PyMuPDF document.
-
-        Returns:
-            A plain dict of metadata fields. Never raises — returns an
-            empty dict with total_pages on any failure.
-        """
         try:
             raw_meta = pdf.metadata or {}
             return {
@@ -1252,22 +943,6 @@ _HEADING_PATTERN = re.compile(
 
 
 def _clean_text(text: str) -> str:
-    """
-    Cleans raw text extracted from PyMuPDF by:
-        1. Stripping leading/trailing whitespace.
-        2. Collapsing multiple consecutive blank lines to a single newline.
-        3. Removing non-printable control characters (except newline/tab).
-        4. Normalising Unicode ligatures common in PDF fonts
-           (e.g. ﬁ → fi, ﬂ → fl).
-
-    Used by both primary and fallback text extraction paths.
-
-    Args:
-        text: Raw text string from PyMuPDF.
-
-    Returns:
-        Cleaned text string, or empty string if input is falsy.
-    """
     if not text:
         return ""
 
@@ -1298,18 +973,6 @@ def _clean_text(text: str) -> str:
 
 
 def _compute_median(values: List[float]) -> float:
-    """
-    Computes the median of a list of floats.
-
-    Used for font size median calculation in heading detection.
-    Returns 0.0 for an empty list to avoid ZeroDivisionError.
-
-    Args:
-        values: List of float values. May be empty.
-
-    Returns:
-        The median value, or 0.0 if the list is empty.
-    """
     if not values:
         return 0.0
 

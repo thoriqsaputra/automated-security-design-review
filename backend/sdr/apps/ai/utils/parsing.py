@@ -16,5 +16,7 @@ def strip_markdown_code_blocks(text: str) -> str:
 
 
 def strip_thinking_block(text: str) -> str:
-    """Removes an optional <thinking>...</thinking> block from model output."""
-    return re.sub(r"<thinking>.*?</thinking>", "", text, flags=re.IGNORECASE | re.DOTALL).strip()
+    """Removes an optional <thinking>...</thinking> or <think>...</think> block from model output."""
+    text = re.sub(r"<thinking>.*?</thinking>", "", text, flags=re.IGNORECASE | re.DOTALL)
+    text = re.sub(r"<think>.*?</think>", "", text, flags=re.IGNORECASE | re.DOTALL)
+    return text.strip()

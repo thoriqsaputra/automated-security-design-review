@@ -1,14 +1,8 @@
-"""
-Debate Service — Orchestrates Hunter → Critic → Mediator debate.
-Responsibility: Pure reasoning workflow. NO database writes.
-Output is structured, ready for persistence service to write.
-"""
 from __future__ import annotations
 
 import logging
 import re
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError, as_completed
 from typing import Any, Dict, List, Optional
 
 from sdr.core.config import settings
@@ -22,7 +16,6 @@ from sdr.apps.ai.agents.base import (
     CriticResult,
     HunterResult,
 )
-from sdr.apps.ai.telemetry import capture_ai_usage_context, run_with_ai_usage_context
 from sdr.apps.ai.agents.critic import CriticAgent
 from sdr.apps.ai.agents.hunter import HunterAgent
 from sdr.apps.ai.agents.mediator import MediatorAgent
@@ -37,9 +30,6 @@ logger = logging.getLogger(__name__)
 
 _MAX_AGENT_LOGIC_SUMMARY_CHARS = 2500
 _MAX_AGENT_COT_TRACE_CHARS = 12000
-_MAX_HUNTER_FANOUT = 3
-_DEFAULT_PARALLEL_TIMEOUT_SECONDS = 180
-_MULTI_HUNTER_CHUNK_THRESHOLD = 8
 _PERSONAS = [
     "architecture_network",
     "iam_access_control",
@@ -78,13 +68,6 @@ class DebateService:
             getattr(settings, "AI_DEBATE_MAX_HUNTER_CALLS_PER_PARAMETER", 8)
         )
         self.max_debate_rounds = int(getattr(settings, "AI_DEBATE_MAX_DEBATE_ROUNDS", 2))
-        self.parallel_timeout_seconds = int(
-            getattr(
-                settings,
-                "AI_DEBATE_PARALLEL_TIMEOUT_SECONDS",
-                _DEFAULT_PARALLEL_TIMEOUT_SECONDS,
-            )
-        )
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     def run_debate(
@@ -290,10 +273,6 @@ class DebateService:
                     "group_keys": [group.get("key") for group in scope_groups],
                 },
                 "timing": timing,
-                "cost_estimate": {
-                    "available": False,
-                    "reason": "provider usage not surfaced at agent result level",
-                },
                 "hunter_claim": {
                     "verdict": hunter_result.verdict,
                     "confidence": hunter_result.confidence,
@@ -595,45 +574,8 @@ class DebateService:
                     killed_assumptions=killed_assumptions,
                 )
 
-            if len(group_personas) == 1:
-                results = [_run_single(group_personas[0])]
-            else:
-                timeout = (
-                    self.parallel_timeout_seconds
-                    if self.parallel_timeout_seconds > 0
-                    else _DEFAULT_PARALLEL_TIMEOUT_SECONDS
-                )
-                results = []
-                pool = ThreadPoolExecutor(max_workers=min(_MAX_HUNTER_FANOUT, len(group_personas)), thread_name_prefix="ThreadPoolExecutor-10")
-                try:
-                    context_snapshot = capture_ai_usage_context()
-                    futures = [
-                        pool.submit(
-                            run_with_ai_usage_context,
-                            context_snapshot,
-                            _run_single,
-                            persona,
-                        )
-                        for persona in group_personas
-                    ]
-                    try:
-                        for future in as_completed(futures, timeout=timeout):
-                            results.append(future.result())
-                    except TimeoutError:
-                        self.logger.warning(
-                            "DebateService._run_hunter_round: hunter parallel timeout reached (%ss)",
-                            timeout,
-                        )
-                        for future in futures:
-                            if future.done():
-                                results.append(future.result())
-                            else:
-                                future.cancel()
-                    finally:
-                        pool.shutdown(wait=False, cancel_futures=True)
-                except Exception:
-                    pool.shutdown(wait=False, cancel_futures=True)
-                    raise
+            persona = group_personas[0]
+            results = [_run_single(persona)]
 
             hunter_call_count += len(results)
             for persona, result in results:
@@ -733,28 +675,15 @@ class DebateService:
         incoming_plan: Dict[str, Any],
     ) -> Dict[str, Any]:
         if incoming_plan.get("personas"):
-            return incoming_plan
-        
+            persona = str(incoming_plan["personas"][0] or "").strip()
+            if not persona:
+                persona = str(contract.get("domain") or "general").strip()
+            return {"mode": "single", "personas": [persona if persona in _PERSONAS else "general"]}
+
         domain = str(contract.get("domain") or "").strip()
-        
-        fanout_enabled = str(getattr(settings, "AI_DEBATE_ENABLE_FANOUT", "False")).lower() in {"true", "1", "yes"}
-        if not fanout_enabled:
-            return {"mode": "single", "personas": [domain if domain in _PERSONAS else "general"]}
-            
-        confident = float(contract.get("confidence") or 0.0) >= 0.7
-        broad = len((parameter_text or "").split()) > 22
-        if (
-            domain in _PERSONAS
-            and confident
-            and not broad
-            and context_chunk_count < _MULTI_HUNTER_CHUNK_THRESHOLD
-        ):
-            personas = [domain]
-            mode = "single"
-        else:
-            personas = list(_PERSONAS)
-            mode = "fanout"
-        return {"mode": mode, "personas": personas}
+        if domain in _PERSONAS:
+            return {"mode": "single", "personas": [domain]}
+        return {"mode": "single", "personas": ["general"]}
 
     # Compatibility helper retained for Phase 2 tests/callers.
     def _run_hunters_with_aggregation(

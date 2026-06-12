@@ -1,9 +1,9 @@
 from datetime import datetime
 from typing import Optional, Dict, Any
 
-from sqlalchemy import String, Integer, ForeignKey, DateTime, Index, func, Table, Column
+from sqlalchemy import String, Integer, ForeignKey, DateTime, Index, func, Table, Column, CheckConstraint
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, mapped_column, relationship, backref
 
 from sdr.core.database import Base
 from .choices import ReviewStatus
@@ -42,6 +42,7 @@ class Review(Base):
     
     status: Mapped[str] = mapped_column(String(24), default=ReviewStatus.PENDING.value, index=True)
     overview: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    asvs_level_override: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     celery_task_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -49,15 +50,17 @@ class Review(Base):
     error_message: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
     summary_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict)
+    retrieval_snapshot_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
 
     # Relationships
-    design = relationship("Design", backref="reviews")
+    design = relationship("Design", backref=backref("reviews", cascade="all, delete-orphan", passive_deletes=True))
     ingestion_job = relationship("StandardIngestionJob")
     findings = relationship("Finding", back_populates="review", cascade="all, delete-orphan")
     selected_categories = relationship("StandardCategory", secondary=review_category_association)
 
     __table_args__ = (
         Index("idx_review_design_status", "design_id", "status"),
+        CheckConstraint("asvs_level_override IS NULL OR asvs_level_override IN (1, 2, 3)", name="ck_review_asvs_level_override_range"),
     )
 
     def __str__(self):

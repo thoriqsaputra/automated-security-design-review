@@ -1,41 +1,3 @@
-"""
-Hybrid Retrieval Router — orchestrates all three retrieval strategies
-(Vector, RAPTOR, Graph) into a single unified context retrieval pipeline.
-
-Responsibility:
-    For each security parameter (CategoryParameterChild [3]), the router
-    decides which retrieval strategy or combination of strategies to use,
-    executes them, merges the results, and returns a unified RetrievalResult
-    containing the context chunks and source block_ids needed by the
-    Hunter agent (agents/hunter.py).
-
-Strategy selection:
-    VECTOR_ONLY     — simple factual parameters ("Is TLS 1.2+ enforced?")
-                      Fast path — single pgvector cosine distance query.
-    RAPTOR_LOW      — parameters needing precise section-level evidence
-                      Uses RAPTOR leaf nodes (level 0).
-    RAPTOR_HIGH     — cross-cutting parameters spanning multiple sections
-                      Uses RAPTOR multi-level search (levels 0, 1, 2).
-    GRAPH_TRAVERSE  — relationship parameters ("Is auth enforced on all paths?")
-                      Uses GraphSearcher with auto-selected sub-strategy.
-    HYBRID          — complex parameters needing all three strategies
-                      Merges and re-ranks results from all three searchers.
-
-Embedding reuse:
-    The router generates ONE embedding per parameter query and passes it
-    as precomputed_embedding to all three searchers — this avoids N
-    redundant Bedrock API calls [4] for the same text.
-
-Dependency chain:
-    retrieval/vector_search.py   (VectorSearcher, VectorSearchResponse)
-    retrieval/raptor_search.py   (RAPTORSearcher, RAPTORSearchResponse)
-    retrieval/graph_search.py    (GraphSearcher, GraphSearchResponse)
-         ↓
-    retrieval/router.py          ← YOU ARE HERE
-         ↓
-    analysis_service.py
-"""
-
 from __future__ import annotations
 
 import logging
@@ -80,7 +42,6 @@ from .vector_search import (
 )
 from .candidate import RetrievalCandidate, dedupe_candidates, merge_candidates
 from .keyword_search import KeywordSearcher
-from .policy import UserContext, filter_candidates_by_policy
 from .reranker import SafeOptionalReranker
 from .graph_communities import GraphCommunityService, CommunitySummary
 
@@ -197,17 +158,7 @@ _WEAK_CHUNK_PREFIXES = (
 
 @dataclass
 class RetrievalResult:
-    """
-    The unified output of the HybridRetrievalRouter for a single parameter.
 
-    Consumed directly by analysis_service.py which passes:
-        - context_chunks → HunterAgent.run(context_chunks=...)
-        - diagram_blocks  → VisionAgent.run(diagram=...)
-        - source_block_ids → TSD-backed citation resolution only
-
-    strategy_used and per-strategy responses are stored for audit logging
-    and for the Mediator's citation reconciliation step.
-    """
     # The merged, de-duplicated context chunks for the Hunter agent
     context_chunks: List[str] = field(default_factory=list)
     # All source block_ids covered by the retrieved context
@@ -253,37 +204,6 @@ class RetrievalResult:
 # ---------------------------------------------------------------------------
 
 class HybridRetrievalRouter:
-    """
-    Orchestrates Vector, RAPTOR, and Graph retrieval strategies into a
-    single unified context retrieval pipeline for the Multi-Agent debate.
-
-    The router is the single entry point for context retrieval in
-    analysis_service.py. It is called once per security parameter per
-    TSD analysis run.
-
-    Key design principles:
-        1. ONE embedding per parameter — generated once and passed to all
-           three searchers as precomputed_embedding to avoid redundant
-           Bedrock API calls [4].
-        2. Strategy is auto-selected from parameter keyword analysis —
-           no manual configuration required per parameter.
-        3. HYBRID merges all three result sets and re-ranks by a composite
-           score — vector similarity weighted higher for factual params,
-           graph relevance weighted higher for relationship params.
-        4. Context chunks are always capped at _MAX_CONTEXT_CHUNKS to
-           prevent the Hunter agent's context window from overflowing.
-
-    Usage:
-        router = HybridRetrievalRouter()
-        result = router.retrieve(
-            parameter=child_parameter,
-            category=category,
-            raptor_tree=raptor_tree,
-            graph=tsd_graph,
-        )
-        # Pass result.context_chunks to HunterAgent.run()
-    """
-
     def __init__(
         self,
         vector_top_k: int = _VECTOR_TOP_K,
@@ -327,34 +247,6 @@ class HybridRetrievalRouter:
         force_strategy: Optional[RetrievalStrategy] = None,
         override_query_text: Optional[str] = None,
     ) -> RetrievalResult:
-        """
-        Primary entry point — retrieves unified context for a single
-        security parameter using the most appropriate strategy.
-
-        Pipeline:
-            1. Validate inputs.
-            2. Generate one shared query embedding.
-            3. Select retrieval strategy from parameter analysis.
-            4. Execute the selected strategy.
-            5. Cap context chunks at _MAX_CONTEXT_CHUNKS.
-            6. Return populated RetrievalResult.
-
-        Args:
-            parameter:      The CategoryParameterChild to retrieve context for [3].
-            category:       The StandardCategory to scope vector search to [3].
-            raptor_tree:    The RAPTORTree built from the TSD document.
-                            Required for RAPTOR_LOW, RAPTOR_HIGH, HYBRID.
-            graph:          The TSDGraph built from the TSD document.
-                            Required for GRAPH_TRAVERSE, HYBRID.
-            ingestion_job:  Optional specific job to scope vector search to.
-            force_strategy: Optional — override automatic strategy selection.
-                            Used by analysis_service.py for specific parameter
-                            types (e.g. always use GRAPH_TRAVERSE for
-                            inter-service parameters).
-
-        Returns:
-            RetrievalResult — never raises. Check .error for failures.
-        """
         query_text = (override_query_text or "").strip() or build_parameter_analysis_text(parameter).strip()
 
         if not query_text:
@@ -782,19 +674,6 @@ class HybridRetrievalRouter:
         keywords: List[str],
         inferred_relations: set,
     ) -> RetrievalResult:
-        """
-        HYBRID — executes all three strategies and merges their results.
-
-        Merge order (highest priority first):
-            1. Graph results — relationship evidence (most unique signal)
-            2. RAPTOR results — multi-level textual evidence
-            3. Vector results — semantic similarity (broadest coverage)
-
-        Vector results below _VECTOR_DERANK_THRESHOLD are appended last
-        so high-confidence graph and RAPTOR evidence always leads the
-        context window. This directly combats "lost in the middle" syndrome
-        by placing the strongest evidence at the top of the context.
-        """
         with ThreadPoolExecutor(max_workers=3, thread_name_prefix="ThreadPoolExecutor-3") as executor:
             fut_vec = executor.submit(
                 _safe_execute, self._vector_searcher.search,
@@ -873,8 +752,7 @@ class HybridRetrievalRouter:
 
         merged = merge_candidates(bm25_candidates, dense_candidates, raptor_candidates)
         deduped = dedupe_candidates(merged)
-        policy_filtered = filter_candidates_by_policy(deduped, UserContext())
-        scored_for_coverage = self._apply_keyword_coverage_boost(policy_filtered, keywords)
+        scored_for_coverage = self._apply_keyword_coverage_boost(deduped, keywords)
         evidence_filtered, evidence_metadata = self._grade_and_filter_candidates(
             scored_for_coverage,
             query_text=query_text,
@@ -934,8 +812,7 @@ class HybridRetrievalRouter:
                 _safe_execute, self._graph_searcher.search_local,
                 query_entities=query_entities,
                 graph=graph,
-                query_embedding=query_embedding or None,
-                user_context=UserContext(),
+                query_embedding=query_embedding,
                 traversal_config=GraphTraversalConfig()
             )
 
@@ -994,8 +871,7 @@ class HybridRetrievalRouter:
         graph_candidates = self._graph_response_to_candidates(graph_response)
         merged = merge_candidates(bm25_candidates, dense_candidates, graph_candidates)
         deduped = dedupe_candidates(merged)
-        policy_filtered = filter_candidates_by_policy(deduped, UserContext())
-        scored_for_coverage = self._apply_keyword_coverage_boost(policy_filtered, keywords)
+        scored_for_coverage = self._apply_keyword_coverage_boost(deduped, keywords)
         evidence_filtered, evidence_metadata = self._grade_and_filter_candidates(
             scored_for_coverage,
             query_text=query_text,
@@ -1100,7 +976,7 @@ class HybridRetrievalRouter:
                     keywords=keywords,
                     query_embedding=query_embedding or None,
                 )
-                return filter_candidates_by_policy(cands, UserContext())
+                return cands
 
             fut_comm = executor.submit(_safe_execute, _get_community_cands)
 
@@ -1109,8 +985,7 @@ class HybridRetrievalRouter:
                     _safe_execute, self._graph_searcher.search_local,
                     query_entities=query_entities,
                     graph=graph,
-                    query_embedding=query_embedding or None,
-                    user_context=UserContext(),
+                    query_embedding=query_embedding,
                     traversal_config=GraphTraversalConfig()
                 )
             else:
@@ -1143,7 +1018,7 @@ class HybridRetrievalRouter:
                 graph_local_response = fut_graph.result()
                 if not graph_local_response.error:
                     graph_candidates = self._graph_response_to_candidates(graph_local_response)
-            
+
             vector_response = fut_vec.result()
         dense_candidates: List[RetrievalCandidate] = []
         for idx, result in enumerate(vector_response.results):
@@ -1168,8 +1043,7 @@ class HybridRetrievalRouter:
 
         merged = merge_candidates(community_candidates, graph_candidates, dense_candidates)
         deduped = dedupe_candidates(merged)
-        policy_filtered = filter_candidates_by_policy(deduped, UserContext())
-        scored_for_coverage = self._apply_keyword_coverage_boost(policy_filtered, keywords)
+        scored_for_coverage = self._apply_keyword_coverage_boost(deduped, keywords)
         evidence_filtered, evidence_metadata = self._grade_and_filter_candidates(
             scored_for_coverage,
             query_text=query_text,
@@ -1279,9 +1153,8 @@ class HybridRetrievalRouter:
             current_query = self._generate_followup_query(query_text, accumulated_candidates)
 
         deduped = dedupe_candidates(accumulated_candidates)
-        policy_filtered = filter_candidates_by_policy(deduped, UserContext())
         evidence_filtered, quality_metadata = self._grade_and_filter_candidates(
-            policy_filtered,
+            deduped,
             query_text=query_text,
             keywords=keywords,
         )
@@ -1614,21 +1487,6 @@ class HybridRetrievalRouter:
         self,
         vector_response: VectorSearchResponse,
     ) -> List[str]:
-        """
-        Converts VectorSearchResponse results into context chunk strings
-        for the Hunter agent.
-
-        Each chunk includes the requirement text from the matched
-        CategoryParameterChild [3] along with its section heading for
-        positional context — mirroring the banner format used by
-        chunk_text_with_context() [1].
-
-        Args:
-            vector_response: The VectorSearchResponse from VectorSearcher.
-
-        Returns:
-            List of formatted context chunk strings.
-        """
         chunks: List[str] = []
 
         for idx, result in enumerate(vector_response.results, start=1):
@@ -1653,25 +1511,6 @@ class HybridRetrievalRouter:
         self,
         graph_response: GraphSearchResponse,
     ) -> List[str]:
-        """
-        Converts GraphSearchResponse results into context chunk strings
-        for the Hunter agent.
-
-        Each chunk describes an entity and its security-relevant relations
-        in plain text — the Hunter agent is prompted to look for
-        compliance evidence, so structured prose is more useful than
-        raw graph data structures.
-
-        For PATH_ANALYSIS results, each path is described as a chain
-        of entity → relation → entity hops with security metadata
-        (is_encrypted, requires_auth, protocol) per edge.
-
-        Args:
-            graph_response: The GraphSearchResponse from GraphSearcher.
-
-        Returns:
-            List of formatted context chunk strings.
-        """
         chunks: List[str] = []
 
         # Entity/relation chunks
@@ -1754,24 +1593,6 @@ class HybridRetrievalRouter:
         self,
         vector_response: VectorSearchResponse,
     ) -> List[str]:
-        """
-        Vector search is treated as a ranking hint only.
-
-        Vector results come from the parameter knowledge base, not the
-        current TSD document, so their identifiers are not suitable for
-        click-to-source citation anchors in the review output.
-
-        The router still returns the vector chunks as low-priority context,
-        but this helper intentionally returns an empty list so the analysis
-        pipeline only persists TSD-backed citation ids from RAPTOR or graph
-        retrieval.
-
-        Args:
-            vector_response: The VectorSearchResponse from VectorSearcher.
-
-        Returns:
-            Empty list.
-        """
         return []
 
     # ------------------------------------------------------------------
@@ -1779,30 +1600,11 @@ class HybridRetrievalRouter:
     # ------------------------------------------------------------------
 
     def _generate_query_embedding(self, query_text: str) -> List[float]:
-        """
-        Generates a single embedding vector for the query text using
-        Amazon Titan via get_embedding() from client.py [4].
-
-        This is called ONCE per parameter — the returned vector is
-        passed as precomputed_embedding to all three searchers so
-        no redundant Bedrock API calls are made.
-
-        Returns an empty list on failure — callers handle gracefully
-        by passing None to precomputed_embedding which causes each
-        searcher to fall back to text-only or generate their own.
-
-        Args:
-            query_text: The normalised parameter text to embed.
-
-        Returns:
-            A list of floats (embedding vector), or [] on failure.
-        """
         try:
             vector = get_embedding(
                 text=query_text,
                 dimensions=_EMBEDDING_DIMENSIONS,
-            )   # [4]
-
+            )
             if not vector:
                 self.logger.error(
                     "HybridRetrievalRouter._generate_query_embedding: "
@@ -1834,24 +1636,6 @@ def retrieve_context_for_parameter(
     ingestion_job: Optional[StandardIngestionJob] = None,
     force_strategy: Optional[RetrievalStrategy] = None,
 ) -> RetrievalResult:
-    """
-    Module-level convenience wrapper around HybridRetrievalRouter.retrieve().
-
-    Instantiates a HybridRetrievalRouter with default settings and
-    executes a single parameter retrieval. Used directly by
-    analysis_service.py as the primary context retrieval entry point.
-
-    Args:
-        parameter:      The CategoryParameterChild to retrieve context for [3].
-        category:       The StandardCategory to scope vector search to.
-        raptor_tree:    The RAPTORTree built from the TSD document.
-        graph:          The TSDGraph built from the TSD document.
-        ingestion_job:  Optional specific job to scope vector search to.
-        force_strategy: Optional explicit strategy override.
-
-    Returns:
-        RetrievalResult — never raises.
-    """
     router = HybridRetrievalRouter()
     return router.retrieve(
         parameter=parameter,

@@ -1,36 +1,3 @@
-"""
-Mediator Agent — third and final stage of the Multi-Agent TSD Security
-Review Pipeline.
-
-Responsibility:
-    Receives the HunterResult and CriticResult for a single security
-    parameter and produces the single binding final verdict. The Mediator
-    is the only agent whose output is persisted directly to the Finding
-    model in the review app [3].
-
-Bias:
-    None — the Mediator weighs Hunter and Critic equally. When evidence
-    is genuinely ambiguous, it defaults to "not_met". The burden of proof
-    is on demonstrating compliance, not non-compliance.
-
-Output:
-    MediatorResult dataclass — consumed directly by analysis_service.py
-    to create Finding records in the review app.
-
-Dependency chain:
-    agent_prompts.py          (pure prompt strings)
-         ↓
-    base.py                   (BaseAgent, all result dataclasses)
-         ↓
-    hunter.py                 (HunterResult — input to Critic)
-         ↓
-    critic.py                 (CriticResult — input to Mediator)
-         ↓
-    mediator.py               ← YOU ARE HERE
-         ↓
-    analysis_service.py       (orchestrator — persists MediatorResult)
-"""
-
 from __future__ import annotations
 
 import logging
@@ -341,9 +308,17 @@ class MediatorAgent(BaseAgent):
         # ------------------------------------------------------------------
         # 9. Return
         # ------------------------------------------------------------------
+        finding_description = self._extract_text_field(
+            parsed,
+            "finding_description",
+            default="No specific finding description provided.",
+            max_chars=2000,
+        )
+
         return MediatorResult(
             final_verdict=final_verdict,
             confidence=confidence,
+            finding_description=finding_description,
             reasoning=reasoning_fields["reasoning"],
             assumptions=reasoning_fields["assumptions"],
             logic_summary=reasoning_fields["logic_summary"],
@@ -435,9 +410,17 @@ class MediatorAgent(BaseAgent):
                 debate_rounds_used = int(item.get("debate_rounds_used") or 1)
             except (TypeError, ValueError):
                 debate_rounds_used = 1
+            finding_description = self._extract_text_field(
+                item,
+                "finding_description",
+                default="No specific finding description provided.",
+                max_chars=2000,
+            )
+
             results[child_id] = MediatorResult(
                 final_verdict=final_verdict,
                 confidence=confidence,
+                finding_description=finding_description,
                 reasoning=reasoning_fields["reasoning"],
                 assumptions=reasoning_fields["assumptions"],
                 logic_summary=reasoning_fields["logic_summary"],
@@ -504,7 +487,8 @@ Produce one final binding verdict per child independently. Return strict JSON:
       "logic_summary": "<concise final reasoning>",
       "final_verdict": "met" | "not_met" | "na",
       "confidence": <float 0.0-1.0>,
-      "reasoning": "<2-3 sentence executive justification>",
+      "finding_description": "<factual summary of the system state regarding this requirement>",
+      "reasoning": "<2-3 sentence executive justification for the verdict>",
       "verified_evidence": ["<accepted evidence>", "..."],
       "rejected_evidence": ["<insufficient or rejected evidence>", "..."],
       "debate_rounds_used": <integer>,
@@ -600,6 +584,7 @@ Rules:
         return MediatorResult(
             final_verdict=agreed_verdict,
             confidence=averaged_confidence,
+            finding_description=self._build_fast_path_description(agreed_verdict),
             reasoning=self._build_fast_path_reasoning(
                 agreed_verdict=agreed_verdict,
                 hunter_result=hunter_result,
@@ -642,6 +627,13 @@ Rules:
             "The requirement is applicable, but the verified TSD evidence does not show the required implementation. "
             "The final verdict is not met because the accepted review record identifies missing or insufficient control evidence."
         )
+
+    def _build_fast_path_description(self, agreed_verdict: str) -> str:
+        if agreed_verdict == VERDICT_MET:
+            return "The TSD contains verified evidence that satisfies this control."
+        if agreed_verdict == VERDICT_NA:
+            return "This control is not applicable to the documented design scope."
+        return "The TSD lacks verified evidence showing this control is implemented."
 
     # ------------------------------------------------------------------
     # Citation reconciliation

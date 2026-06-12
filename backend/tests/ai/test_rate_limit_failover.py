@@ -24,6 +24,34 @@ class _FakeClock:
         self.now += seconds
 
 
+class _FakeRedisRollingWindow:
+    def __init__(self, clock: _FakeClock) -> None:
+        self.clock = clock
+        self.cooldowns: dict[str, str] = {}
+        self.events: dict[str, list[tuple[float, str]]] = {}
+
+    def get(self, key: str):
+        return self.cooldowns.get(key)
+
+    def setex(self, key: str, ttl_seconds: int, value: str) -> None:
+        self.cooldowns[key] = value
+
+    def eval(self, script: str, numkeys: int, key: str, now, window, limit, member, reserve):
+        now = float(now)
+        window = float(window)
+        limit = int(limit)
+        reserve = int(reserve)
+        kept = [(score, existing_member) for score, existing_member in self.events.get(key, []) if score > (now - window)]
+        self.events[key] = kept
+        count = len(kept)
+        if count < limit:
+            if reserve == 1:
+                self.events[key].append((now, str(member)))
+            return [1, count, 0]
+        oldest_score = min(score for score, _ in kept) if kept else 0.0
+        return [0, count, oldest_score]
+
+
 class _CountingLimiter:
     def __init__(self) -> None:
         self.acquire_calls = 0
@@ -132,6 +160,27 @@ def test_nvidia_retries_reacquire_limiter(monkeypatch):
     assert response.status_code == 200
     assert limiter.acquire_calls == 2
     assert limiter.cooldowns == [3.0]
+
+
+def test_rate_limiter_uses_rolling_window_budget(monkeypatch):
+    clock = _FakeClock()
+    limiter = RateLimiter(
+        provider_key="nvidia-test-window",
+        rpm_limit=2,
+        throttle_cooldown_seconds=5.0,
+    )
+    limiter.redis_client = _FakeRedisRollingWindow(clock)
+    limiter._min_interval = 0.0
+
+    monkeypatch.setattr("sdr.apps.ai.rate_limiter.time.time", clock.time)
+    monkeypatch.setattr("sdr.apps.ai.rate_limiter.time.monotonic", clock.monotonic)
+    monkeypatch.setattr("sdr.apps.ai.rate_limiter.time.sleep", clock.sleep)
+
+    limiter.acquire()
+    limiter.acquire()
+    limiter.acquire()
+
+    assert clock.sleep_calls == [60.05]
 
 
 def test_standard_extraction_falls_back_to_openrouter(settings_override):

@@ -71,6 +71,22 @@ class MinioStorageService:
             logger.error("Failed to download %s from MinIO: %s", object_name, e)
             raise RuntimeError(f"Storage download failed: {e}")
 
+    def download_bytes(self, object_name: str) -> bytes:
+        """Download an object from MinIO and return its bytes."""
+        if not self.client:
+            raise RuntimeError("MinIO client is not initialized.")
+        response = None
+        try:
+            response = self.client.get_object(self.bucket_name, object_name)
+            return response.read()
+        except S3Error as e:
+            logger.error("Failed to download %s from MinIO: %s", object_name, e)
+            raise RuntimeError(f"Storage download failed: {e}")
+        finally:
+            if response is not None:
+                response.close()
+                response.release_conn()
+
     def delete_file(self, object_name: str):
         """Delete an object from MinIO."""
         if not self.client:

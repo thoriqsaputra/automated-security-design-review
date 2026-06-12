@@ -1,6 +1,7 @@
-from typing import Optional
+from typing import Optional, Dict, Any
 
-from sqlalchemy import String, Integer, ForeignKey, UniqueConstraint
+from sqlalchemy import String, Integer, ForeignKey, UniqueConstraint, CheckConstraint
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship, backref
 
 from sdr.core.database import Base
@@ -34,11 +35,53 @@ class CategoryParameterParent(Base, StandardsBigIntBase):
         return f"{cat_name}: {self.title}"
 
 
+class ASVSLevel(Base, StandardsBigIntBase):
+    __tablename__ = "standards_asvslevel"
+
+    level: Mapped[int] = mapped_column(Integer, primary_key=True)
+    code: Mapped[str] = mapped_column(String(16), unique=True, index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str] = mapped_column(String)
+    classification_guidance: Mapped[str] = mapped_column(String)
+
+    __table_args__ = (
+        CheckConstraint("level IN (1, 2, 3)", name="ck_asvs_level_range"),
+    )
+
+    def __str__(self):
+        return f"{self.code}: {self.name}"
+
+
+class ASVSLevelDefinition(Base, StandardsBigIntBase):
+    __tablename__ = "standards_asvsleveldefinition"
+
+    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
+    ingestion_job_id: Mapped[int] = mapped_column(ForeignKey("standards_standingestionjob.id", ondelete="CASCADE"), index=True)
+    level: Mapped[int] = mapped_column(Integer)
+    code: Mapped[str] = mapped_column(String(16))
+    name: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str] = mapped_column(String)
+    classification_guidance: Mapped[str] = mapped_column(String)
+    source_quote: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    context_marker: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+
+    ingestion_job = relationship("StandardIngestionJob", backref=backref("asvs_level_definitions", cascade="all, delete-orphan"))
+
+    __table_args__ = (
+        CheckConstraint("level IN (1, 2, 3)", name="ck_asvs_level_definition_range"),
+        UniqueConstraint("ingestion_job_id", "level", name="unique_asvs_level_definition_per_job"),
+    )
+
+    def __str__(self):
+        return f"{self.code}: {self.name}"
+
+
 class CategoryParameterChild(Base, StandardsBigIntBase):
     __tablename__ = "standards_categoryparameterchild"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     parent_id: Mapped[int] = mapped_column(ForeignKey("standards_categoryparameterparent.id", ondelete="CASCADE"), index=True)
+    asvs_level: Mapped[Optional[int]] = mapped_column(ForeignKey("standards_asvslevel.level", ondelete="SET NULL"), nullable=True, index=True)
     
     stable_key: Mapped[str] = mapped_column(String(255), index=True)
     requirement_text: Mapped[str] = mapped_column(String)
@@ -48,6 +91,7 @@ class CategoryParameterChild(Base, StandardsBigIntBase):
 
     # Relationships
     parent = relationship("CategoryParameterParent", back_populates="children")
+    asvs_level_definition = relationship("ASVSLevel")
 
     __table_args__ = (
         UniqueConstraint("parent_id", "stable_key", name="unique_child_key_per_parent"),

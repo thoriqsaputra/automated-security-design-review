@@ -1,8 +1,3 @@
-"""
-Vector Search — similarity-based retrieval against the security parameter
-knowledge base using CategoryParameterEmbedding records.
-"""
-
 from __future__ import annotations
 
 import logging

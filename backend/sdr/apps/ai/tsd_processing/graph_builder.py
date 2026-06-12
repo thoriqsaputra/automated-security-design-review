@@ -1,46 +1,3 @@
-"""
-TSD Graph Builder — GraphRAG index construction for the TSD analysis pipeline.
-
-Responsibility:
-    Extracts named entities (services, APIs, data stores, auth mechanisms,
-    users, protocols) and directed relationships between them from TSD text
-    blocks. Builds a networkx DiGraph that the retrieval layer can traverse
-    to find implied security gaps that pure vector search would miss.
-
-Why GraphRAG alongside RAPTOR?
-    RAPTOR handles "what does this section say about encryption?" —
-    retrieval by semantic similarity to a parameter.
-    GraphRAG handles "does Service A enforce auth on ALL paths to Service B?" —
-    retrieval by relationship traversal. A parameter about authentication
-    on inter-service calls requires knowing the full call graph, which
-    cannot be answered by any single text chunk.
-
-Example graph:
-    Nodes: "API Gateway", "Auth Service", "User DB", "JWT"
-    Edges: "API Gateway" --authenticates_with--> "Auth Service"
-           "Auth Service" --reads_from--> "User DB"
-           "API Gateway"  --uses_protocol--> "JWT"
-
-Entity extraction:
-    Claude is called once per TSDPage (not per block) to extract entities
-    and relations from the full page text. This balances API cost against
-    graph quality — per-block extraction is too noisy, per-document
-    extraction loses page-level locality.
-
-Dependency chain:
-    ingestor.py      (TSDPage, TextBlock, TSDDocument)
-         ↓
-    client.py [4]    (chat_completion — entity/relation extraction)
-         ↓
-    graph_builder.py ← YOU ARE HERE
-         ↓
-    retrieval/graph_search.py
-         ↓
-    retrieval/router.py
-         ↓
-    analysis_service.py
-"""
-
 from __future__ import annotations
 
 import json
@@ -57,6 +14,7 @@ from sdr.core.config import settings
 
 from sdr.apps.ai.client import chat_completion, get_embeddings
 from sdr.apps.ai.tsd_processing.ingestor import TSDDocument, TSDPage, TextBlock
+from sdr.apps.ai.tsd_processing.content_filter import build_filtered_tsd_view
 from sdr.apps.ai.utils.concurrency import ConcurrencyProbe
 
 logger = logging.getLogger(__name__)
@@ -94,7 +52,7 @@ _MAX_PAGE_TEXT_CHARS = 6000
 
 # Confidence threshold below which extracted relations are discarded
 _MIN_RELATION_CONFIDENCE = 0.5
-_DEFAULT_GRAPH_EXTRACTION_MODE = "hybrid"
+_DEFAULT_GRAPH_EXTRACTION_MODE = "llm"
 _EMBEDDING_DIMENSIONS = 1024
 _MAX_GRAPH_EMBED_WORKERS = 4
 _MAX_ENTITY_EMBED_TEXT_CHARS = 512
@@ -172,14 +130,6 @@ except Exception:
 
 @dataclass
 class GraphEntity:
-    """
-    A named entity extracted from TSD text.
-
-    Stored as a node in the TSDGraph networkx DiGraph.
-    The entity_id is a normalised lowercase slug used as the node key
-    to ensure the same entity mentioned across multiple pages is
-    deduplicated into a single node.
-    """
     entity_id: str                      # normalised slug: "api_gateway"
     name: str                           # original name: "API Gateway"
     entity_type: str                    # one of _VALID_ENTITY_TYPES
@@ -208,14 +158,6 @@ class GraphEntity:
 
 @dataclass
 class GraphRelation:
-    """
-    A directed relationship between two GraphEntity nodes.
-
-    Stored as a directed edge in the TSDGraph networkx DiGraph.
-    The edge carries security-relevant metadata (e.g. whether the
-    channel is encrypted) that the retrieval layer uses to answer
-    security parameters about inter-service communication.
-    """
     source_entity_id: str              # entity_id of the source node
     target_entity_id: str              # entity_id of the target node
     relation_type: str                 # one of _VALID_RELATION_TYPES
@@ -256,18 +198,6 @@ class GraphRelation:
 
 @dataclass
 class TSDGraph:
-    """
-    The complete GraphRAG index for a single TSD document.
-
-    Wraps a networkx DiGraph with typed accessors and metadata.
-    Produced by TSDGraphBuilder.build() and passed to:
-        - retrieval/graph_search.py  (relationship traversal queries)
-        - analysis_service.py        (context enrichment per parameter)
-
-    The networkx DiGraph stores:
-        Nodes: entity_id → GraphEntity attributes
-        Edges: (source_id, target_id) → GraphRelation attributes
-    """
     document_name: str
     graph: "nx.DiGraph" = field(default_factory=lambda: nx.DiGraph() if NETWORKX_AVAILABLE else None)
     entities: Dict[str, GraphEntity] = field(default_factory=dict)
@@ -294,20 +224,6 @@ class TSDGraph:
         entity_id: str,
         relation_type: Optional[str] = None,
     ) -> List[Tuple[GraphEntity, GraphRelation]]:
-        """
-        Returns all direct neighbours of an entity reachable via
-        outgoing edges, optionally filtered by relation_type.
-
-        Used by retrieval/graph_search.py to answer questions like
-        "what does Service A authenticate with?"
-
-        Args:
-            entity_id:     The source entity_id to start traversal from.
-            relation_type: Optional filter — only return edges of this type.
-
-        Returns:
-            List of (target_entity, relation) tuples.
-        """
         if not NETWORKX_AVAILABLE or self.graph is None:
             return []
         if entity_id not in self.graph:
@@ -331,22 +247,6 @@ class TSDGraph:
         target_id: str,
         max_depth: int = 4,
     ) -> List[List[str]]:
-        """
-        Returns all simple paths between two entities up to max_depth hops.
-
-        Used to answer questions like "are there any unprotected paths
-        from the public internet to the database?" by traversing the graph
-        and checking whether auth/encryption edges exist on every path.
-
-        Args:
-            source_id:  Starting entity_id.
-            target_id:  Destination entity_id.
-            max_depth:  Maximum path length — prevents runaway traversal
-                        on densely connected graphs.
-
-        Returns:
-            List of paths, where each path is a list of entity_ids.
-        """
         if not NETWORKX_AVAILABLE or self.graph is None:
             return []
         if source_id not in self.graph or target_id not in self.graph:
@@ -369,11 +269,6 @@ class TSDGraph:
         self,
         entity_type: str,
     ) -> List[GraphEntity]:
-        """
-        Returns all entities of a given type.
-        Used by retrieval/graph_search.py to find all databases,
-        auth mechanisms, etc. for a given security parameter.
-        """
         return [
             e for e in self.entities.values()
             if e.entity_type == entity_type
@@ -383,11 +278,6 @@ class TSDGraph:
         self,
         fragment: str,
     ) -> List[GraphEntity]:
-        """
-        Returns entities whose name contains the given fragment
-        (case-insensitive). Used to resolve parameter keywords to
-        graph nodes for traversal.
-        """
         fragment_lower = fragment.lower()
         return [
             e for e in self.entities.values()
@@ -400,21 +290,6 @@ class TSDGraph:
 # ---------------------------------------------------------------------------
 
 class TSDGraphBuilder:
-    """
-    Builds a TSDGraph from a TSDDocument by extracting entities and
-    relationships using Claude via client.py [4].
-
-    Entity extraction strategy:
-        - One LLM call per TSDPage (not per block, not per document)
-        - Per-page locality preserves which entities appear together
-        - Cross-page deduplication merges the same entity seen on
-          multiple pages into a single node with merged source metadata
-
-    Usage:
-        builder = TSDGraphBuilder()
-        tsd_graph = builder.build(tsd_document)
-    """
-
     def __init__(
         self,
         min_entity_name_length: int = _MIN_ENTITY_NAME_LENGTH,
@@ -472,25 +347,15 @@ class TSDGraphBuilder:
     # ------------------------------------------------------------------
 
     def build(self, tsd_document: TSDDocument, progress_callback=None) -> TSDGraph:
-        """
-        Builds the complete TSDGraph from a TSDDocument.
-
-        Pipeline:
-            1. For each page, call the LLM to extract entities and relations.
-            2. Merge entities across pages — deduplicate by entity_id.
-            3. Add all entities as nodes to the networkx DiGraph.
-            4. Add all relations as directed edges.
-            5. Return the populated TSDGraph.
-
-        Args:
-            tsd_document: The fully parsed TSDDocument from TSDIngestor.
-
-        Returns:
-            A populated TSDGraph. Returns an empty TSDGraph if the
-            document has no pages or extraction fails entirely.
-        """
         tsd_graph = TSDGraph(document_name=tsd_document.document_name)
         build_started = time.monotonic()
+        filtered_view = build_filtered_tsd_view(tsd_document)
+        tsd_graph.build_stats.update(
+            {
+                f"content_filter_{key}": value
+                for key, value in filtered_view.stats.items()
+            }
+        )
 
         if not tsd_document.pages:
             self.logger.warning(
@@ -517,7 +382,7 @@ class TSDGraphBuilder:
             "TSDGraphBuilder.build: extracting entities from '%s' "
             "across %d page(s) (mode=%s, extraction_max_concurrency=%d).",
             tsd_document.document_name,
-            len(tsd_document.pages),
+            len(filtered_view.pages),
             self.graph_extraction_mode,
             self.extraction_max_concurrency,
         )
@@ -527,7 +392,7 @@ class TSDGraphBuilder:
                     "status": "running",
                     "progress_percent": 5,
                     "current_step": "Scanning TSD pages for GraphRAG extraction",
-                    "pages_total": len(tsd_document.pages),
+                    "pages_total": len(filtered_view.pages),
                     "pages_completed": 0,
                 }
             )
@@ -537,7 +402,7 @@ class TSDGraphBuilder:
         all_relations: List[GraphRelation] = []
 
         pages_with_text: List[TSDPage] = []
-        for page in tsd_document.pages:
+        for page in filtered_view.pages:
             if not page.all_text.strip():
                 self.logger.debug(
                     "TSDGraphBuilder.build: page %d has no text — skipping.",
@@ -856,21 +721,14 @@ class TSDGraphBuilder:
         self,
         page: TSDPage,
     ) -> Tuple[List[GraphEntity], List[GraphRelation]]:
-        """
-        Calls Claude via chat_completion() [4] to extract entities and
-        directed relations from a single TSDPage's text content.
 
-        One LLM call per page — balances API cost against graph quality.
-        Per-block extraction is too noisy; per-document extraction loses
-        page-level locality needed for accurate source_block_ids.
-
-        Args:
-            page: A TSDPage from TSDIngestor [ingestor.py].
-
-        Returns:
-            A tuple of (entities, relations) extracted from this page.
-            Returns ([], []) on any failure — non-fatal, pipeline continues.
-        """
+        import threading
+        thread_name = threading.current_thread().name
+        self.logger.info(
+            "TSDGraphBuilder._extract_from_page [%s]: extracting from page %d",
+            thread_name,
+            page.page_number,
+        )
         if self.graph_extraction_mode == "spacy":
             return self._extract_from_page_deterministic(page)
         if self.graph_extraction_mode == "llm":
@@ -1201,22 +1059,7 @@ Return a single JSON object with exactly two keys:
         raw_content: str,
         page: TSDPage,
     ) -> Tuple[List[GraphEntity], List[GraphRelation], Optional[Dict[str, Any]]]:
-        """
-        Parses the LLM's JSON extraction response into typed GraphEntity
-        and GraphRelation instances.
 
-        Validates each entity and relation against their respective
-        is_valid() checks before including them. Invalid items are
-        logged at debug level and skipped — non-fatal.
-
-        Args:
-            raw_content: The raw JSON string from the LLM response.
-            page:        The source TSDPage — used to attach source_pages
-                         and source_block_ids to extracted objects.
-
-        Returns:
-            A tuple of (valid_entities, valid_relations).
-        """
         parsed, parse_failure = self._decode_extraction_payload(raw_content)
         if parse_failure is not None:
             return [], [], parse_failure
@@ -1458,29 +1301,6 @@ Return a single JSON object with exactly two keys:
         existing: GraphEntity,
         incoming: GraphEntity,
     ) -> None:
-        """
-        Merges source metadata from an incoming GraphEntity into an
-        existing one when the same entity_id is encountered on multiple
-        pages.
-
-        Merging rules:
-            - source_pages:     Union of both lists, sorted, deduplicated.
-            - source_block_ids: Union of both lists, deduplicated,
-                                preserving insertion order.
-            - description:      Keep the existing description unless it is
-                                None and the incoming has one — the first
-                                description is usually from the earliest
-                                (most authoritative) page.
-            - entity_type:      Never overwritten — the first extraction
-                                wins. Type conflicts across pages are
-                                ignored to avoid oscillation.
-
-        Mutates `existing` in-place. Does not return a value.
-
-        Args:
-            existing: The GraphEntity already in all_entities dict.
-            incoming: The GraphEntity just extracted from the current page.
-        """
         # Merge source_pages — deduplicate and sort for determinism
         merged_pages = sorted(
             set(existing.source_pages) | set(incoming.source_pages)
@@ -1663,34 +1483,6 @@ Return a single JSON object with exactly two keys:
 # ---------------------------------------------------------------------------
 
 def _normalise_entity_id(raw: object) -> str:
-    """
-    Normalises a raw entity_id string from the LLM into a clean lowercase
-    slug suitable for use as a networkx node key.
-
-    Normalisation steps:
-        1. Coerce to string and strip whitespace.
-        2. Lowercase everything.
-        3. Replace spaces, hyphens, and dots with underscores.
-        4. Remove any character that is not alphanumeric or underscore.
-        5. Collapse consecutive underscores to one.
-        6. Strip leading and trailing underscores.
-
-    Examples:
-        "API Gateway"    → "api_gateway"
-        "Auth-Service"   → "auth_service"
-        "user.db"        → "user_db"
-        " JWT Token "    → "jwt_token"
-        "S3 Bucket (us)" → "s3_bucket_us"
-
-    Returns an empty string if the input cannot produce a valid slug —
-    callers must check for empty string and skip the entity.
-
-    Args:
-        raw: The raw entity_id value from the LLM JSON response.
-
-    Returns:
-        A normalised lowercase slug string, or "" on failure.
-    """
     if raw is None:
         return ""
 
@@ -1718,28 +1510,6 @@ def _normalise_entity_id(raw: object) -> str:
 
 
 def _parse_nullable_bool(raw: object) -> Optional[bool]:
-    """
-    Parses a nullable boolean field from the LLM JSON response.
-
-    The LLM may return:
-        - Python bool:      True / False → returned as-is
-        - JSON null:        None → returned as None
-        - String "true":    → True
-        - String "false":   → False
-        - String "null":    → None
-        - Integer 1 / 0:    → True / False
-        - Anything else:    → None (unknown)
-
-    This is used for GraphRelation.is_encrypted and requires_auth where
-    None means "not stated in the document" — distinct from False which
-    means "explicitly stated as not encrypted / not requiring auth".
-
-    Args:
-        raw: The raw value at the nullable boolean key in the parsed JSON.
-
-    Returns:
-        True, False, or None.
-    """
     if raw is None:
         return None
 
@@ -1772,26 +1542,6 @@ def _safe_float_clamp(
     min_val: float = 0.0,
     max_val: float = 1.0,
 ) -> float:
-    """
-    Safely coerces a value to a float clamped to [min_val, max_val].
-
-    Used for GraphRelation.confidence — the LLM occasionally returns
-    confidence as a string ("0.9"), an integer (1), or an out-of-range
-    float (1.2 or -0.1).
-
-    Falls back to `default` if the value cannot be coerced at all.
-    Consistent with BaseAgent._clamp_confidence() in agents/base.py
-    to ensure uniform confidence handling across the pipeline.
-
-    Args:
-        value:   The raw confidence value from the parsed JSON.
-        default: Fallback if the value cannot be coerced (default: 1.0).
-        min_val: Minimum allowed value after clamping (default: 0.0).
-        max_val: Maximum allowed value after clamping (default: 1.0).
-
-    Returns:
-        A float in the range [min_val, max_val].
-    """
     if value is None:
         return default
 

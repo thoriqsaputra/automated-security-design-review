@@ -21,7 +21,9 @@ def _build_review(*, review_id: int = 7, status: str = Review.STATUS_PENDING):
         completed_at=None,
         error_message=None,
         summary_json={},
+        retrieval_snapshot_json={"status": "ready"},
         overview=None,
+        asvs_level_override=None,
         created_at=now,
         updated_at=now,
     )
@@ -31,7 +33,9 @@ class _FakeSession:
     def __init__(self, review):
         self.review = review
         self.committed = False
+        self.rolled_back = False
         self.refreshed = []
+        self.executed = []
 
     def get(self, model, review_id):
         assert model is Review
@@ -41,6 +45,12 @@ class _FakeSession:
 
     def commit(self):
         self.committed = True
+
+    def execute(self, statement):
+        self.executed.append(statement)
+
+    def rollback(self):
+        self.rolled_back = True
 
     def refresh(self, obj):
         self.refreshed.append(obj)
@@ -77,6 +87,7 @@ def test_trigger_review_persists_task_id(monkeypatch):
 
     assert result is review
     assert review.celery_task_id == f"task-{review.id}"
+    assert review.retrieval_snapshot_json is None
     assert fake_db.committed is True
     assert fake_db.refreshed == [review]
 
@@ -94,3 +105,54 @@ def test_trigger_review_returns_500_when_dispatch_fails(monkeypatch):
 
     assert exc_info.value.status_code == 500
     assert exc_info.value.detail == "Failed to trigger review: queue unavailable"
+
+
+def test_cancel_review_marks_cancelled_and_revokes_task(monkeypatch):
+    review = _build_review(status=Review.STATUS_RUNNING)
+    review.celery_task_id = "task-7"
+    fake_db = _FakeSession(review=review)
+    revoke_calls = []
+
+    class _Control:
+        def revoke(self, task_id, terminate=False, signal=None):
+            revoke_calls.append((task_id, terminate, signal))
+
+    monkeypatch.setattr(
+        "sdr.celery_app.celery_app.control",
+        _Control(),
+    )
+
+    result = reviews_router_module.cancel_review(review.id, db=fake_db)
+
+    assert result is review
+    assert review.status == "cancelled"
+    assert review.error_message == "Analysis was cancelled by user."
+    assert review.completed_at is not None
+    assert fake_db.committed is True
+    assert fake_db.refreshed == [review]
+    assert revoke_calls == [("task-7", True, "SIGTERM")]
+
+
+def test_get_review_retrieval_visualization_returns_pending_when_missing():
+    review = _build_review()
+    review.retrieval_snapshot_json = None
+
+    payload = reviews_router_module.get_review_retrieval_visualization(review.id, db=_FakeSession(review=review))
+
+    assert payload["status"] == "pending"
+    assert payload["raptor"] is None
+    assert payload["graph"] is None
+
+
+def test_get_review_retrieval_visualization_returns_snapshot():
+    review = _build_review()
+    review.retrieval_snapshot_json = {
+        "status": "ready",
+        "generated_at": "2026-06-10T00:00:00+00:00",
+        "raptor": {"status": "ready", "nodes": []},
+        "graph": {"status": "ready", "nodes": [], "edges": []},
+    }
+
+    payload = reviews_router_module.get_review_retrieval_visualization(review.id, db=_FakeSession(review=review))
+
+    assert payload is review.retrieval_snapshot_json

@@ -5,21 +5,23 @@ from types import SimpleNamespace
 
 from sdr.apps.ai.agents.base import Citation, CriticResult, HunterResult, MediatorResult
 from sdr.apps.ai.retrieval.router import RetrievalResult
-from sdr.apps.ai.services.analysis.dto import AnalysisSummary, DebateOutput, IngestionOutput, ParameterApplicabilityResult
+from sdr.apps.ai.services.analysis.dto import AnalysisSummary, DebateOutput, IngestionOutput
 from sdr.apps.ai.services.analysis.pipeline import TSDAnalysisPipeline
+import sdr.apps.designs.models  # noqa: F401 - registers SQLAlchemy relationship targets for joinedload
 
 
 def _parent(parent_id=1):
     return SimpleNamespace(id=parent_id, title="Authentication", description="Identity controls")
 
 
-def _parameter(child_id, *, text, parent=None):
+def _parameter(child_id, *, text, parent=None, asvs_level=None):
     parent = parent or _parent()
     return SimpleNamespace(
         id=child_id,
         parent=parent,
         requirement_text=text,
         requirement_text_normalized=text,
+        asvs_level=asvs_level,
         details="",
         ordinal=child_id,
     )
@@ -59,20 +61,12 @@ class _FakeIngestionService:
 
 
 class _FakeRetrievalService:
-    def __init__(self, applicable_parameters, pre_filtered_parameters):
+    def __init__(self, applicable_parameters):
         self.applicable_parameters = applicable_parameters
-        self.pre_filtered_parameters = pre_filtered_parameters
         self.parameter_queries = []
 
     def build_indexes(self, tsd_document):
         return SimpleNamespace(raptor_tree=None, tsd_graph=None)
-
-    def pre_filter_parameters(self, parameters, indexes, category_code):
-        return ParameterApplicabilityResult.model_construct(
-            applicable_parameters=self.applicable_parameters,
-            pre_filtered_parameters=self.pre_filtered_parameters,
-            pre_filter_details={str(param.id): {"reason": "out_of_scope"} for param in self.pre_filtered_parameters},
-        )
 
     def retrieve_for_parameter(self, **kwargs):
         self.parameter_queries.append(kwargs["query_details"])
@@ -135,12 +129,7 @@ class _FakeDebateService:
 
 class _FakePersistenceService:
     def __init__(self):
-        self.pre_filtered = []
         self.persisted = []
-
-    def persist_pre_filtered_finding(self, review, parameter, summary, prefilter_details):
-        self.pre_filtered.append((review, parameter, prefilter_details))
-        summary.na_count += 1
 
     def persist_finding(self, review, persistence_input, summary):
         self.persisted.append((review, persistence_input))
@@ -205,13 +194,63 @@ class _SessionFactory:
         return _SessionContext(self.sessions.pop(0))
 
 
+def test_classify_review_asvs_level_prefers_ingestion_job_definitions(monkeypatch):
+    category = SimpleNamespace(id=4, code="web_application", name="Web Application")
+    ingestion_job = SimpleNamespace(id=8, category=category)
+    review = SimpleNamespace(id=21, ingestion_job_id=8, ingestion_job=ingestion_job)
+    tsd_document = SimpleNamespace(full_text="Payments service stores sensitive cardholder data.")
+    job_definition = SimpleNamespace(
+        level=2,
+        code="L2",
+        name="Version Specific Standard",
+        classification_guidance="Use L2 for this ASVS version when sensitive payment data is present.",
+    )
+    pipeline = TSDAnalysisPipeline(
+        ingestion_service=SimpleNamespace(),
+        retrieval_service=SimpleNamespace(),
+        debate_service=SimpleNamespace(),
+        persistence_service=SimpleNamespace(),
+    )
+
+    monkeypatch.setattr(
+        "sdr.core.database.SessionLocal",
+        _SessionFactory([_Session(execute_value=[job_definition])]),
+    )
+
+    captured = {}
+
+    def _fake_classify(tsd_text, levels):
+        captured["tsd_text"] = tsd_text
+        captured["levels"] = list(levels)
+        return SimpleNamespace(
+            to_dict=lambda: {
+                "level": 2,
+                "confidence": 0.8,
+                "reasoning": "Sensitive payment data",
+                "evidence": ["cardholder data"],
+                "error": None,
+            }
+        )
+
+    monkeypatch.setattr(
+        "sdr.apps.ai.services.analysis.pipeline.classify_tsd_asvs_level",
+        _fake_classify,
+    )
+
+    result = pipeline._classify_review_asvs_level(review, tsd_document)
+
+    assert captured["levels"] == [job_definition]
+    assert result["level"] == 2
+    assert result["definition_source"] == "standard_document"
+    assert result["definition_count"] == 1
+
+
 def test_pipeline_dry_run_executes_without_real_llm_or_db(monkeypatch, settings_override):
-    settings_override(AI_BATCH_ANALYSIS_ENABLED=False)
+    settings_override(AI_BATCH_DEBATE_ENABLED=False)
     category = SimpleNamespace(id=4, code="web_application", name="Web Application")
     ingestion_job = SimpleNamespace(id=8, category=category)
     parent = _parent()
-    pre_filtered = _parameter(1, text="Document OAuth scopes for external clients.", parent=parent)
-    applicable = _parameter(2, text="Use MFA for all admin access.", parent=parent)
+    applicable = _parameter(2, text="Use MFA for all admin access.", parent=parent, asvs_level=1)
     tsd_document = _FakeTSDDocument()
     review = SimpleNamespace(
         id=21,
@@ -223,11 +262,13 @@ def test_pipeline_dry_run_executes_without_real_llm_or_db(monkeypatch, settings_
         completed_at=None,
         error_message=None,
         overview=None,
+        asvs_level_override=2,
         summary_json={},
+        retrieval_snapshot_json=None,
         created_at=datetime.now(timezone.utc),
         updated_at=datetime.now(timezone.utc),
     )
-    retrieval = _FakeRetrievalService([applicable], [pre_filtered])
+    retrieval = _FakeRetrievalService([applicable])
     debate = _FakeDebateService()
     persistence = _FakePersistenceService()
     pipeline = TSDAnalysisPipeline(
@@ -239,7 +280,7 @@ def test_pipeline_dry_run_executes_without_real_llm_or_db(monkeypatch, settings_
 
     status_session = _Session()
     ingestion_job_session = _Session()
-    parameter_session = _Session(execute_value=[pre_filtered, applicable])
+    parameter_session = _Session(execute_value=[applicable])
     overview_session = _Session()
     monkeypatch.setattr(
         "sdr.core.database.SessionLocal",
@@ -249,6 +290,17 @@ def test_pipeline_dry_run_executes_without_real_llm_or_db(monkeypatch, settings_
     failures = []
     overview_calls = []
     monkeypatch.setattr(TSDAnalysisPipeline, "_is_cancelled", lambda self, review: False)
+    monkeypatch.setattr(
+        TSDAnalysisPipeline,
+        "_classify_review_asvs_level",
+        lambda self, review, tsd_document: {
+            "level": 1,
+            "confidence": 0.7,
+            "reasoning": "baseline app",
+            "evidence": ["authentication workflow"],
+            "error": None,
+        },
+    )
 
     def _complete(self, review_obj, summary):
         completed["summary"] = summary.to_dict()
@@ -298,15 +350,26 @@ def test_pipeline_dry_run_executes_without_real_llm_or_db(monkeypatch, settings_
     summary = pipeline.run(review)
 
     assert isinstance(summary, AnalysisSummary)
-    assert summary.total_parameters == 2
-    assert summary.pre_filtered_count == 1
+    assert summary.total_parameters == 1
+    assert summary.analysis_total_parameters == 1
+    assert summary.analysis_processed_parameters == 1
+    assert summary.analysis_remaining_parameters == 0
+    assert "pre_filtered_count" not in summary.to_dict()
     assert summary.not_met_count == 1
-    assert summary.na_count == 1
+    assert summary.na_count == 0
     assert summary.citation_count == 1
     assert failures == []
     assert review.overview == "Dry run overview"
     assert completed["summary"]["not_met_count"] == 1
-    assert persistence.pre_filtered[0][1] is pre_filtered
+    assert completed["summary"]["analysis_total_parameters"] == 1
+    assert completed["summary"]["analysis_processed_parameters"] == 1
+    assert completed["summary"]["analysis_remaining_parameters"] == 0
+    assert completed["summary"]["asvs"]["override_level"] == 2
+    assert completed["summary"]["asvs"]["effective_level"] == 2
+    assert completed["summary"]["asvs"]["categories"]["web_application"]["unknown_level_included_count"] == 0
+    assert completed["summary"]["asvs"]["categories"]["web_application"]["analysis_total_count"] == 1
+    assert completed["summary"]["asvs"]["categories"]["web_application"]["analysis_processed_count"] == 1
+    assert completed["summary"]["asvs"]["categories"]["web_application"]["analysis_remaining_count"] == 0
     assert persistence.persisted[0][1].parameter is applicable
     assert debate.calls[0].parameter is applicable
     assert retrieval.parameter_queries[0]["child_requirement"].startswith("Use MFA")

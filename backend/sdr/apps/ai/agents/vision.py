@@ -1,42 +1,3 @@
-"""
-Vision Agent — multimodal diagram audit stage of the Multi-Agent TSD
-Security Review Pipeline.
-
-Responsibility:
-    Uses Claude's vision capability via the Bedrock Converse API [4] to
-    audit architectural diagrams extracted from TSD documents during the
-    ingestion phase [2]. For each diagram/parameter pair, the Vision agent
-    produces a structured VisionResult that is persisted as a diagram-type
-    Finding in the review app.
-
-Bias:
-    If a required security control (e.g. TLS indicator, auth boundary,
-    encryption label) is absent from the diagram but should be present,
-    treat this as evidence of non-compliance — not as inconclusive.
-
-Output:
-    VisionResult dataclass — consumed by analysis_service.py to create
-    FINDING_TYPE_DIAGRAM Finding records in the review app.
-
-Relationship to other agents:
-    The Vision agent runs INDEPENDENTLY of the Hunter/Critic/Mediator debate
-    chain. It is not a replacement for the text-based debate — it is a
-    complementary pass that audits visual evidence the text pipeline cannot
-    see. analysis_service.py runs both pipelines per parameter and merges
-    their findings.
-
-Dependency chain:
-    agent_prompts.py          (pure prompt strings — VISION_SYSTEM_PROMPT,
-                               build_vision_prompt())
-         ↓
-    base.py                   (BaseAgent, VisionResult, Citation, verdict
-                               and severity constants)
-         ↓
-    vision.py                 ← YOU ARE HERE
-         ↓
-    analysis_service.py       (orchestrator)
-"""
-
 from __future__ import annotations
 
 import base64
@@ -71,18 +32,6 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class DiagramInput:
-    """
-    Represents a single diagram extracted from the TSD document.
-
-    Produced by the TSD ingestor (apps/ai/tsd_processing/ingestor.py)
-    and passed to VisionAgent.run() by analysis_service.py.
-
-    The diagram_id format matches DiagramBlock.diagram_id from the ingestor:
-        "p{page_number}_d{diagram_idx}"   e.g. "p5_d2"
-
-    This is the same ID stored in Finding.diagram_id in the review app [3]
-    to enable click-to-source navigation in the frontend PDF viewer.
-    """
 
     diagram_id: str  # "p{page}_d{idx}" — matches ingestor output [2]
     image_b64: str  # base64-encoded PNG/JPEG image bytes [2]
@@ -719,28 +668,6 @@ def audit_diagrams_for_parameter(
     parameter_section: str,
     diagrams: List[DiagramInput],
 ) -> List[tuple[DiagramInput, VisionResult]]:
-    """
-    Module-level helper that runs the VisionAgent against every diagram
-    in the provided list for a single security parameter.
-
-    Called by analysis_service.py to avoid a nested loop at the
-    orchestration layer — the orchestrator calls this once per parameter
-    and receives a flat list of (diagram, result) pairs to persist.
-
-    Diagrams that fail DiagramInput.is_valid() are skipped with a warning
-    rather than passed to the agent — this prevents unnecessary API calls
-    for corrupt or empty diagram entries from the TSD ingestor [2].
-
-    Args:
-        agent:             An instantiated VisionAgent.
-        parameter_text:    Full requirement text from CategoryParameterChild [3].
-        parameter_section: Parent section title from CategoryParameterParent [3].
-        diagrams:          List of DiagramInput instances from the TSD ingestor [2].
-
-    Returns:
-        A list of (DiagramInput, VisionResult) tuples — one per valid diagram.
-        Empty list if diagrams is empty or all diagrams fail validation.
-    """
     if not diagrams:
         return []
 

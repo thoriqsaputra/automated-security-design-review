@@ -1,39 +1,3 @@
-"""
-RAPTOR Search — level-aware similarity retrieval against the RAPTOR
-summarisation tree built from a TSD document.
-
-Responsibility:
-    Given a query text (a security parameter from CategoryParameterChild [3]),
-    find the most semantically relevant RAPTORNode instances at the requested
-    abstraction level — leaf (raw chunks), section summaries, or chapter
-    summaries — and return their source_block_ids for citation tracing.
-
-Why RAPTOR search alongside vector search?
-    Vector search (retrieval/vector_search.py) searches the security parameter
-    knowledge base — it finds which parameters match a TSD chunk.
-    RAPTOR search is the inverse — it searches the TSD tree to find which
-    TSD passages are relevant to a given parameter. The router
-    (retrieval/router.py) combines both directions for HYBRID strategy queries.
-
-Level selection strategy:
-    RAPTOR_LOW  (level=0) → precise evidence, single text blocks
-                            used when the parameter needs exact citations
-    RAPTOR_MID  (level=1) → section summaries
-                            used when evidence may span multiple blocks
-    RAPTOR_HIGH (level=2) → chapter summaries
-                            used when the parameter is cross-cutting
-
-Dependency chain:
-    raptor.py              (RAPTORTree, RAPTORNode, _compute_cosine_similarity)
-    client.py [4]          (get_embedding — query embedding generation)
-         ↓
-    raptor_search.py       ← YOU ARE HERE
-         ↓
-    retrieval/router.py
-         ↓
-    analysis_service.py
-"""
-
 from __future__ import annotations
 
 import logging

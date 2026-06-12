@@ -34,7 +34,6 @@ class Finding(Base):
     finding_type: Mapped[str] = mapped_column(String(24), default=FindingType.REQUIREMENT.value, index=True)
     title: Mapped[str] = mapped_column(String(255))
     description: Mapped[str] = mapped_column(String)
-    status: Mapped[str] = mapped_column(String(24), default=FindingStatus.OPEN.value, index=True)
 
     # Verdict fields
     met_status: Mapped[Optional[str]] = mapped_column(String(16), nullable=True, index=True)
@@ -73,7 +72,7 @@ class Finding(Base):
     __table_args__ = (
         Index("idx_finding_review_type", "review_id", "finding_type"),
         Index("idx_finding_review_met", "review_id", "met_status"),
-        Index("idx_finding_status_sev", "status", "severity"),
+        Index("idx_finding_severity", "severity"),
         Index("idx_finding_met_conf", "met_status", "confidence_score"),
         Index("idx_finding_cat_created", "category_id", "created_at"),
     )
@@ -87,7 +86,4 @@ class Finding(Base):
 
     @property
     def is_actionable(self) -> bool:
-        return (
-            self.met_status == MetStatus.NOT_MET.value
-            and self.status == FindingStatus.OPEN.value
-        )
+        return self.met_status == MetStatus.NOT_MET.value

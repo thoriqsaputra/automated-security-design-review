@@ -32,6 +32,11 @@ class IngestionSummarySchema(BaseModel):
     version_no: int = Field(default=1)
     resolved_categories: Dict[str, int] = Field(default_factory=dict)
     celery_task_id: Optional[str] = Field(default=None)
+    start_page: Optional[int] = None
+    end_page: Optional[int] = None
+    level_definition_start_page: Optional[int] = None
+    level_definition_end_page: Optional[int] = None
+    asvs_level_definitions: Dict[str, Any] = Field(default_factory=dict)
 
 
 class IngestionProgressSchema(BaseModel):
@@ -67,9 +72,36 @@ class StandardCategorySchema(BaseModel):
 # Parameters
 # ---------------------------------------------------------------------------
 
+class ASVSLevelSchema(BaseModel):
+    level: int
+    code: str
+    name: str
+    description: str
+    classification_guidance: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ASVSLevelDefinitionSchema(BaseModel):
+    id: int
+    ingestion_job_id: int
+    level: int
+    code: str
+    name: str
+    description: str
+    classification_guidance: str
+    source_quote: Optional[str] = None
+    context_marker: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class CategoryParameterChildSchema(BaseModel):
     id: int
     stable_key: str
+    asvs_level: Optional[int] = None
     requirement_text: str
     details: str
     requirement_text_normalized: str

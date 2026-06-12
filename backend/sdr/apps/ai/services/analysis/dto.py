@@ -23,6 +23,7 @@ from sdr.apps.ai.tsd_processing.raptor import RAPTORTree
 from sdr.apps.ai.tsd_processing.graph_builder import TSDGraph
 from sdr.apps.standards.models import (
     CategoryParameterChild,
+    CategoryParameterParent,
     StandardCategory,
     StandardIngestionJob,
 )
@@ -42,16 +43,6 @@ class RetrievalIndexes(BaseModel):
     """Pre-built retrieval indexes from RetrievalService."""
     raptor_tree: Optional[RAPTORTree] = None
     tsd_graph: Optional[TSDGraph] = None
-
-    class Config:
-        arbitrary_types_allowed = True
-
-
-class ParameterApplicabilityResult(BaseModel):
-    """Result of pre-filtering parameters for applicability."""
-    applicable_parameters: List[CategoryParameterChild]
-    pre_filtered_parameters: List[CategoryParameterChild]
-    pre_filter_details: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
 
     class Config:
         arbitrary_types_allowed = True
@@ -95,7 +86,6 @@ class PersistenceInput(BaseModel):
     category: StandardCategory
     ingestion_job: Optional[StandardIngestionJob]
     debate_output: DebateOutput
-    is_pre_filtered: bool = False
 
     class Config:
         arbitrary_types_allowed = True
@@ -105,36 +95,44 @@ class PersistenceInput(BaseModel):
 class AnalysisSummary:
     """Aggregated statistics for a completed TSD analysis run."""
     total_parameters: int = 0
+    analysis_total_parameters: int = 0
+    analysis_processed_parameters: int = 0
+    analysis_remaining_parameters: int = 0
     met_count: int = 0
     not_met_count: int = 0
     na_count: int = 0
     error_count: int = 0
     diagram_findings_count: int = 0
     citation_count: int = 0
-    pre_filtered_count: int = 0
     screened_out: bool = False
     critical_findings: List[str] = None
     high_findings: List[str] = None
+    asvs: Dict[str, Any] = None
 
     def __post_init__(self):
         if self.critical_findings is None:
             self.critical_findings = []
         if self.high_findings is None:
             self.high_findings = []
+        if self.asvs is None:
+            self.asvs = {}
 
     def to_dict(self) -> Dict[str, Any]:
         return {
             "total_parameters": self.total_parameters,
+            "analysis_total_parameters": self.analysis_total_parameters,
+            "analysis_processed_parameters": self.analysis_processed_parameters,
+            "analysis_remaining_parameters": self.analysis_remaining_parameters,
             "met_count": self.met_count,
             "not_met_count": self.not_met_count,
             "na_count": self.na_count,
             "error_count": self.error_count,
             "diagram_findings_count": self.diagram_findings_count,
             "citation_count": self.citation_count,
-            "pre_filtered_count": self.pre_filtered_count,
             "screened_out": self.screened_out,
             "critical_findings": self.critical_findings[:10],
             "high_findings": self.high_findings[:10],
             "critical_findings_count": len(self.critical_findings),
             "high_findings_count": len(self.high_findings),
+            "asvs": self.asvs,
         }

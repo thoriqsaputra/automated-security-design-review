@@ -1,10 +1,7 @@
-# apps/ai/services/persistence_service.py
-"""
-Persistence Service — Handles all SQLAlchemy ORM writes.
-Responsibility: Take validated analysis output and persist to database.
-"""
 from __future__ import annotations
 
+import base64
+import binascii
 import logging
 import re
 from typing import Any, Optional, List
@@ -15,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sdr.core.database import SessionLocal
 from sdr.apps.reviews.models import Finding, Review, CitationAnchor
 from sdr.apps.reviews.models.choices import FindingStatus, FindingType, AnchorType
+from sdr.apps.workspace.services.storage import storage_service
 from sdr.apps.ai.agents.base import Citation
 from sdr.apps.standards.models import CategoryParameterChild
 from sdr.apps.standards.utils import build_parameter_analysis_text
@@ -30,6 +28,13 @@ _DIAGRAM_PLACEHOLDER_PATTERN = re.compile(
     r"\b(?:not\s+completed|could\s+be\s+longer|todo|tbd|draft|placeholder|lorem\s+ipsum|mst_deep_scan)\b",
     re.IGNORECASE,
 )
+_DIAGRAM_IMAGE_CONTENT_TYPES = {
+    "gif": "image/gif",
+    "jpeg": "image/jpeg",
+    "jpg": "image/jpeg",
+    "png": "image/png",
+    "webp": "image/webp",
+}
 
 
 class PersistenceService:
@@ -70,11 +75,15 @@ class PersistenceService:
                 persisted_met_status = "na"
                 raw_final_verdict = "met_without_quote_matched_citation"
             sanitized_description = self._strip_null_bytes(
+                self._sanitize_user_facing_text(mediator.finding_description or mediator.reasoning or "", source_map)
+            )
+            sanitized_reasoning = self._strip_null_bytes(
                 self._sanitize_user_facing_text(mediator.reasoning or "", source_map)
             )
             sanitized_recommendation = self._strip_null_bytes(
                 self._sanitize_user_facing_text(mediator.recommendation or "", source_map)
             )
+            requirement_text = self._strip_null_bytes(build_parameter_analysis_text(parameter))
             requirement_metadata = self._strip_null_bytes(
                 {
                     "section": (
@@ -108,6 +117,10 @@ class PersistenceService:
                     getattr(getattr(persistence_input, "category", None), "code", None),
                 ),
                 raw_final_verdict=raw_final_verdict,
+                requirement_text=requirement_text,
+                requirement_metadata=requirement_metadata,
+                analysis_trace=debate_output.analysis_trace or {},
+                citation_count=len(anchorable_citations),
             )
             sanitized_recommendation = self._normalize_recommendation(
                 sanitized_recommendation,
@@ -127,7 +140,6 @@ class PersistenceService:
                         finding_type=FindingType.REQUIREMENT.value if hasattr(FindingType, 'value') else FindingType.REQUIREMENT,
                         title=finding_title,
                         description=sanitized_description,
-                        status=FindingStatus.OPEN.value if hasattr(FindingStatus, 'value') else FindingStatus.OPEN,
                         met_status=persisted_met_status,
                         confidence_score=mediator.confidence,
                         severity=severity_payload["severity"],
@@ -136,13 +148,13 @@ class PersistenceService:
                         recommendation=sanitized_recommendation,
                         hunter_reasoning=self._strip_null_bytes(debate_output.hunter_result.reasoning),
                         critic_reasoning=self._strip_null_bytes(debate_output.critic_result.reasoning),
-                        mediator_reasoning=sanitized_description,
+                        mediator_reasoning=sanitized_reasoning,
                         hunter_thought_process=self._strip_null_bytes(debate_output.hunter_result.cot_trace),
                         critic_thought_process=self._strip_null_bytes(debate_output.critic_result.cot_trace),
                         mediator_thought_process=self._strip_null_bytes(mediator.cot_trace),
-                        reason=sanitized_description,
+                        reason=sanitized_reasoning,
                         requirement_reference=parameter.stable_key,
-                        requirement_text=self._strip_null_bytes(build_parameter_analysis_text(parameter)),
+                        requirement_text=requirement_text,
                         requirement_metadata=requirement_metadata,
                     )
                     db.add(finding)
@@ -202,71 +214,6 @@ class PersistenceService:
             )
             return None
 
-    def persist_pre_filtered_finding(
-        self,
-        review: Review,
-        parameter: CategoryParameterChild,
-        summary: AnalysisSummary,
-        *,
-        prefilter_details: Optional[dict] = None,
-    ) -> None:
-        try:
-            self.logger.info(
-                "PersistenceService.persist_pre_filtered_finding: parameter id=%s",
-                parameter.id,
-            )
-
-            with SessionLocal() as db:
-                try:
-                    finding = Finding(
-                        review_id=review.id,
-                        category_id=(
-                            parameter.parent.category_id if parameter.parent else None
-                        ),
-                        parent_parameter_id=parameter.parent.id if parameter.parent else None,
-                        child_parameter_id=parameter.id,
-                        finding_type=FindingType.REQUIREMENT.value if hasattr(FindingType, 'value') else FindingType.REQUIREMENT,
-                        title=f"{(parameter.parent.title if parameter.parent else 'General')}: {(parameter.requirement_text or '')[:80]} [NOT APPLICABLE]",
-                        description="Pre-filtered as not applicable to this document.",
-                        status=FindingStatus.CLOSED.value if hasattr(FindingStatus, 'value') else FindingStatus.CLOSED,
-                        met_status="na",
-                        confidence_score=0.9,
-                        requirement_reference=parameter.stable_key,
-                        requirement_text=self._strip_null_bytes(build_parameter_analysis_text(parameter)),
-                        requirement_metadata=self._strip_null_bytes({
-                            "section": (
-                                parameter.parent.title if parameter.parent else None
-                            ),
-                            "ordinal": parameter.ordinal,
-                            "stable_key": parameter.stable_key,
-                            "pre_filtered": True,
-                            "analysis_outcome_source": "prefilter",
-                            "prefilter_reason": (prefilter_details or {}).get("prefilter_reason"),
-                            "prefilter_confidence": (prefilter_details or {}).get("prefilter_confidence"),
-                            "evidence_gate_attempted": False,
-                            "evidence_gate_outcome": None,
-                            "downgrade_reason": None,
-                        }),
-                    )
-                    db.add(finding)
-                    db.commit()
-                except Exception:
-                    db.rollback()
-                    raise
-
-            summary.na_count += 1
-
-            self.logger.info(
-                "PersistenceService.persist_pre_filtered_finding: [SUCCESS]"
-            )
-
-        except Exception as exc:
-            summary.error_count += 1
-            self.logger.exception(
-                "PersistenceService.persist_pre_filtered_finding: failed: %s",
-                exc,
-            )
-
     def _persist_diagram_finding(
         self,
         review: Review,
@@ -295,6 +242,7 @@ class PersistenceService:
                 ),
                 ambiguous_elements=list(getattr(vision_result, "ambiguous_elements", []) or []),
                 missing_information=list(getattr(vision_result, "missing_information", []) or []),
+                requirement_text=build_parameter_analysis_text(parameter),
             )
             self.logger.info(
                 "PersistenceService._persist_diagram_finding: diagram_id=%s",
@@ -304,6 +252,10 @@ class PersistenceService:
             diagram_display = self._build_diagram_display_payload(
                 diagram_input,
                 vision_result,
+            )
+            diagram_image_metadata = self._build_diagram_image_metadata(
+                review_id=review.id,
+                diagram_input=diagram_input,
             )
 
             finding_type_val = FindingType.DIAGRAM.value if hasattr(FindingType, 'value') else FindingType.DIAGRAM
@@ -348,6 +300,7 @@ class PersistenceService:
                             "diagram_id": diagram_input.diagram_id,
                             "diagram_caption": diagram_display["caption"],
                             "raw_diagram_caption": diagram_display["raw_caption"],
+                            "diagram_image": diagram_image_metadata,
                             "diagram_page_number": diagram_input.page_number,
                             "diagram_bbox": {
                                 "x0": diagram_input.bbox_x0,
@@ -424,6 +377,43 @@ class PersistenceService:
             "downgrade_reason": trace.get("downgrade_reason"),
             "retrieval_evidence_quality": retrieval_metadata.get("evidence_quality"),
         }
+
+    def _build_diagram_image_metadata(self, *, review_id: int, diagram_input) -> dict:
+        image_format = str(getattr(diagram_input, "image_format", "png") or "png").lower()
+        if image_format == "jpg":
+            image_format = "jpeg"
+        content_type = _DIAGRAM_IMAGE_CONTENT_TYPES.get(image_format, "image/png")
+        extension = "jpg" if image_format == "jpeg" else image_format
+        object_name = f"reviews/{review_id}/diagrams/{diagram_input.diagram_id}.{extension}"
+
+        try:
+            image_b64 = getattr(diagram_input, "image_b64", "") or ""
+            image_bytes = base64.b64decode(image_b64, validate=True)
+            if not image_bytes:
+                raise ValueError("empty image bytes")
+            storage_service.upload_file(image_bytes, object_name, content_type)
+            return {
+                "object_name": object_name,
+                "content_type": content_type,
+                "image_format": image_format,
+                "byte_size": len(image_bytes),
+            }
+        except (binascii.Error, ValueError) as exc:
+            self.logger.warning(
+                "PersistenceService._build_diagram_image_metadata: invalid image for review_id=%s diagram_id=%s: %s",
+                review_id,
+                getattr(diagram_input, "diagram_id", None),
+                exc,
+            )
+            return {"error": f"invalid_image: {exc}"}
+        except Exception as exc:
+            self.logger.warning(
+                "PersistenceService._build_diagram_image_metadata: upload failed for review_id=%s diagram_id=%s: %s",
+                review_id,
+                getattr(diagram_input, "diagram_id", None),
+                exc,
+            )
+            return {"error": f"upload_failed: {exc}"}
 
     def _sanitize_user_facing_text(self, text: str, source_map: dict) -> str:
         def _replace(match: re.Match) -> str:
@@ -717,6 +707,10 @@ class PersistenceService:
         confidence_score: Optional[float],
         domain: Optional[str],
         raw_final_verdict: Optional[str],
+        requirement_text: Optional[str],
+        requirement_metadata: Optional[dict],
+        analysis_trace: Optional[dict],
+        citation_count: int,
     ) -> dict:
         severity = calculate_deterministic_severity(
             met_status=met_status,
@@ -724,6 +718,10 @@ class PersistenceService:
             domain=domain,
             finding_type=FindingType.REQUIREMENT.value if hasattr(FindingType, 'value') else FindingType.REQUIREMENT,
             raw_final_verdict=raw_final_verdict,
+            requirement_text=requirement_text,
+            requirement_metadata=requirement_metadata,
+            analysis_trace=analysis_trace,
+            citation_count=citation_count,
         )
         return {
             "severity": severity.severity,
@@ -751,6 +749,7 @@ class PersistenceService:
         domain: Optional[str],
         ambiguous_elements: List[str],
         missing_information: List[str],
+        requirement_text: Optional[str],
     ) -> dict:
         severity = calculate_deterministic_severity(
             met_status=met_status,
@@ -759,6 +758,7 @@ class PersistenceService:
             finding_type=FindingType.DIAGRAM.value if hasattr(FindingType, 'value') else FindingType.DIAGRAM,
             ambiguous_elements=ambiguous_elements,
             missing_information=missing_information,
+            requirement_text=requirement_text,
         )
         return {
             "severity": severity.severity,

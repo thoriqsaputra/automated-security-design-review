@@ -3,7 +3,7 @@ import logging
 import re
 import concurrent.futures
 import threading
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 import tiktoken
 
@@ -17,11 +17,8 @@ from sdr.core.config import settings
 
 logger = logging.getLogger(__name__)
 
-_EMBEDDING_BULK_BATCH = 500
-_EMBEDDING_MODEL_NAME = "bge-small-en-v1.5"
 _AI_RESPONSE_PREVIEW_LIMIT = 800
 
-# Lazily loaded tiktoken encoder for token counting in logging
 _token_encoder = None
 
 def _count_tokens(text: str) -> int:
@@ -123,6 +120,166 @@ def _identity(item: Any) -> str:
     if isinstance(item, dict):
         return str(item.get("requirement", "")).strip()
     return str(item).strip()
+
+
+def _extract_logical_id(text: str) -> str:
+    """
+    Extracts a normalized logical ID from the beginning of a requirement text.
+    Returns the normalized ID (e.g., '2.1.1') if found, otherwise returns the original text.
+    """
+    match = re.match(r"^(?:v?\d+(?:\.\d+)*\s*-\s*)?v?(\d+(?:\.\d+)*)\b", text, re.IGNORECASE)
+    if match:
+        return match.group(1)
+    return text
+
+
+def _coerce_asvs_level(value: Any) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, int) and value in (1, 2, 3):
+        return value
+    text = str(value).strip().upper()
+    if text.startswith("L"):
+        text = text[1:].strip()
+    if text in {"1", "2", "3"}:
+        return int(text)
+    return None
+
+
+def _clean_asvs_level_definitions(parsed: Any) -> List[Dict[str, Any]]:
+    if isinstance(parsed, dict):
+        raw_items = parsed.get("levels") or parsed.get("asvs_levels") or []
+    elif isinstance(parsed, list):
+        raw_items = parsed
+    else:
+        raw_items = []
+
+    cleaned: List[Dict[str, Any]] = []
+    seen = set()
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        level = _coerce_asvs_level(item.get("level") or item.get("code"))
+        if level is None or level in seen:
+            continue
+        name = str(item.get("name") or f"Level {level}").strip()
+        description = str(item.get("description") or "").strip()
+        guidance = str(
+            item.get("classification_guidance")
+            or item.get("guidance")
+            or item.get("classification")
+            or description
+        ).strip()
+        if not guidance:
+            continue
+        cleaned.append(
+            {
+                "level": level,
+                "code": f"L{level}",
+                "name": name,
+                "description": description or guidance,
+                "classification_guidance": guidance,
+                "source_quote": str(item.get("source_quote") or item.get("verbatim_quote") or "").strip(),
+                "context_marker": str(item.get("context_marker") or "").strip(),
+            }
+        )
+        seen.add(level)
+
+    return sorted(cleaned, key=lambda item: item["level"])
+
+
+def _get_item_length(item: Any) -> int:
+    """Returns the total length of the requirement text plus its details."""
+    if isinstance(item, dict):
+        return len(str(item.get("requirement", ""))) + len(str(item.get("details", "")))
+    return len(str(item))
+
+
+def extract_asvs_level_definitions_from_document(
+    source_doc: StandardSourceDocument,
+    start_page: Optional[int] = None,
+    end_page: Optional[int] = None,
+) -> List[Dict[str, Any]]:
+    logger.info(
+        "extract_asvs_level_definitions_from_document: [ENTRY] standard_id=%s name='%s' pages=%s-%s",
+        source_doc.id,
+        source_doc.name,
+        start_page,
+        end_page,
+    )
+    try:
+        with get_local_file_path(source_doc.document) as source_doc_path:
+            content = get_document_content(
+                source_doc_path,
+                source_doc.document,
+                start_page=start_page,
+                end_page=end_page,
+            )
+        source_doc_text: str = (content or {}).get("text") or ""
+    except Exception as exc:
+        logger.exception("extract_asvs_level_definitions_from_document: failed to read document: %s", exc)
+        return []
+
+    source_doc_text = _remove_table_of_contents(source_doc_text)
+    if not source_doc_text.strip():
+        logger.warning("extract_asvs_level_definitions_from_document: no text extracted")
+        return []
+
+    prompt = f"""
+Extract the OWASP ASVS verification level definitions from this standard text.
+
+Return ONLY valid JSON with this shape:
+{{
+  "levels": [
+    {{
+      "level": 1,
+      "code": "L1",
+      "name": "<official level name if present>",
+      "description": "<what this ASVS level means>",
+      "classification_guidance": "<how to decide that an application/TSD belongs to this level>",
+      "source_quote": "<exact quote from the standard text>",
+      "context_marker": "<nearest heading/page/section marker>"
+    }}
+  ]
+}}
+
+Rules:
+- Extract only ASVS L1, L2, and L3 definitions.
+- Use the document's own wording and version-specific meaning.
+- Do not invent a level definition if it is absent from the text.
+- If a field is not explicitly named, infer concise English from the surrounding definition text.
+
+--- STANDARD TEXT ---
+{source_doc_text[:12000]}
+"""
+    try:
+        response = chat_completion(
+            messages=[
+                {
+                    "role": "system",
+                    "content": (
+                        "You extract OWASP ASVS verification level definitions from standards. "
+                        "Return strict JSON only."
+                    ),
+                },
+                {"role": "user", "content": prompt},
+            ],
+            component="standard_extraction",
+            temperature=0.0,
+            max_tokens=1800,
+            response_format={"type": "json_object"},
+        )
+        if response.error or not response.content:
+            logger.warning(
+                "extract_asvs_level_definitions_from_document: LLM error=%s",
+                response.error,
+            )
+            return []
+        parsed = json.loads(_extract_json_payload(response.content))
+        return _clean_asvs_level_definitions(parsed)
+    except Exception as exc:
+        logger.exception("extract_asvs_level_definitions_from_document: failed: %s", exc)
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -279,6 +436,7 @@ def extract_structured_requirements(source_doc_text: str) -> Dict[str, List[Any]
                     details = str(item.get("details", "")).strip()
                     quote = str(item.get("verbatim_quote", "")).strip()
                     marker = str(item.get("context_marker", "")).strip()
+                    asvs_level = _coerce_asvs_level(item.get("asvs_level"))
 
                     if len(req) < 8 and len(details) < 8:
                         total_items_filtered += 1
@@ -295,6 +453,7 @@ def extract_structured_requirements(source_doc_text: str) -> Dict[str, List[Any]
                             "details": details,
                             "verbatim_quote": quote,
                             "context_marker": marker,
+                            "asvs_level": asvs_level,
                         }
                     )
                     total_items_added += 1
@@ -367,26 +526,6 @@ def _merge_requirements(
     base: Dict[str, List[Any]],
     incoming: Dict[str, List[Any]],
 ) -> Dict[str, List[Any]]:
-    """
-    Reduce step: merge *incoming* chunk results into the *base* accumulator.
-
-    Merging rules
-    -------------
-    * If a section key already exists in *base*, extend its requirement list
-      with items from *incoming* that are **not already present** (exact string
-      match after strip).  This eliminates duplicates introduced by chunk
-      overlap without discarding genuinely distinct requirements that happen
-      to appear in multiple sections.
-    * If a section key is new, add it directly to *base*.
-
-    Args:
-        base:     The running accumulator built from previously processed chunks.
-        incoming: The extraction result from the current chunk.
-
-    Returns:
-        The updated *base* dictionary (mutated in-place for efficiency and
-        also returned for convenient chaining).
-    """
     logger.debug(
         "_merge_requirements: starting merge. "
         "Incoming sections=%d, current base sections=%d",
@@ -418,17 +557,57 @@ def _merge_requirements(
             new_reqs_total += len(new_reqs)
         else:
             # Existing section — append only genuinely new requirements.
-            existing_set = {_identity(item) for item in base[section]}  # O(1) lookup
-            existing_count_before = len(base[section])
+            existing_items = base[section]
+            
+            # Build dictionaries for fast lookups
+            existing_by_identity = {_identity(item): i for i, item in enumerate(existing_items)}
+            existing_by_logical_id = {}
+            for i, item in enumerate(existing_items):
+                ident = _identity(item)
+                log_id = _extract_logical_id(ident)
+                if log_id != ident:
+                    existing_by_logical_id[log_id] = i
+                    
+            existing_count_before = len(existing_items)
             added = 0
+            
             for req in new_reqs:
                 req_identity = _identity(req)
-                if req_identity and req_identity not in existing_set:
-                    base[section].append(req)
-                    existing_set.add(req_identity)
-                    added += 1
-                else:
+                if not req_identity:
+                    continue
+                    
+                req_log_id = _extract_logical_id(req_identity)
+                
+                # Check for exact string match
+                if req_identity in existing_by_identity:
                     duplicates_skipped += 1
+                    continue
+                    
+                # Check for logical ID match
+                if req_log_id != req_identity and req_log_id in existing_by_logical_id:
+                    existing_idx = existing_by_logical_id[req_log_id]
+                    existing_item = existing_items[existing_idx]
+                    
+                    # If incoming requirement has more text/details, replace the existing one
+                    if _get_item_length(req) > _get_item_length(existing_item):
+                        existing_items[existing_idx] = req
+                        existing_by_identity[req_identity] = existing_idx
+                        old_ident = _identity(existing_item)
+                        if old_ident in existing_by_identity and old_ident != req_identity:
+                            del existing_by_identity[old_ident]
+                        
+                        added += 1  # count as an update
+                    else:
+                        duplicates_skipped += 1
+                    continue
+                
+                # Truly new requirement
+                existing_items.append(req)
+                new_idx = len(existing_items) - 1
+                existing_by_identity[req_identity] = new_idx
+                if req_log_id != req_identity:
+                    existing_by_logical_id[req_log_id] = new_idx
+                added += 1
             
             if added:
                 sections_updated += 1
@@ -476,29 +655,6 @@ def extract_requirements_from_document(
     end_page: Optional[int] = None,
     progress_callback=None,
 ) -> Dict[str, List[Any]]:
-    """
-    Public entry point. Extracts security requirements from a source
-    source document using a **Map-Reduce** pattern to handle arbitrarily
-    large documents without hitting LLM token limits or suffering from
-    "lost in the middle" syndrome.
-
-    Pipeline
-    --------
-    2. **Ingest**  — read and decode the document via ``get_document_content``.
-    3. **Chunk**   — split the full text into token-bounded, context-annotated
-                     chunks using ``chunk_text_with_context``.
-    4. **Map**     — call ``extract_structured_requirements`` on every chunk
-                     independently, so each AI call is well within token limits.
-    5. **Reduce**  — merge all per-chunk dicts into a single de-duplicated
-                     requirements dictionary using ``_merge_requirements``.
-    Args:
-        source_doc: A ``StandardSourceDocument`` instance whose ``.document``
-                  points to the document to be processed.
-
-    Returns:
-        The merged ``{ "Section Header": ["Req 1", ...] }`` dictionary,
-        or ``{}`` on any unrecoverable error.
-    """
     logger.info(
         "extract_requirements_from_document: [ENTRY] "
         "standard_id=%s, name='%s', document='%s'",

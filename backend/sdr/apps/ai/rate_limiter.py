@@ -1,13 +1,38 @@
 import logging
 import threading
 import time
-from typing import Dict, Optional
+from typing import Dict, Optional, Tuple
 
 import redis
 
 from sdr.core.config import settings
 
 logger = logging.getLogger(__name__)
+_ROLLING_WINDOW_SECONDS = 60.0
+_WINDOW_GRACE_SECONDS = 0.05
+_ROLLING_WINDOW_LUA = """
+local key = KEYS[1]
+local now = tonumber(ARGV[1])
+local window = tonumber(ARGV[2])
+local limit = tonumber(ARGV[3])
+local member = ARGV[4]
+local reserve = tonumber(ARGV[5])
+redis.call("ZREMRANGEBYSCORE", key, 0, now - window)
+local count = redis.call("ZCARD", key)
+if count < limit then
+  if reserve == 1 then
+    redis.call("ZADD", key, now, member)
+    redis.call("EXPIRE", key, math.ceil(window * 2))
+  end
+  return {1, count, 0}
+end
+local oldest = redis.call("ZRANGE", key, 0, 0, "WITHSCORES")
+local oldest_score = 0
+if oldest[2] then
+  oldest_score = tonumber(oldest[2])
+end
+return {0, count, oldest_score}
+"""
 
 
 class RateLimiter:
@@ -44,8 +69,8 @@ class RateLimiter:
                     exc,
                 )
 
-    def _window_key(self, window_id: int) -> str:
-        return f"rate_limit:{self.provider_key}:{window_id}"
+    def _window_key(self) -> str:
+        return f"rate_limit:{self.provider_key}:events"
 
     def _cooldown_key(self) -> str:
         return f"rate_limit:{self.provider_key}:cooldown_until"
@@ -80,73 +105,114 @@ class RateLimiter:
                 exc,
             )
 
-    def _wait_for_cooldown(self) -> None:
+    def _get_cooldown_wait(self) -> float:
         cooldown_until = max(
             self._local_cooldown_until,
             self._read_shared_cooldown_until(),
         )
         now = time.time()
         if cooldown_until > now:
-            wait_seconds = cooldown_until - now
-            logger.warning(
-                "RateLimiter(%s): cooling down for %.2fs after provider throttle.",
-                self.provider_key,
-                wait_seconds,
+            return cooldown_until - now
+        return 0.0
+
+    def _reserve_rolling_window_slot(self, *, reserve: bool) -> Tuple[bool, float, int]:
+        if not self.redis_client:
+            return True, 0.0, 0
+
+        now = time.time()
+        member = f"{time.time_ns()}:{threading.get_ident()}"
+        try:
+            allowed_flag, current_count, oldest_score = self.redis_client.eval(
+                _ROLLING_WINDOW_LUA,
+                1,
+                self._window_key(),
+                now,
+                _ROLLING_WINDOW_SECONDS,
+                self.rpm_limit,
+                member,
+                1 if reserve else 0,
             )
-            time.sleep(wait_seconds)
+        except Exception as exc:
+            logger.error(
+                "RateLimiter(%s): Redis error %s. Falling back to spacing-only.",
+                self.provider_key,
+                exc,
+            )
+            return True, 0.0, 0
+
+        allowed = bool(int(allowed_flag or 0))
+        count = int(current_count or 0)
+        oldest = float(oldest_score or 0.0)
+        if allowed:
+            return True, 0.0, count
+        if oldest <= 0.0:
+            return False, max(self._min_interval, 1.0), count
+        wait_seconds = max(
+            _WINDOW_GRACE_SECONDS,
+            (oldest + _ROLLING_WINDOW_SECONDS) - now + _WINDOW_GRACE_SECONDS,
+        )
+        return False, wait_seconds, count
+
+    def wait_for_availability(self) -> None:
+        """
+        Blocks until the shared provider window has room, without reserving a slot.
+        Useful as a preflight before a new phase starts issuing requests.
+        """
+        while True:
+            wait_for = 0.0
+            with self._lock:
+                cooldown_wait = self._get_cooldown_wait()
+                if cooldown_wait > 0:
+                    wait_for = cooldown_wait
+                    logger.warning("RateLimiter(%s): cooling down for %.2fs.", self.provider_key, wait_for)
+                else:
+                    if not self.redis_client:
+                        return
+                    allowed, wait_seconds, current_count = self._reserve_rolling_window_slot(reserve=False)
+                    if allowed:
+                        return
+                    wait_for = wait_seconds
+                    logger.warning(
+                        "RateLimiter(%s): preflight window full (%d/%d RPM). Waiting %.2fs.",
+                        self.provider_key, current_count, self.rpm_limit, wait_for,
+                    )
+            
+            if wait_for > 0:
+                time.sleep(wait_for)
 
     def acquire(self) -> None:
         """
         Blocks until the provider cooldown, spacing, and window budget allow a call.
         """
-        with self._lock:
-            while True:
-                self._wait_for_cooldown()
+        while True:
+            wait_for = 0.0
+            with self._lock:
+                cooldown_wait = self._get_cooldown_wait()
+                if cooldown_wait > 0:
+                    wait_for = cooldown_wait
+                    logger.warning("RateLimiter(%s): cooling down for %.2fs.", self.provider_key, wait_for)
+                else:
+                    elapsed = time.monotonic() - self._last_call_time
+                    if elapsed < self._min_interval:
+                        wait_for = self._min_interval - elapsed
+                        logger.debug("RateLimiter(%s): spacing wait %.2fs", self.provider_key, wait_for)
+                    else:
+                        if not self.redis_client:
+                            self._last_call_time = time.monotonic()
+                            return
 
-                elapsed = time.monotonic() - self._last_call_time
-                if elapsed < self._min_interval:
-                    wait = self._min_interval - elapsed
-                    logger.debug(
-                        "RateLimiter(%s): spacing wait %.2fs",
-                        self.provider_key,
-                        wait,
-                    )
-                    time.sleep(wait)
+                        allowed, wait_seconds, current_count = self._reserve_rolling_window_slot(reserve=True)
+                        if allowed:
+                            self._last_call_time = time.monotonic()
+                            return
+                        wait_for = wait_seconds
+                        logger.warning(
+                            "RateLimiter(%s): window full (%d/%d RPM). Waiting %.2fs.",
+                            self.provider_key, current_count, self.rpm_limit, wait_for,
+                        )
 
-                if not self.redis_client:
-                    self._last_call_time = time.monotonic()
-                    return
-
-                window = 60
-                current_time = time.time()
-                window_id = int(current_time / window)
-                key = self._window_key(window_id)
-                try:
-                    current_count = self.redis_client.incr(key)
-                    if current_count == 1:
-                        self.redis_client.expire(key, window * 2)
-
-                    if current_count <= self.rpm_limit:
-                        self._last_call_time = time.monotonic()
-                        return
-
-                    sleep_time = window - (current_time % window) + 0.1
-                    logger.warning(
-                        "RateLimiter(%s): window full (%d/%d RPM). Waiting %.2fs.",
-                        self.provider_key,
-                        current_count,
-                        self.rpm_limit,
-                        sleep_time,
-                    )
-                    time.sleep(sleep_time)
-                except Exception as exc:
-                    logger.error(
-                        "RateLimiter(%s): Redis error %s. Falling back to spacing-only.",
-                        self.provider_key,
-                        exc,
-                    )
-                    self._last_call_time = time.monotonic()
-                    return
+            if wait_for > 0:
+                time.sleep(wait_for)
 
     def register_throttle(self, retry_after_seconds: Optional[float] = None) -> float:
         cooldown_seconds = retry_after_seconds
