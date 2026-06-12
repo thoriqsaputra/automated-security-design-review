@@ -22,6 +22,8 @@ export default function StandardsHub() {
   const [file, setFile] = useState<File | null>(null);
   const [startPage, setStartPage] = useState('');
   const [endPage, setEndPage] = useState('');
+  const [levelDefinitionStartPage, setLevelDefinitionStartPage] = useState('');
+  const [levelDefinitionEndPage, setLevelDefinitionEndPage] = useState('');
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
@@ -32,12 +34,14 @@ export default function StandardsHub() {
     if (!uploadCat || !file) return;
     setUploading(true);
     try {
-      await createIngestionJob(uploadCat, file, startPage, endPage);
+      await createIngestionJob(uploadCat, file, startPage, endPage, levelDefinitionStartPage, levelDefinitionEndPage);
       setShowUpload(false);
       setFile(null);
       setUploadCat('');
       setStartPage('');
       setEndPage('');
+      setLevelDefinitionStartPage('');
+      setLevelDefinitionEndPage('');
       // Refresh categories
       listCategories().then(r => setCategories(r.data));
     } finally {
@@ -137,7 +141,7 @@ export default function StandardsHub() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Start Page (Optional)</label>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Parameter Start Page (Optional)</label>
               <input
                 type="number"
                 min="1"
@@ -148,13 +152,37 @@ export default function StandardsHub() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">End Page (Optional)</label>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Parameter End Page (Optional)</label>
               <input
                 type="number"
                 min="1"
                 placeholder="e.g. 55"
                 value={endPage}
                 onChange={e => setEndPage(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-text-primary text-sm focus:outline-none focus:border-crimson transition-colors"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Level Definition Start Page (Optional)</label>
+              <input
+                type="number"
+                min="1"
+                placeholder="e.g. 8"
+                value={levelDefinitionStartPage}
+                onChange={e => setLevelDefinitionStartPage(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-text-primary text-sm focus:outline-none focus:border-crimson transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Level Definition End Page (Optional)</label>
+              <input
+                type="number"
+                min="1"
+                placeholder="e.g. 10"
+                value={levelDefinitionEndPage}
+                onChange={e => setLevelDefinitionEndPage(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-text-primary text-sm focus:outline-none focus:border-crimson transition-colors"
               />
             </div>

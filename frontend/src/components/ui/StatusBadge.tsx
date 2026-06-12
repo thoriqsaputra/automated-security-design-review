@@ -1,5 +1,3 @@
-import React from 'react';
-
 const statusConfig: Record<string, { bg: string; text: string; dot: string }> = {
   pending:   { bg: 'bg-midnight-lighter', text: 'text-text-secondary', dot: 'bg-text-muted' },
   running:   { bg: 'bg-flame/15', text: 'text-flame', dot: 'bg-flame animate-pulse' },

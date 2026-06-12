@@ -15,10 +15,28 @@ export interface StandardCategory {
 export interface ParameterChild {
   id: number;
   stable_key: string;
+  asvs_level: number | null;
   requirement_text: string;
   details: string;
   requirement_text_normalized: string;
   ordinal: number;
+}
+
+export interface ASVSLevel {
+  level: number;
+  code: string;
+  name: string;
+  description: string;
+  classification_guidance: string;
+}
+
+export interface ASVSLevelDefinition extends ASVSLevel {
+  id: number;
+  ingestion_job_id: number;
+  source_quote: string | null;
+  context_marker: string | null;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ParameterParent {
@@ -49,7 +67,11 @@ export interface IngestionJob {
   started_at: string | null;
   completed_at: string | null;
   summary: Record<string, unknown>;
-  progress: Record<string, unknown>;
+  progress: {
+    status_label?: string;
+    percentage?: number;
+    [key: string]: unknown;
+  };
   summary_json: Record<string, unknown>;
   error_message: string | null;
   source_documents: SourceDocument[];
@@ -64,6 +86,8 @@ export interface CategoryParams {
 
 export const listCategories = () => api.get<StandardCategory[]>('/standards/categories/');
 
+export const listAsvsLevels = () => api.get<ASVSLevel[]>('/standards/asvs-levels/');
+
 export const getCategoryParameters = (code: string) =>
   api.get<CategoryParams>(`/standards/categories/${code}/parameters`);
 
@@ -75,16 +99,28 @@ export const listIngestionJobs = (categoryCode?: string) =>
 export const getIngestionJob = (id: number) =>
   api.get<IngestionJob>(`/standards/ingestion/${id}`);
 
-export const createIngestionJob = (categoryCode: string, file: File, startPage?: string, endPage?: string) => {
+export const createIngestionJob = (
+  categoryCode: string,
+  file: File,
+  startPage?: string,
+  endPage?: string,
+  levelDefinitionStartPage?: string,
+  levelDefinitionEndPage?: string,
+) => {
   const form = new FormData();
   form.append('category_code', categoryCode);
   form.append('document', file);
   if (startPage) form.append('start_page', startPage);
   if (endPage) form.append('end_page', endPage);
+  if (levelDefinitionStartPage) form.append('level_definition_start_page', levelDefinitionStartPage);
+  if (levelDefinitionEndPage) form.append('level_definition_end_page', levelDefinitionEndPage);
   return api.post<IngestionJob>('/standards/ingestion/', form, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
 };
+
+export const getIngestionJobAsvsLevelDefinitions = (id: number) =>
+  api.get<ASVSLevelDefinition[]>(`/standards/ingestion/${id}/asvs-level-definitions`);
 
 export const activateIngestionJob = (id: number) =>
   api.post<IngestionJob>(`/standards/ingestion/${id}/activate`);

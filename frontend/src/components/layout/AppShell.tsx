@@ -1,4 +1,3 @@
-import React from 'react';
 import { Outlet } from 'react-router-dom';
 import FloatingNav from './FloatingNav';
 import TopBar from './TopBar';

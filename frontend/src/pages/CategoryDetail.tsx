@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ChevronDown, ChevronRight, CheckCircle2, Zap, Trash2, Ban, Upload } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronRight, CheckCircle2, Zap, Trash2, Ban, Upload, ShieldCheck } from 'lucide-react';
 import Card from '../components/ui/Card';
 import Modal from '../components/ui/Modal';
 import StatusBadge from '../components/ui/StatusBadge';
@@ -11,8 +11,10 @@ import {
   cancelIngestionJob,
   createIngestionJob,
   deleteIngestionJob,
+  getIngestionJobAsvsLevelDefinitions,
   deleteParameterParent,
   deleteParameterChild,
+  type ASVSLevelDefinition,
   type ParameterParent,
   type StandardCategory,
   type IngestionJob,
@@ -31,7 +33,12 @@ export default function CategoryDetail() {
   const [file, setFile] = useState<File | null>(null);
   const [startPage, setStartPage] = useState('');
   const [endPage, setEndPage] = useState('');
+  const [levelDefinitionStartPage, setLevelDefinitionStartPage] = useState('');
+  const [levelDefinitionEndPage, setLevelDefinitionEndPage] = useState('');
   const [uploading, setUploading] = useState(false);
+  const [definitionsJob, setDefinitionsJob] = useState<IngestionJob | null>(null);
+  const [definitions, setDefinitions] = useState<ASVSLevelDefinition[]>([]);
+  const [definitionsLoading, setDefinitionsLoading] = useState(false);
 
   const [jobsPage, setJobsPage] = useState(1);
   const [paramsPage, setParamsPage] = useState(1);
@@ -86,11 +93,13 @@ export default function CategoryDetail() {
     if (!code || !file) return;
     setUploading(true);
     try {
-      await createIngestionJob(code, file, startPage, endPage);
+      await createIngestionJob(code, file, startPage, endPage, levelDefinitionStartPage, levelDefinitionEndPage);
       setShowUpload(false);
       setFile(null);
       setStartPage('');
       setEndPage('');
+      setLevelDefinitionStartPage('');
+      setLevelDefinitionEndPage('');
       loadInitial();
     } catch (error: any) {
       alert(`Failed to start ingestion: ${error.response?.data?.detail || error.message}`);
@@ -119,6 +128,27 @@ export default function CategoryDetail() {
         alert(`Failed to cancel job: ${error.response?.data?.detail || error.message}`);
       }
     }
+  };
+
+  const openDefinitions = async (job: IngestionJob) => {
+    setDefinitionsJob(job);
+    setDefinitions([]);
+    setDefinitionsLoading(true);
+    try {
+      const response = await getIngestionJobAsvsLevelDefinitions(job.id);
+      setDefinitions(response.data);
+    } catch (error: any) {
+      alert(`Failed to load ASVS level definitions: ${error.response?.data?.detail || error.message}`);
+      setDefinitionsJob(null);
+    } finally {
+      setDefinitionsLoading(false);
+    }
+  };
+
+  const closeDefinitions = () => {
+    setDefinitionsJob(null);
+    setDefinitions([]);
+    setDefinitionsLoading(false);
   };
 
   const handleDeleteParent = async (parentId: number) => {
@@ -156,6 +186,24 @@ export default function CategoryDetail() {
 
   const paginatedParams = parameters.slice((paramsPage - 1) * PARAMS_PER_PAGE, paramsPage * PARAMS_PER_PAGE);
   const totalParamsPages = Math.ceil(parameters.length / PARAMS_PER_PAGE);
+  const asvsLevelClass = (level: number | null) => {
+    if (level === 1) return 'bg-emerald-500/15 text-emerald-400';
+    if (level === 2) return 'bg-sky-500/15 text-sky-400';
+    if (level === 3) return 'bg-fuchsia-500/15 text-fuchsia-400';
+    return 'bg-surface-hover text-text-muted';
+  };
+  const asvsLevelLabel = (level: number | null) => (level ? `L${level}` : 'Unknown');
+  const parentLevelSummary = (parent: ParameterParent) => {
+    const counts = parent.children.reduce<Record<string, number>>((acc, child) => {
+      const key = asvsLevelLabel(child.asvs_level);
+      acc[key] = (acc[key] || 0) + 1;
+      return acc;
+    }, {});
+    return ['L1', 'L2', 'L3', 'Unknown']
+      .filter(key => counts[key])
+      .map(key => `${key}: ${counts[key]}`)
+      .join(' · ');
+  };
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -186,6 +234,17 @@ export default function CategoryDetail() {
             <div className="grid grid-cols-3 gap-4">
               {paginatedJobs.map(job => (
                 <Card key={job.id}>
+                  {(() => {
+                    const asvsSummary = (job.summary_json as any)?.asvs_level_definitions;
+                    const asvsStatus = asvsSummary?.status || 'pending';
+                    const asvsCount = Number(asvsSummary?.count || 0);
+                    const isExtracted = asvsStatus === 'extracted' && asvsCount > 0;
+                    const statusClass = isExtracted
+                      ? 'bg-emerald-500/15 text-emerald-400'
+                      : asvsStatus === 'fallback'
+                        ? 'bg-amber-500/15 text-amber-400'
+                        : 'bg-surface-hover text-text-muted';
+                    return (
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
                       <div>
@@ -209,6 +268,14 @@ export default function CategoryDetail() {
                             </>
                           )}
                         </p>
+                        <button
+                          type="button"
+                          onClick={() => openDefinitions(job)}
+                          className={`mt-2 inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-[11px] font-medium transition-colors hover:bg-surface-hover ${statusClass}`}
+                        >
+                          <ShieldCheck size={12} />
+                          ASVS levels: {isExtracted ? `extracted · ${asvsCount}` : asvsStatus === 'fallback' ? 'fallback' : asvsStatus}
+                        </button>
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-2">
@@ -254,6 +321,8 @@ export default function CategoryDetail() {
                       )}
                     </div>
                   </div>
+                    );
+                  })()}
                 </Card>
               ))}
             </div>
@@ -303,10 +372,13 @@ export default function CategoryDetail() {
                         ) : (
                           <ChevronRight size={16} className="text-text-muted" />
                         )}
-                        <div>
-                          <p className="text-sm font-medium text-text-primary">{parent.title}</p>
-                          <p className="text-xs text-text-muted">{parent.children.length} requirement(s)</p>
-                        </div>
+	                        <div>
+	                          <p className="text-sm font-medium text-text-primary">{parent.title}</p>
+	                          <p className="text-xs text-text-muted">
+                              {parent.children.length} requirement(s)
+                              {parentLevelSummary(parent) && ` · ${parentLevelSummary(parent)}`}
+                            </p>
+	                        </div>
                       </div>
                       <span className="text-xs text-text-muted font-mono">{parent.stable_key}</span>
                     </button>
@@ -326,8 +398,13 @@ export default function CategoryDetail() {
                           <div className="flex items-start gap-2">
                             <CheckCircle2 size={14} className="text-burgundy mt-0.5 shrink-0" />
                             <div>
-                              <p className="text-sm text-text-primary">{child.requirement_text}</p>
-                              {child.details && (
+	                              <div className="flex flex-wrap items-center gap-2">
+	                                <p className="text-sm text-text-primary">{child.requirement_text}</p>
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${asvsLevelClass(child.asvs_level)}`}>
+                                    {asvsLevelLabel(child.asvs_level)}
+                                  </span>
+                                </div>
+	                              {child.details && (
                                 <p className="text-xs text-text-muted mt-0.5">{child.details}</p>
                               )}
                             </div>
@@ -383,7 +460,7 @@ export default function CategoryDetail() {
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Start Page (Optional)</label>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Parameter Start Page (Optional)</label>
               <input
                 type="number"
                 min="1"
@@ -394,13 +471,37 @@ export default function CategoryDetail() {
               />
             </div>
             <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">End Page (Optional)</label>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Parameter End Page (Optional)</label>
               <input
                 type="number"
                 min="1"
                 placeholder="e.g. 55"
                 value={endPage}
                 onChange={e => setEndPage(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-text-primary text-sm focus:outline-none focus:border-crimson transition-colors"
+              />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Level Definition Start Page (Optional)</label>
+              <input
+                type="number"
+                min="1"
+                placeholder="e.g. 8"
+                value={levelDefinitionStartPage}
+                onChange={e => setLevelDefinitionStartPage(e.target.value)}
+                className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-text-primary text-sm focus:outline-none focus:border-crimson transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-text-secondary mb-1">Level Definition End Page (Optional)</label>
+              <input
+                type="number"
+                min="1"
+                placeholder="e.g. 10"
+                value={levelDefinitionEndPage}
+                onChange={e => setLevelDefinitionEndPage(e.target.value)}
                 className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-text-primary text-sm focus:outline-none focus:border-crimson transition-colors"
               />
             </div>
@@ -413,6 +514,36 @@ export default function CategoryDetail() {
             {uploading ? 'Ingesting...' : 'Start Ingestion'}
           </button>
         </div>
+      </Modal>
+
+      <Modal open={!!definitionsJob} onClose={closeDefinitions} title={`ASVS Level Definitions${definitionsJob ? ` · Version ${definitionsJob.version_no}` : ''}`}>
+        {definitionsLoading ? (
+          <div className="flex items-center justify-center py-8">
+            <div className="w-7 h-7 border-2 border-flame border-t-transparent rounded-full animate-spin" />
+          </div>
+        ) : definitions.length === 0 ? (
+          <div className="space-y-3">
+            <p className="text-sm text-text-secondary">No version-specific ASVS level definitions were extracted for this ingestion job.</p>
+            {definitionsJob && (definitionsJob.summary_json as any)?.asvs_level_definitions?.reason && (
+              <p className="text-xs text-text-muted">{String((definitionsJob.summary_json as any).asvs_level_definitions.reason)}</p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
+            {definitions.map(definition => (
+              <div key={definition.id} className="rounded-lg border border-surface-border bg-surface/60 p-3">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-sm font-semibold text-text-primary">{definition.code} · {definition.name}</h3>
+                  {definition.context_marker && <span className="text-[11px] text-text-muted">{definition.context_marker}</span>}
+                </div>
+                <p className="mt-2 text-xs text-text-secondary">{definition.classification_guidance}</p>
+                {definition.source_quote && (
+                  <p className="mt-2 border-l-2 border-surface-border pl-3 text-xs text-text-muted">{definition.source_quote}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </Modal>
     </div>
   );
