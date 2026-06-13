@@ -2,6 +2,14 @@ import api from './client';
 
 export type JsonRecord = Record<string, unknown>;
 
+export interface PaginatedResponse<T> {
+  items: T[];
+  total: number;
+  page: number;
+  size: number;
+  total_pages: number;
+}
+
 export interface CitationAnchor {
   id: number;
   anchor_type: string;
@@ -164,8 +172,25 @@ export const triggerReview = (id: number) =>
 export const cancelReview = (id: number) =>
   api.post<Review>(`/reviews/${id}/cancel`);
 
-export const getFindings = (reviewId: number) =>
-  api.get<Finding[]>(`/reviews/${reviewId}/findings`);
+export const getFindings = (
+  reviewId: number, 
+  page = 1, 
+  size = 10,
+  search?: string,
+  metStatus?: string,
+  severity?: string,
+  findingType?: string
+) =>
+  api.get<PaginatedResponse<Finding>>(`/reviews/${reviewId}/findings`, { 
+    params: { 
+      page, 
+      size,
+      search: search || undefined,
+      met_status: metStatus || undefined,
+      severity: severity || undefined,
+      finding_type: findingType || undefined,
+    } 
+  });
 
 export const getRetrievalVisualization = (reviewId: number) =>
   api.get<RetrievalVisualization>(`/reviews/${reviewId}/retrieval-visualization`);
