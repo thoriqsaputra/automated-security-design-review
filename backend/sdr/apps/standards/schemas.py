@@ -72,14 +72,7 @@ class StandardCategorySchema(BaseModel):
 # Parameters
 # ---------------------------------------------------------------------------
 
-class ASVSLevelSchema(BaseModel):
-    level: int
-    code: str
-    name: str
-    description: str
-    classification_guidance: str
 
-    model_config = ConfigDict(from_attributes=True)
 
 
 class ASVSLevelDefinitionSchema(BaseModel):
@@ -117,6 +110,19 @@ class CategoryParameterParentSchema(BaseModel):
     title_normalized: str
     description: Optional[str] = None
     children: List[CategoryParameterChildSchema] = Field(default_factory=list)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CategoryDiagramRequirementSchema(BaseModel):
+    id: int
+    stable_key: str
+    source_requirement_key: str
+    requirement_text: str
+    verification_hint: str
+    parent_section: str
+    asvs_level: Optional[int] = None
+    ordinal: int = 0
 
     model_config = ConfigDict(from_attributes=True)
 

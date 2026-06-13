@@ -35,22 +35,6 @@ class CategoryParameterParent(Base, StandardsBigIntBase):
         return f"{cat_name}: {self.title}"
 
 
-class ASVSLevel(Base, StandardsBigIntBase):
-    __tablename__ = "standards_asvslevel"
-
-    level: Mapped[int] = mapped_column(Integer, primary_key=True)
-    code: Mapped[str] = mapped_column(String(16), unique=True, index=True)
-    name: Mapped[str] = mapped_column(String(128))
-    description: Mapped[str] = mapped_column(String)
-    classification_guidance: Mapped[str] = mapped_column(String)
-
-    __table_args__ = (
-        CheckConstraint("level IN (1, 2, 3)", name="ck_asvs_level_range"),
-    )
-
-    def __str__(self):
-        return f"{self.code}: {self.name}"
-
 
 class ASVSLevelDefinition(Base, StandardsBigIntBase):
     __tablename__ = "standards_asvsleveldefinition"
@@ -81,7 +65,7 @@ class CategoryParameterChild(Base, StandardsBigIntBase):
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     parent_id: Mapped[int] = mapped_column(ForeignKey("standards_categoryparameterparent.id", ondelete="CASCADE"), index=True)
-    asvs_level: Mapped[Optional[int]] = mapped_column(ForeignKey("standards_asvslevel.level", ondelete="SET NULL"), nullable=True, index=True)
+    asvs_level: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
     
     stable_key: Mapped[str] = mapped_column(String(255), index=True)
     requirement_text: Mapped[str] = mapped_column(String)
@@ -91,7 +75,7 @@ class CategoryParameterChild(Base, StandardsBigIntBase):
 
     # Relationships
     parent = relationship("CategoryParameterParent", back_populates="children")
-    asvs_level_definition = relationship("ASVSLevel")
+
 
     __table_args__ = (
         UniqueConstraint("parent_id", "stable_key", name="unique_child_key_per_parent"),

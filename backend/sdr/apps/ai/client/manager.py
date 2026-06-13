@@ -5,6 +5,7 @@ from sdr.core.config import settings
 from sdr.apps.ai.client.base import AIResponse, AIProvider
 from sdr.apps.ai.client.nvidia.service import NVIDIAAIService
 from sdr.apps.ai.client.openrouter.service import OpenRouterAIService
+from sdr.apps.ai.client.session import merge_request_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -14,24 +15,7 @@ class AIServiceManager:
         self.openrouter_service = None
         self._initialize_services()
         
-        # Define component to provider mapping
-        self.provider_mapping = {
-            # Heavy lifting, Vision, and Ingestion to NVIDIA
-            'vision': AIProvider.NVIDIA,
-            'tsd_ingestion': AIProvider.NVIDIA,
-            'standard_extraction': AIProvider.NVIDIA,
-            'embedding': AIProvider.NVIDIA,
-            'coding_graph': AIProvider.NVIDIA,
-            'long_context': AIProvider.NVIDIA,
-            
-            # Fast, routing, and debate to OpenRouter
-            'hunter': AIProvider.NVIDIA,
-            'critic': AIProvider.NVIDIA,
-            'mediator': AIProvider.NVIDIA,
-            'orchestrator': AIProvider.NVIDIA,
-            'contract_synthesizer': AIProvider.NVIDIA,
-            'fallback': AIProvider.NVIDIA,
-        }
+
     
     def _initialize_services(self):
         nv_service = NVIDIAAIService()
@@ -51,6 +35,7 @@ class AIServiceManager:
     def _get_model_setting(self, component: str) -> Optional[str]:
         models = {
             'standard_extraction': getattr(settings, 'AI_MODEL_STANDARD_EXTRACTION', 'meta/llama-3.1-8b-instruct'),
+            'diagram_requirement_extraction': getattr(settings, 'AI_MODEL_DIAGRAM_REQUIREMENT_EXTRACTION', 'meta/llama-3.1-8b-instruct'),
             'tsd_ingestion': getattr(settings, 'AI_MODEL_TSD_INGESTION', 'meta/llama-3.1-8b-instruct'),
             'vision': getattr(settings, 'AI_MODEL_VISION', 'meta/llama-3.2-90b-vision-instruct'),
             'orchestrator': getattr(settings, 'AI_MODEL_ORCHESTRATOR', 'meta/llama-3.1-70b-instruct'),
@@ -63,6 +48,7 @@ class AIServiceManager:
             'fallback': getattr(settings, 'AI_MODEL_FALLBACK', 'meta/llama-3.1-8b-instruct'),
             'long_context': getattr(settings, 'AI_MODEL_LONG_CONTEXT', 'meta/llama-3.1-70b-instruct'),
             'tsd_asvs_level_classification': getattr(settings, 'AI_MODEL_TSD_ASVS_LEVEL_CLASSIFICATION', 'meta/llama-3.1-8b-instruct'),
+            'parent_applicability': getattr(settings, 'AI_MODEL_PARENT_APPLICABILITY', 'meta/llama-3.1-8b-instruct'),
         }
         return models.get(component)
 
@@ -79,7 +65,7 @@ class AIServiceManager:
             elif provider_str == 'nvidia':
                 return AIProvider.NVIDIA
 
-        return self.provider_mapping.get(component, AIProvider.NVIDIA)
+        return AIProvider.NVIDIA
 
     def _get_service_for_provider(self, provider: AIProvider):
         if provider == AIProvider.OPENROUTER and self.openrouter_service:
@@ -132,6 +118,11 @@ class AIServiceManager:
         kwargs: Dict[str, Any],
     ) -> Union[AIResponse, Generator[str, None, None]]:
         request_kwargs = dict(kwargs)
+        resolved_metadata = merge_request_metadata(request_kwargs.get("metadata"))
+        if resolved_metadata:
+            request_kwargs["metadata"] = resolved_metadata
+        else:
+            request_kwargs.pop("metadata", None)
         if 'model' not in request_kwargs or not request_kwargs['model']:
             if component:
                 request_kwargs['model'] = self.get_model_for_component(component, provider)

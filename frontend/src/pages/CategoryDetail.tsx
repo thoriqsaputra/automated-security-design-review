@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { ArrowLeft, ChevronDown, ChevronRight, CheckCircle2, Zap, Trash2, Ban, Upload, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, ChevronDown, ChevronRight, CheckCircle2, Zap, Trash2, Ban, Upload, ShieldCheck, Search, Filter, X } from 'lucide-react';
 import Card from '../components/ui/Card';
 import Modal from '../components/ui/Modal';
 import StatusBadge from '../components/ui/StatusBadge';
@@ -18,6 +18,7 @@ import {
   type ParameterParent,
   type StandardCategory,
   type IngestionJob,
+  type DiagramRequirement,
 } from '../api/standards';
 
 export default function CategoryDetail() {
@@ -25,6 +26,7 @@ export default function CategoryDetail() {
   const navigate = useNavigate();
   const [category, setCategory] = useState<StandardCategory | null>(null);
   const [parameters, setParameters] = useState<ParameterParent[]>([]);
+  const [diagramRequirements, setDiagramRequirements] = useState<DiagramRequirement[]>([]);
   const [jobs, setJobs] = useState<IngestionJob[]>([]);
   const [loading, setLoading] = useState(true);
   const [expandedParent, setExpandedParent] = useState<number | null>(null);
@@ -40,10 +42,21 @@ export default function CategoryDetail() {
   const [definitions, setDefinitions] = useState<ASVSLevelDefinition[]>([]);
   const [definitionsLoading, setDefinitionsLoading] = useState(false);
 
+  const [activeTab, setActiveTab] = useState<'requirements' | 'diagram'>('requirements');
+  const [pageSize, setPageSize] = useState(10);
   const [jobsPage, setJobsPage] = useState(1);
   const [paramsPage, setParamsPage] = useState(1);
-  const JOBS_PER_PAGE = 6;
-  const PARAMS_PER_PAGE = 5;
+  const [diagramParamsPage, setDiagramParamsPage] = useState(1);
+  const JOBS_PER_PAGE = 3;
+
+  const [search, setSearch] = useState('');
+  const [searchInput, setSearchInput] = useState('');
+  const [filterAsvsLevel, setFilterAsvsLevel] = useState<string>('all');
+
+  useEffect(() => {
+    setParamsPage(1);
+    setDiagramParamsPage(1);
+  }, [search, filterAsvsLevel, pageSize, activeTab]);
 
   const loadInitial = () => {
     if (!code) return;
@@ -54,6 +67,7 @@ export default function CategoryDetail() {
       getCategoryParameters(code).then(r => {
         setCategory(r.data.category);
         setParameters(r.data.parameters);
+        setDiagramRequirements(r.data.diagram_requirements || []);
       }),
       listIngestionJobs(code).then(r => setJobs(r.data)),
     ]).finally(() => setLoading(false));
@@ -84,6 +98,7 @@ export default function CategoryDetail() {
       getCategoryParameters(code).then(r => {
         setCategory(r.data.category);
         setParameters(r.data.parameters);
+        setDiagramRequirements(r.data.diagram_requirements || []);
       }),
       listIngestionJobs(code).then(r => setJobs(r.data))
     ]);
@@ -173,6 +188,48 @@ export default function CategoryDetail() {
     }
   };
 
+  const filteredParameters = useMemo(() => {
+    return parameters.map(parent => {
+      const parentMatchesSearch = search ? (
+        parent.title.toLowerCase().includes(search.toLowerCase()) ||
+        parent.stable_key.toLowerCase().includes(search.toLowerCase())
+      ) : true;
+
+      const filteredChildren = parent.children.filter(child => {
+        const levelStr = child.asvs_level ? child.asvs_level.toString() : 'unknown';
+        const matchLevel = filterAsvsLevel === 'all' || levelStr === filterAsvsLevel;
+        const matchSearch = search ? (
+          child.requirement_text.toLowerCase().includes(search.toLowerCase()) ||
+          (child.details && child.details.toLowerCase().includes(search.toLowerCase()))
+        ) : true;
+        
+        return matchLevel && (parentMatchesSearch || matchSearch);
+      });
+
+      return {
+        ...parent,
+        children: filteredChildren,
+        _matchesParent: parentMatchesSearch
+      };
+    }).filter(parent => {
+      return parent.children.length > 0 || (parent._matchesParent && filterAsvsLevel === 'all');
+    });
+  }, [parameters, search, filterAsvsLevel]);
+
+  const filteredDiagramRequirements = useMemo(() => {
+    return diagramRequirements.filter(req => {
+      const levelStr = req.asvs_level ? req.asvs_level.toString() : 'unknown';
+      const matchLevel = filterAsvsLevel === 'all' || levelStr === filterAsvsLevel;
+      const matchSearch = search ? (
+        req.requirement_text.toLowerCase().includes(search.toLowerCase()) ||
+        req.verification_hint.toLowerCase().includes(search.toLowerCase()) ||
+        req.parent_section.toLowerCase().includes(search.toLowerCase()) ||
+        req.stable_key.toLowerCase().includes(search.toLowerCase())
+      ) : true;
+      return matchLevel && matchSearch;
+    });
+  }, [diagramRequirements, search, filterAsvsLevel]);
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -182,10 +239,14 @@ export default function CategoryDetail() {
   }
 
   const paginatedJobs = jobs.slice((jobsPage - 1) * JOBS_PER_PAGE, jobsPage * JOBS_PER_PAGE);
-  const totalJobsPages = Math.ceil(jobs.length / JOBS_PER_PAGE);
+  const totalJobsPages = Math.ceil(jobs.length / JOBS_PER_PAGE) || 1;
 
-  const paginatedParams = parameters.slice((paramsPage - 1) * PARAMS_PER_PAGE, paramsPage * PARAMS_PER_PAGE);
-  const totalParamsPages = Math.ceil(parameters.length / PARAMS_PER_PAGE);
+  const paginatedParams = filteredParameters.slice((paramsPage - 1) * pageSize, paramsPage * pageSize);
+  const totalParamsPages = Math.ceil(filteredParameters.length / pageSize) || 1;
+
+  const paginatedDiagramParams = filteredDiagramRequirements.slice((diagramParamsPage - 1) * pageSize, diagramParamsPage * pageSize);
+  const totalDiagramParamsPages = Math.ceil(filteredDiagramRequirements.length / pageSize) || 1;
+
   const asvsLevelClass = (level: number | null) => {
     if (level === 1) return 'bg-emerald-500/15 text-emerald-400';
     if (level === 2) return 'bg-sky-500/15 text-sky-400';
@@ -348,103 +409,330 @@ export default function CategoryDetail() {
           </div>
         )}
       </div>
+      {/* Tabs Navigation */}
+      <div className="border-b border-surface-border mb-6 flex gap-6 px-2 overflow-x-auto no-scrollbar">
+        {[
+          { id: 'requirements', label: 'Requirement Text' },
+          { id: 'diagram', label: 'Diagram Requirement' }
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTab(tab.id as any)}
+            className={`pb-3 text-sm font-semibold transition-colors border-b-2 whitespace-nowrap ${
+              activeTab === tab.id
+                ? 'border-flame text-flame'
+                : 'border-transparent text-text-muted hover:text-text-primary'
+            }`}
+          >
+            {tab.label}
+          </button>
+        ))}
+      </div>
 
-      {/* Parameters Tree */}
-      <div>
-        <h2 className="text-lg font-semibold text-text-primary mb-3">
-          Extracted Parameters ({parameters.length} sections)
-        </h2>
-        {parameters.length === 0 ? (
-          <Card><p className="text-sm text-text-muted text-center py-4">No parameters extracted yet. Complete an ingestion job first.</p></Card>
-        ) : (
-          <div className="space-y-4">
-            <div className="space-y-2">
-              {paginatedParams.map(parent => (
-                <Card key={parent.id}>
-                  <div className="flex items-center justify-between">
-                    <button
-                      onClick={() => setExpandedParent(expandedParent === parent.id ? null : parent.id)}
-                      className="flex-1 flex items-center justify-between text-left"
-                    >
-                      <div className="flex items-center gap-2">
-                        {expandedParent === parent.id ? (
-                          <ChevronDown size={16} className="text-flame" />
-                        ) : (
-                          <ChevronRight size={16} className="text-text-muted" />
-                        )}
-	                        <div>
-	                          <p className="text-sm font-medium text-text-primary">{parent.title}</p>
-	                          <p className="text-xs text-text-muted">
+      {/* Filter Bar */}
+      {(parameters.length > 0 || diagramRequirements.length > 0) && (
+        <div className="flex flex-col sm:flex-row flex-wrap gap-3 bg-surface-base/50 p-3 rounded-xl border border-surface-border items-center mb-6">
+          <div className="relative flex-1 min-w-[200px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-text-muted" size={16} />
+            <input 
+              type="text" 
+              placeholder={activeTab === 'requirements' ? "Search requirement text..." : "Search diagram requirements..."}
+              value={searchInput}
+              onChange={(e) => setSearchInput(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && setSearch(searchInput)}
+              onBlur={() => setSearch(searchInput)}
+              className="w-full bg-midnight border border-surface-border text-sm rounded-lg pl-9 pr-3 py-2 text-text-primary focus:outline-none focus:border-flame transition-colors"
+            />
+            {search && (
+              <button onClick={() => { setSearch(''); setSearchInput(''); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-text-muted hover:text-text-primary">
+                <X size={14} />
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-3 shrink-0">
+            <div className="flex items-center gap-1.5 bg-midnight border border-surface-border rounded-lg px-1 py-1">
+              <Filter size={14} className="text-text-muted ml-2" />
+              <select
+                value={filterAsvsLevel}
+                onChange={(e) => setFilterAsvsLevel(e.target.value)}
+                className="bg-transparent text-sm text-text-primary focus:outline-none py-1 pr-6 cursor-pointer appearance-none"
+                style={{ backgroundImage: 'url("data:image/svg+xml;charset=UTF-8,%3csvg xmlns=\'http://www.w3.org/2000/svg\' viewBox=\'0 0 24 24\' fill=\'none\' stroke=\'currentColor\' stroke-width=\'2\' stroke-linecap=\'round\' stroke-linejoin=\'round\'%3e%3cpolyline points=\'6 9 12 15 18 9\'%3e%3c/polyline%3e%3c/svg%3e")', backgroundRepeat: 'no-repeat', backgroundPosition: 'right 0.25rem center', backgroundSize: '1em' }}
+              >
+                <option value="all">ASVS Level: All</option>
+                <option value="1">ASVS Level: L1</option>
+                <option value="2">ASVS Level: L2</option>
+                <option value="3">ASVS Level: L3</option>
+                <option value="unknown">ASVS Level: Unknown</option>
+              </select>
+            </div>
+
+            {(search || filterAsvsLevel !== 'all') && (
+              <button 
+                onClick={() => {
+                  setSearch('');
+                  setSearchInput('');
+                  setFilterAsvsLevel('all');
+                }}
+                className="text-xs font-semibold text-text-muted hover:text-text-primary transition-colors ml-2"
+              >
+                Clear All
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Tab Content */}
+      {activeTab === 'requirements' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-text-primary">
+              Extracted Parameters ({filteredParameters.length} sections)
+            </h2>
+          </div>
+          {parameters.length === 0 ? (
+            <Card><p className="text-sm text-text-muted text-center py-4">No parameters extracted yet. Complete an ingestion job first.</p></Card>
+          ) : filteredParameters.length === 0 ? (
+            <Card><p className="text-sm text-text-muted text-center py-4">No parameters match the current filters.</p></Card>
+          ) : (
+            <div className="space-y-4">
+              <div className="space-y-2">
+                {paginatedParams.map(parent => (
+                  <Card key={parent.id}>
+                    <div className="flex items-center justify-between">
+                      <button
+                        onClick={() => setExpandedParent(expandedParent === parent.id ? null : parent.id)}
+                        className="flex-1 flex items-center justify-between text-left"
+                      >
+                        <div className="flex items-center gap-2">
+                          {expandedParent === parent.id ? (
+                            <ChevronDown size={16} className="text-flame" />
+                          ) : (
+                            <ChevronRight size={16} className="text-text-muted" />
+                          )}
+                          <div>
+                            <p className="text-sm font-medium text-text-primary">{parent.title}</p>
+                            <p className="text-xs text-text-muted">
                               {parent.children.length} requirement(s)
                               {parentLevelSummary(parent) && ` · ${parentLevelSummary(parent)}`}
                             </p>
-	                        </div>
-                      </div>
-                      <span className="text-xs text-text-muted font-mono">{parent.stable_key}</span>
-                    </button>
-                    <button
-                      onClick={() => handleDeleteParent(parent.id)}
-                      className="ml-3 flex items-center justify-center p-1.5 rounded-lg text-text-muted hover:text-flame hover:bg-flame/10 transition-colors shrink-0"
-                      title="Delete Section"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
+                          </div>
+                        </div>
+                        <span className="text-xs text-text-muted font-mono">{parent.stable_key}</span>
+                      </button>
+                      <button
+                        onClick={() => handleDeleteParent(parent.id)}
+                        className="ml-3 flex items-center justify-center p-1.5 rounded-lg text-text-muted hover:text-flame hover:bg-flame/10 transition-colors shrink-0"
+                        title="Delete Section"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    </div>
 
-                  {expandedParent === parent.id && parent.children.length > 0 && (
-                    <div className="mt-3 ml-6 space-y-2 border-l-2 border-surface-border pl-4">
-                      {parent.children.map(child => (
-                        <div key={child.id} className="flex items-start justify-between gap-4 group">
-                          <div className="flex items-start gap-2">
-                            <CheckCircle2 size={14} className="text-burgundy mt-0.5 shrink-0" />
-                            <div>
-	                              <div className="flex flex-wrap items-center gap-2">
-	                                <p className="text-sm text-text-primary">{child.requirement_text}</p>
+                    {expandedParent === parent.id && parent.children.length > 0 && (
+                      <div className="mt-3 ml-6 space-y-2 border-l-2 border-surface-border pl-4">
+                        {parent.children.map(child => (
+                          <div key={child.id} className="flex items-start justify-between gap-4 group">
+                            <div className="flex items-start gap-2">
+                              <CheckCircle2 size={14} className="text-burgundy mt-0.5 shrink-0" />
+                              <div>
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="text-sm text-text-primary">{child.requirement_text}</p>
                                   <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${asvsLevelClass(child.asvs_level)}`}>
                                     {asvsLevelLabel(child.asvs_level)}
                                   </span>
                                 </div>
-	                              {child.details && (
-                                <p className="text-xs text-text-muted mt-0.5">{child.details}</p>
-                              )}
+                                {child.details && (
+                                  <p className="text-xs text-text-muted mt-0.5">{child.details}</p>
+                                )}
+                              </div>
                             </div>
+                            <button
+                              onClick={() => handleDeleteChild(child.id)}
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-flame/10 text-text-muted hover:text-flame transition-all shrink-0"
+                              title="Delete Requirement"
+                            >
+                              <Trash2 size={14} />
+                            </button>
                           </div>
+                        ))}
+                      </div>
+                    )}
+                  </Card>
+                ))}
+              </div>
+
+              {/* Pagination Controls */}
+              {totalParamsPages > 0 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-surface-base/50 border border-surface-border rounded-xl p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-text-muted">Items per page:</span>
+                    <select 
+                      value={pageSize}
+                      onChange={(e) => setPageSize(Number(e.target.value))}
+                      className="bg-midnight border border-surface-border text-sm rounded-lg px-2 py-1 text-text-primary focus:outline-none"
+                    >
+                      <option value={5}>5</option>
+                      <option value={10}>10</option>
+                      <option value={20}>20</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setParamsPage(p => Math.max(1, p - 1))}
+                      disabled={paramsPage === 1}
+                      className="px-3 py-1.5 text-sm font-medium rounded-lg border border-surface-border bg-midnight hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-text-primary"
+                    >
+                      Previous
+                    </button>
+
+                    <div className="flex items-center gap-1 mx-2">
+                      {Array.from({ length: Math.min(5, totalParamsPages) }).map((_, i) => {
+                        let pageNum = i + 1;
+                        if (totalParamsPages > 5) {
+                          if (paramsPage > 3) {
+                            pageNum = paramsPage - 2 + i;
+                          }
+                          if (paramsPage > totalParamsPages - 2) {
+                            pageNum = totalParamsPages - 4 + i;
+                          }
+                        }
+                        return (
                           <button
-                            onClick={() => handleDeleteChild(child.id)}
-                            className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-flame/10 text-text-muted hover:text-flame transition-all shrink-0"
-                            title="Delete Requirement"
+                            key={pageNum}
+                            onClick={() => setParamsPage(pageNum)}
+                            className={`w-8 h-8 flex items-center justify-center text-sm font-medium rounded-lg border transition-colors ${
+                              paramsPage === pageNum 
+                                ? 'bg-flame/20 border-flame text-flame' 
+                                : 'border-surface-border bg-midnight hover:bg-surface-hover text-text-primary'
+                            }`}
                           >
-                            <Trash2 size={14} />
+                            {pageNum}
                           </button>
-                        </div>
-                      ))}
+                        );
+                      })}
                     </div>
-                  )}
+
+                    <button
+                      onClick={() => setParamsPage(p => Math.min(totalParamsPages, p + 1))}
+                      disabled={paramsPage === totalParamsPages}
+                      className="px-3 py-1.5 text-sm font-medium rounded-lg border border-surface-border bg-midnight hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-text-primary"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'diagram' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-text-primary">
+              Extracted Diagram Requirements ({filteredDiagramRequirements.length})
+            </h2>
+          </div>
+          {diagramRequirements.length === 0 ? (
+            <Card><p className="text-sm text-text-muted text-center py-4">No diagram requirements extracted yet. Complete an ingestion job first.</p></Card>
+          ) : filteredDiagramRequirements.length === 0 ? (
+            <Card><p className="text-sm text-text-muted text-center py-4">No diagram requirements match the current filters.</p></Card>
+          ) : (
+            <div className="space-y-3">
+              {paginatedDiagramParams.map(req => (
+                <Card key={req.id}>
+                  <div className="flex items-start gap-4">
+                    <div className="mt-1">
+                      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${asvsLevelClass(req.asvs_level)}`}>
+                        {asvsLevelLabel(req.asvs_level)}
+                      </span>
+                    </div>
+                    <div className="flex-1">
+                      <p className="text-sm font-medium text-text-primary">{req.requirement_text}</p>
+                      <p className="text-xs text-text-muted mt-1 italic">{req.verification_hint}</p>
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-[10px] font-mono text-text-muted bg-surface px-1.5 py-0.5 rounded">{req.stable_key}</span>
+                        <span className="text-[10px] font-medium text-text-secondary">Parent: {req.parent_section}</span>
+                      </div>
+                    </div>
+                  </div>
                 </Card>
               ))}
+
+              {/* Pagination Controls */}
+              {totalDiagramParamsPages > 0 && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 bg-surface-base/50 border border-surface-border rounded-xl p-3">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm text-text-muted">Items per page:</span>
+                    <select 
+                      value={pageSize}
+                      onChange={(e) => setPageSize(Number(e.target.value))}
+                      className="bg-midnight border border-surface-border text-sm rounded-lg px-2 py-1 text-text-primary focus:outline-none"
+                    >
+                      <option value={5}>5</option>
+                      <option value={10}>10</option>
+                      <option value={20}>20</option>
+                      <option value={50}>50</option>
+                      <option value={100}>100</option>
+                    </select>
+                  </div>
+
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setDiagramParamsPage(p => Math.max(1, p - 1))}
+                      disabled={diagramParamsPage === 1}
+                      className="px-3 py-1.5 text-sm font-medium rounded-lg border border-surface-border bg-midnight hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-text-primary"
+                    >
+                      Previous
+                    </button>
+
+                    <div className="flex items-center gap-1 mx-2">
+                      {Array.from({ length: Math.min(5, totalDiagramParamsPages) }).map((_, i) => {
+                        let pageNum = i + 1;
+                        if (totalDiagramParamsPages > 5) {
+                          if (diagramParamsPage > 3) {
+                            pageNum = diagramParamsPage - 2 + i;
+                          }
+                          if (diagramParamsPage > totalDiagramParamsPages - 2) {
+                            pageNum = totalDiagramParamsPages - 4 + i;
+                          }
+                        }
+                        return (
+                          <button
+                            key={pageNum}
+                            onClick={() => setDiagramParamsPage(pageNum)}
+                            className={`w-8 h-8 flex items-center justify-center text-sm font-medium rounded-lg border transition-colors ${
+                              diagramParamsPage === pageNum 
+                                ? 'bg-flame/20 border-flame text-flame' 
+                                : 'border-surface-border bg-midnight hover:bg-surface-hover text-text-primary'
+                            }`}
+                          >
+                            {pageNum}
+                          </button>
+                        );
+                      })}
+                    </div>
+
+                    <button
+                      onClick={() => setDiagramParamsPage(p => Math.min(totalDiagramParamsPages, p + 1))}
+                      disabled={diagramParamsPage === totalDiagramParamsPages}
+                      className="px-3 py-1.5 text-sm font-medium rounded-lg border border-surface-border bg-midnight hover:bg-surface-hover disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-text-primary"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
-            {totalParamsPages > 1 && (
-              <div className="flex items-center justify-center gap-2">
-                <button
-                  onClick={() => setParamsPage(p => Math.max(1, p - 1))}
-                  disabled={paramsPage === 1}
-                  className="px-3 py-1.5 text-xs font-medium bg-surface-base border border-surface-border rounded-lg disabled:opacity-50 text-text-primary hover:bg-surface-hover transition-colors"
-                >
-                  Previous
-                </button>
-                <span className="text-xs text-text-muted">Page {paramsPage} of {totalParamsPages}</span>
-                <button
-                  onClick={() => setParamsPage(p => Math.min(totalParamsPages, p + 1))}
-                  disabled={paramsPage === totalParamsPages}
-                  className="px-3 py-1.5 text-xs font-medium bg-surface-base border border-surface-border rounded-lg disabled:opacity-50 text-text-primary hover:bg-surface-hover transition-colors"
-                >
-                  Next
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
 
       {/* Upload Modal */}
       <Modal open={showUpload} onClose={() => setShowUpload(false)} title={`Ingest Standard: ${category?.name || code}`}>

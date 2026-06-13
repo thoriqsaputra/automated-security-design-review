@@ -49,7 +49,9 @@ class Settings(BaseSettings):
     OPENROUTER_FAST_MODEL: str = Field(default="meta-llama/llama-3.1-8b-instruct")
 
     AI_MODEL_STANDARD_EXTRACTION: str = Field(default="meta/llama-3.1-8b-instruct")
+    AI_MODEL_DIAGRAM_REQUIREMENT_EXTRACTION: str = Field(default="meta/llama-3.1-8b-instruct")
     AI_STANDARD_EXTRACTION_MAX_WORKERS: int = Field(default=3)
+    AI_DIAGRAM_REQUIREMENT_EXTRACTION_MAX_CONCURRENCY: int = Field(default=3)
     AI_MODEL_TSD_INGESTION: str = Field(default="meta/llama-3.1-8b-instruct")
     AI_MODEL_ORCHESTRATOR: str = Field(default="meta/llama-3.1-70b-instruct")
     AI_MODEL_CONTRACT_SYNTHESIZER: str = Field(default="meta/llama-3.1-70b-instruct")
@@ -62,6 +64,7 @@ class Settings(BaseSettings):
     AI_MODEL_FALLBACK: str = Field(default="meta/llama-3.1-8b-instruct")
     AI_MODEL_LONG_CONTEXT: str = Field(default="meta/llama-3.1-70b-instruct")
     AI_MODEL_TSD_ASVS_LEVEL_CLASSIFICATION: str = Field(default="meta/llama-3.1-8b-instruct")
+    AI_MODEL_PARENT_APPLICABILITY: str = Field(default="meta/llama-3.1-8b-instruct")
 
     AI_LLM_MAX_RETRIES: int = Field(default=3)
     AI_LLM_RETRY_INITIAL_DELAY_SECONDS: float = Field(default=2.0)
@@ -78,8 +81,8 @@ class Settings(BaseSettings):
     AI_DEBATE_SCOPE_TOKEN_THRESHOLD: int = Field(default=7000)
     AI_DEBATE_SCOPE_MAX_GROUPS: int = Field(default=4)
     AI_DEBATE_MAX_HUNTER_CALLS_PER_PARAMETER: int = Field(default=8)
-    AI_DEBATE_MAX_DEBATE_ROUNDS: int = Field(default=2)
-    AI_DEBATE_CRITIC_AUTO_UPHOLD_STRONG_NOT_MET: bool = Field(default=False)
+    AI_DEBATE_MAX_DEBATE_ROUNDS: int = Field(default=1)
+    AI_DEBATE_CRITIC_AUTO_UPHOLD_STRONG_NOT_MET: bool = Field(default=True)
     AI_DEBATE_PARALLEL_TIMEOUT_SECONDS: int = Field(default=180)
 
     AI_BATCH_DEBATE_ENABLED: bool = Field(default=True)
@@ -91,9 +94,16 @@ class Settings(BaseSettings):
     AI_BATCH_DEBATE_PARENT_CONTEXT_CACHE_ENABLED: bool = Field(default=True)
     AI_BATCH_DEBATE_REQUIRE_CITATIONS_FOR_NOT_MET: bool = Field(default=False)
     AI_BATCH_DEBATE_UNGROUNDED_NOT_MET_POLICY: str = Field(default="selective_fallback")
+    AI_PARENT_APPLICABILITY_ENABLED: bool = Field(default=True)
+    AI_PARENT_APPLICABILITY_MAX_CHILD_TEXTS: int = Field(default=8)
+    AI_PARENT_APPLICABILITY_CONFIDENCE_THRESHOLD: float = Field(default=0.7)
+    AI_PARENT_APPLICABILITY_FALLBACK_MODE: str = Field(default="assume_applicable")
 
     AI_VISION_ENABLED: bool = Field(default=True)
-    AI_VISION_MAX_DIAGRAMS_PER_PARAMETER: int = Field(default=1)
+    AI_VISION_DIAGRAM_ANALYSIS_ENABLED: bool = Field(default=True)
+    AI_VISION_MAX_CONCURRENCY: int = Field(default=2)
+    AI_VISION_MIN_DIAGRAM_BYTES: int = Field(default=512)
+    AI_VISION_DIAGRAM_REQUIREMENTS_MAX_ITEMS: int = Field(default=15)
 
     AI_RAPTOR_SUMMARY_MAX_CONCURRENCY: int = Field(default=3)
     AI_RAPTOR_EMBED_MAX_CONCURRENCY: int = Field(default=4)

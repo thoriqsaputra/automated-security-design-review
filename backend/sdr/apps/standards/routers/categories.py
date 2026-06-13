@@ -9,11 +9,13 @@ from ..models import (
     CategoryParameterParent,
     StandardCategory,
     StandardIngestionJob,
+    CategoryDiagramRequirement,
 )
 from ..schemas import (
     CategoryParameterParentSchema,
     StandardCategorySchema,
     CategoryCodeEnum,
+    CategoryDiagramRequirementSchema,
 )
 
 router = APIRouter(prefix="/categories")
@@ -92,7 +94,8 @@ def get_category_parameters(
     if not job:
         return {
             "category": StandardCategorySchema.model_validate(category),
-            "parameters": []
+            "parameters": [],
+            "diagram_requirements": []
         }
 
     parents = db.execute(
@@ -103,9 +106,19 @@ def get_category_parameters(
         )
     ).scalars().all()
 
+    diagram_reqs = db.execute(
+        select(CategoryDiagramRequirement)
+        .where(
+            CategoryDiagramRequirement.category_id == category.id,
+            CategoryDiagramRequirement.ingestion_job_id == job.id
+        )
+        .order_by(CategoryDiagramRequirement.ordinal)
+    ).scalars().all()
+
     return {
         "category": StandardCategorySchema.model_validate(category),
-        "parameters": [CategoryParameterParentSchema.model_validate(p) for p in parents]
+        "parameters": [CategoryParameterParentSchema.model_validate(p) for p in parents],
+        "diagram_requirements": [CategoryDiagramRequirementSchema.model_validate(dr) for dr in diagram_reqs]
     }
 
 

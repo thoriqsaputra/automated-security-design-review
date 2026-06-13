@@ -9,6 +9,7 @@ import tiktoken
 
 from sdr.apps.ai.client import chat_completion
 from sdr.apps.ai.prompts.extraction_prompts import build_hierarchical_extraction_prompt
+from sdr.apps.ai.utils.concurrency import ConcurrencyProbe
 from sdr.apps.standards.models import StandardSourceDocument
 from sdr.apps.workspace.document_processing import get_local_file_path, get_document_content
 from sdr.apps.ai.utils.chunking import chunk_text_with_context
@@ -195,6 +196,47 @@ def _get_item_length(item: Any) -> int:
     return len(str(item))
 
 
+def _canonicalize_diagram_requirements(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Make diagram requirement keys unique and deterministic.
+
+    The LLM may emit the same semantic stable_key multiple times across or within
+    batches. Exact duplicate rows are collapsed; remaining collisions are suffixed
+    with -2, -3, etc while preserving the first occurrence unchanged.
+    """
+    if not items:
+        return []
+
+    canonical_items: List[Dict[str, Any]] = []
+    exact_seen = set()
+    stable_key_counts: Dict[str, int] = {}
+
+    for item in items:
+        exact_fingerprint = (
+            str(item.get("stable_key", "")).strip(),
+            str(item.get("source_requirement_key", "")).strip(),
+            str(item.get("requirement_text", "")).strip(),
+            str(item.get("verification_hint", "")).strip(),
+            item.get("asvs_level"),
+            str(item.get("parent_section", "")).strip(),
+        )
+        if exact_fingerprint in exact_seen:
+            continue
+        exact_seen.add(exact_fingerprint)
+
+        normalized_item = dict(item)
+        base_stable_key = str(normalized_item.get("stable_key", "")).strip() or "diagram-requirement"
+        stable_key_counts[base_stable_key] = stable_key_counts.get(base_stable_key, 0) + 1
+        occurrence = stable_key_counts[base_stable_key]
+        if occurrence > 1:
+            normalized_item["stable_key"] = f"{base_stable_key}-{occurrence}"
+        else:
+            normalized_item["stable_key"] = base_stable_key
+        canonical_items.append(normalized_item)
+
+    return canonical_items
+
+
 def extract_asvs_level_definitions_from_document(
     source_doc: StandardSourceDocument,
     start_page: Optional[int] = None,
@@ -329,7 +371,7 @@ def extract_structured_requirements(source_doc_text: str) -> Dict[str, List[Any]
             ],
             component="standard_extraction",
             temperature=0.05,
-            max_tokens=4000,
+            max_tokens=8192,
         )
         logger.debug("extract_structured_requirements: API call completed.")
 
@@ -386,7 +428,7 @@ def extract_structured_requirements(source_doc_text: str) -> Dict[str, List[Any]
                 messages=[{"role": "user", "content": repair_prompt}],
                 component="fallback",
                 temperature=0.0,
-                max_tokens=4000
+                max_tokens=8192,
             )
             if repair_resp.error:
                 logger.error("extract_structured_requirements: JSON repair API error: %s", repair_resp.error)
@@ -809,7 +851,8 @@ def extract_requirements_from_document(
         source_doc.name,
     )
 
-    with concurrent.futures.ThreadPoolExecutor(max_workers=settings.AI_STANDARD_EXTRACTION_MAX_WORKERS, thread_name_prefix="ExtractWorker") as executor:
+    executor = concurrent.futures.ThreadPoolExecutor(max_workers=settings.AI_STANDARD_EXTRACTION_MAX_WORKERS, thread_name_prefix="ExtractWorker")
+    try:
         future_to_chunk = {
             executor.submit(_process_chunk_with_logging, idx, chunk_dict["text"]): (idx, chunk_dict)
             for idx, chunk_dict in enumerate(chunks, start=1)
@@ -889,6 +932,8 @@ def extract_requirements_from_document(
                 len(merged),
                 sum(len(v) for v in merged.values()),
             )
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
 
     logger.info(
         "extract_requirements_from_document: ✓ [MAP-REDUCE] "
@@ -914,3 +959,246 @@ def extract_requirements_from_document(
         sum(len(v) for v in merged.values()),
     )
     return merged
+
+
+# ---------------------------------------------------------------------------
+# Diagram requirement extraction
+# ---------------------------------------------------------------------------
+
+
+_DIAGRAM_REQ_EXTRACTION_SYSTEM_PROMPT = """\
+You are a security standards expert. Your task is to convert text-based ASVS \
+security requirements into diagram-verifiable equivalents — requirements that \
+can be assessed by LOOKING AT an architecture or data-flow diagram.
+
+Output strict JSON only.
+"""
+
+_DIAGRAM_REQ_EXTRACTION_PROMPT_TEMPLATE = """\
+Given the following ASVS security requirements, generate diagram-verifiable \
+equivalents — requirements that can be assessed by looking at an architecture \
+or data-flow diagram.
+
+BUDGET: Generate exactly 5-7 diagram-verifiable requirements per ASVS level.
+Each requirement must be assessable by LOOKING AT an architecture or data-flow diagram.
+
+For each requirement provide:
+- stable_key: A short unique ID like "D-V1.1" or "D-V2.3" based on the section prefix
+- source_requirement_id: The original text requirement's stable_key (or "composite" if merged from multiple)
+- requirement_text: ONE LINE, max 100 chars, written as "what must be visible in the diagram"
+- verification_hint: 1-2 sentences describing what specific visual elements to look for
+- asvs_level: 1, 2, or 3
+- parent_section: The section this belongs to (e.g. "V1 Architecture")
+
+Level 1: Basic architecture controls (topology, boundaries, flows, component labels)
+Level 2: + Authentication, encryption, logging, session management, API gateway
+Level 3: + Defense-in-depth, key management, mTLS, secrets, zero-trust
+
+SKIP any requirement that cannot be verified visually (code-level, process-level,
+configuration-level controls are NOT diagram-verifiable).
+
+If multiple text requirements map to the same visual check, merge them into one
+diagram requirement with source_requirement_id="composite".
+
+## SOURCE REQUIREMENTS
+
+{requirements_text}
+
+Respond with a single JSON object:
+{{
+  "diagram_requirements": [
+    {{
+      "stable_key": "D-V1.1",
+      "source_requirement_id": "...",
+      "requirement_text": "Layered architecture: labeled trust boundaries between layers",
+      "verification_hint": "Look for boxes/regions labeled with layer names separated by boundary lines or colored zones",
+      "asvs_level": 1,
+      "parent_section": "V1 Architecture"
+    }}
+  ]
+}}
+"""
+
+
+def extract_diagram_requirements(
+    parameters: list,
+    category_id: int,
+    ingestion_job_id: int,
+) -> list:
+    """
+    Generate diagram-verifiable requirements from text parameters.
+
+    Uses the fast model to convert text ASVS requirements into visual
+    verification requirements, constrained to ~6 per ASVS level.
+
+    Args:
+        parameters: List of CategoryParameterChild rows.
+        category_id: The category these requirements belong to.
+        ingestion_job_id: The ingestion job ID.
+
+    Returns:
+        List of dicts ready to be persisted as CategoryDiagramRequirement rows.
+    """
+    if not parameters:
+        logger.info("extract_diagram_requirements: no parameters provided, skipping.")
+        return []
+
+    # Build a compact text representation of the parameters for the LLM
+    param_lines = []
+    for param in parameters:
+        stable_key_val = getattr(param, "stable_key", "")
+        req_text = getattr(param, "requirement_text", "")
+        details = getattr(param, "details", "") or ""
+        level = getattr(param, "asvs_level", None) or "unknown"
+        parent_title = ""
+        if hasattr(param, "parent") and param.parent:
+            parent_title = getattr(param.parent, "title", "")
+        line = f"[{stable_key_val}] (L{level}) [{parent_title}] {req_text}"
+        if details:
+            line += f" | {details[:120]}"
+        param_lines.append(line)
+
+    # Batch into chunks of 20 parameters per LLM call
+    batch_size = 20
+    batched_lines = [
+        param_lines[start : start + batch_size]
+        for start in range(0, len(param_lines), batch_size)
+    ]
+    total_batches = len(batched_lines)
+    max_concurrency = max(
+        1,
+        min(
+            int(getattr(settings, "AI_DIAGRAM_REQUIREMENT_EXTRACTION_MAX_CONCURRENCY", 3)),
+            total_batches,
+        ),
+    )
+    probe = ConcurrencyProbe(max_concurrency=max_concurrency)
+    probe.mark_submitted(total_batches)
+    all_results = []
+
+    def _process_diagram_batch(batch_index: int, batch: List[str]) -> tuple[int, list]:
+        thread_name = threading.current_thread().name
+        logger.info(
+            "extract_diagram_requirements: [BATCH %d/%d] START thread=%s params=%d",
+            batch_index + 1,
+            total_batches,
+            thread_name,
+            len(batch),
+        )
+        batch_text = "\n".join(batch)
+        prompt = _DIAGRAM_REQ_EXTRACTION_PROMPT_TEMPLATE.format(
+            requirements_text=batch_text,
+        )
+        response = chat_completion(
+            messages=[
+                {"role": "system", "content": _DIAGRAM_REQ_EXTRACTION_SYSTEM_PROMPT},
+                {"role": "user", "content": prompt},
+            ],
+            component="diagram_requirement_extraction",
+            temperature=0.0,
+            max_tokens=4096,
+            response_format={"type": "json_object"},
+        )
+
+        if response.error:
+            logger.error(
+                "extract_diagram_requirements: LLM error for batch %d: %s",
+                batch_index,
+                response.error,
+            )
+            return batch_index, []
+
+        raw_text = response.content or "{}"
+        cleaned = _extract_json_payload(raw_text)
+
+        try:
+            parsed = json.loads(cleaned)
+        except json.JSONDecodeError:
+            logger.error(
+                "extract_diagram_requirements: JSON parse error for batch %d",
+                batch_index,
+            )
+            return batch_index, []
+
+        batch_results = []
+        items = parsed.get("diagram_requirements") or []
+        for item_index, item in enumerate(items):
+            if not isinstance(item, dict):
+                continue
+
+            req_text = str(item.get("requirement_text", "")).strip()
+            if not req_text:
+                continue
+
+            stable_key_val = str(item.get("stable_key", "")).strip() or f"D-batch{batch_index}-{item_index}"
+            stable_key_val = f"job{ingestion_job_id}-{stable_key_val}"
+            batch_results.append({
+                "category_id": category_id,
+                "ingestion_job_id": ingestion_job_id,
+                "stable_key": stable_key_val,
+                "source_requirement_key": str(item.get("source_requirement_id", "composite")).strip(),
+                "requirement_text": req_text[:200],
+                "verification_hint": str(item.get("verification_hint", "")).strip(),
+                "asvs_level": _coerce_asvs_level(item.get("asvs_level")),
+                "parent_section": str(item.get("parent_section", "General")).strip()[:255],
+            })
+
+        logger.info(
+            "extract_diagram_requirements: [BATCH %d/%d] FINISH thread=%s generated=%d",
+            batch_index + 1,
+            total_batches,
+            thread_name,
+            len(batch_results),
+        )
+        return batch_index, batch_results
+
+    wrapped_batch_processor = probe.wrap(_process_diagram_batch)
+    ordered_results: Dict[int, list] = {}
+
+    with concurrent.futures.ThreadPoolExecutor(
+        max_workers=max_concurrency,
+        thread_name_prefix="DiagramReqExtract",
+    ) as executor:
+        future_map = {
+            executor.submit(wrapped_batch_processor, batch_index, batch): batch_index
+            for batch_index, batch in enumerate(batched_lines)
+        }
+        for future in concurrent.futures.as_completed(future_map):
+            batch_index = future_map[future]
+            try:
+                completed_batch_index, batch_results = future.result()
+            except Exception as exc:
+                logger.exception(
+                    "extract_diagram_requirements: failed for batch %d: %s",
+                    batch_index,
+                    exc,
+                )
+                continue
+            ordered_results[completed_batch_index] = batch_results
+
+    for batch_index in range(total_batches):
+        all_results.extend(ordered_results.get(batch_index, []))
+
+    all_results = _canonicalize_diagram_requirements(all_results)
+
+    # Assign ordinals grouped by asvs_level
+    ordinal_counters = {}
+    for item in all_results:
+        level = item.get("asvs_level") or 0
+        ordinal_counters[level] = ordinal_counters.get(level, 0) + 1
+        item["ordinal"] = ordinal_counters[level]
+
+    logger.info(
+        "extract_diagram_requirements: concurrency=%s",
+        probe.snapshot().to_dict(),
+    )
+    logger.info(
+        "extract_diagram_requirements: generated %d diagram requirements "
+        "from %d text parameters (category_id=%s, job_id=%s)",
+        len(all_results),
+        len(parameters),
+        category_id,
+        ingestion_job_id,
+    )
+
+    return all_results

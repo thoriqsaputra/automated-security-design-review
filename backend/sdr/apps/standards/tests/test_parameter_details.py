@@ -3,8 +3,10 @@ from contextlib import nullcontext
 from unittest.mock import patch
 
 from sdr.apps.ai.services.extraction_services import (
+    _canonicalize_diagram_requirements,
     _remove_table_of_contents,
     extract_asvs_level_definitions_from_document,
+    extract_diagram_requirements,
     extract_structured_requirements,
 )
 from sdr.apps.standards.schemas import CategoryParameterChildSchema
@@ -174,3 +176,109 @@ def test_category_parameter_child_schema_includes_details():
 
     assert data["details"] == "All APIs must document interfaces."
     assert data["asvs_level"] == 2
+
+
+def test_canonicalize_diagram_requirements_suffixes_duplicate_stable_keys():
+    items = [
+        {
+            "stable_key": "job9-D-V1.4",
+            "source_requirement_key": "child-1",
+            "requirement_text": "Show trust boundary",
+            "verification_hint": "Boundary visible",
+            "asvs_level": 1,
+            "parent_section": "V1 Architecture",
+        },
+        {
+            "stable_key": "job9-D-V1.4",
+            "source_requirement_key": "child-2",
+            "requirement_text": "Show auth boundary",
+            "verification_hint": "Auth visible",
+            "asvs_level": 1,
+            "parent_section": "V1 Architecture",
+        },
+    ]
+
+    result = _canonicalize_diagram_requirements(items)
+
+    assert [item["stable_key"] for item in result] == [
+        "job9-D-V1.4",
+        "job9-D-V1.4-2",
+    ]
+
+
+def test_canonicalize_diagram_requirements_drops_exact_duplicates():
+    items = [
+        {
+            "stable_key": "job9-D-V1.4",
+            "source_requirement_key": "child-1",
+            "requirement_text": "Show trust boundary",
+            "verification_hint": "Boundary visible",
+            "asvs_level": 1,
+            "parent_section": "V1 Architecture",
+        },
+        {
+            "stable_key": "job9-D-V1.4",
+            "source_requirement_key": "child-1",
+            "requirement_text": "Show trust boundary",
+            "verification_hint": "Boundary visible",
+            "asvs_level": 1,
+            "parent_section": "V1 Architecture",
+        },
+    ]
+
+    result = _canonicalize_diagram_requirements(items)
+
+    assert len(result) == 1
+    assert result[0]["stable_key"] == "job9-D-V1.4"
+
+
+def test_extract_diagram_requirements_canonicalizes_duplicate_llm_keys():
+    parameters = [
+        SimpleNamespace(
+            stable_key="child-1",
+            requirement_text="Trust boundary",
+            details="Show zone split",
+            asvs_level=1,
+            parent=SimpleNamespace(title="V1 Architecture"),
+        ),
+        SimpleNamespace(
+            stable_key="child-2",
+            requirement_text="Authentication path",
+            details="Show auth flow",
+            asvs_level=1,
+            parent=SimpleNamespace(title="V1 Architecture"),
+        ),
+    ]
+    response = SimpleNamespace(
+        error=None,
+        content="""
+        {
+          "diagram_requirements": [
+            {
+              "stable_key": "D-V1.4",
+              "source_requirement_id": "child-1",
+              "requirement_text": "Show trust boundary",
+              "verification_hint": "Boundary visible",
+              "asvs_level": 1,
+              "parent_section": "V1 Architecture"
+            },
+            {
+              "stable_key": "D-V1.4",
+              "source_requirement_id": "child-2",
+              "requirement_text": "Show authentication path",
+              "verification_hint": "Auth visible",
+              "asvs_level": 1,
+              "parent_section": "V1 Architecture"
+            }
+          ]
+        }
+        """,
+    )
+
+    with patch("sdr.apps.ai.services.extraction_services.chat_completion", return_value=response):
+        result = extract_diagram_requirements(parameters=parameters, category_id=1, ingestion_job_id=9)
+
+    assert [item["stable_key"] for item in result] == [
+        "job9-D-V1.4",
+        "job9-D-V1.4-2",
+    ]
