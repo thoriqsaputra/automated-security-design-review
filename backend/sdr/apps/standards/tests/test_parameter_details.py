@@ -2,7 +2,7 @@ from types import SimpleNamespace
 from contextlib import nullcontext
 from unittest.mock import patch
 
-from sdr.apps.ai.services.extraction_services import (
+from sdr.apps.ai.engine.extraction import (
     _canonicalize_diagram_requirements,
     _remove_table_of_contents,
     extract_asvs_level_definitions_from_document,
@@ -107,7 +107,7 @@ def test_extract_structured_requirements_preserves_details():
         """,
     )
 
-    with patch("sdr.apps.ai.services.extraction_services.chat_completion", return_value=response):
+    with patch("sdr.apps.ai.engine.extraction.api.chat_completion", return_value=response):
         result = extract_structured_requirements("5.4.1 Generic Web Service Security")
 
     item = result["5.4 API and Web Service"][0]
@@ -147,12 +147,12 @@ def test_extract_asvs_level_definitions_from_document():
     )
 
     with (
-        patch("sdr.apps.ai.services.extraction_services.get_local_file_path", return_value=nullcontext("/tmp/asvs.pdf")),
+        patch("sdr.apps.ai.engine.extraction.api.get_local_file_path", return_value=nullcontext("/tmp/asvs.pdf")),
         patch(
-            "sdr.apps.ai.services.extraction_services.get_document_content",
+            "sdr.apps.ai.engine.extraction.api.get_document_content",
             return_value={"text": "ASVS Level 1 and Level 2 definitions"},
         ),
-        patch("sdr.apps.ai.services.extraction_services.chat_completion", return_value=response),
+        patch("sdr.apps.ai.engine.extraction.api.chat_completion", return_value=response),
     ):
         result = extract_asvs_level_definitions_from_document(source_doc, start_page=8, end_page=10)
 
@@ -275,7 +275,7 @@ def test_extract_diagram_requirements_canonicalizes_duplicate_llm_keys():
         """,
     )
 
-    with patch("sdr.apps.ai.services.extraction_services.chat_completion", return_value=response):
+    with patch("sdr.apps.ai.engine.extraction.api.chat_completion", return_value=response):
         result = extract_diagram_requirements(parameters=parameters, category_id=1, ingestion_job_id=9)
 
     assert [item["stable_key"] for item in result] == [

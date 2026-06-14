@@ -1,6 +1,6 @@
 from types import SimpleNamespace
 
-from sdr.apps.ai.services.analysis.asvs_level import filter_parameters_for_asvs_level
+from sdr.apps.ai.engine.classification.asvs_level import filter_parameters_for_asvs_level
 
 
 def _param(parameter_id: int, level):

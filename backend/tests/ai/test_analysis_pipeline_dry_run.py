@@ -4,9 +4,9 @@ from datetime import datetime, timezone
 from types import SimpleNamespace
 
 from sdr.apps.ai.agents.base import Citation, CriticResult, HunterResult, MediatorResult
-from sdr.apps.ai.retrieval.router import RetrievalResult
-from sdr.apps.ai.services.analysis.dto import AnalysisSummary, DebateOutput, IngestionOutput
-from sdr.apps.ai.services.analysis.pipeline import TSDAnalysisPipeline
+from sdr.apps.ai.retrieval.core import RetrievalResult
+from sdr.apps.ai.engine.dto import AnalysisSummary, DebateOutput, IngestionOutput
+from sdr.apps.ai.engine.pipeline import TSDAnalysisPipeline
 import sdr.apps.designs.models  # noqa: F401 - registers SQLAlchemy relationship targets for joinedload
 
 
@@ -88,7 +88,7 @@ class _FakeDebateService:
     def __init__(self):
         self.calls = []
 
-    def run_debate(self, *, debate_input, retrieval_result, tsd_document, enable_vision):
+    def run_debate(self, *, debate_input, retrieval_result, tsd_document):
         self.calls.append(debate_input)
         reason = "The TSD explicitly states that MFA is enforced for administrative access."
         citation = Citation(block_id="p1_b1", page_number=1, quoted_text="MFA is enforced")
@@ -141,6 +141,53 @@ class _FakePersistenceService:
         else:
             summary.na_count += 1
         summary.citation_count += len(persistence_input.debate_output.mediator_result.final_citations or [])
+
+
+class _FakeWorkflowRepository:
+    def __init__(self, *, latest_review=None, active_ingestion_job=None, parameters=None, level_definitions=None):
+        self.latest_review = latest_review
+        self.active_ingestion_job = active_ingestion_job
+        self.parameters = list(parameters or [])
+        self.level_definitions = list(level_definitions or [])
+        self.running_calls = []
+        self.summary_snapshots = []
+        self.retrieval_snapshots = []
+        self.overviews = []
+        self.completed_calls = []
+        self.failed_calls = []
+
+    def get_latest_review(self, review_id):
+        return self.latest_review
+
+    def mark_review_running(self, review_id, *, status, started_at):
+        self.running_calls.append((review_id, status, started_at))
+
+    def save_review_overview(self, review_id, *, overview):
+        self.overviews.append((review_id, overview))
+
+    def save_summary_snapshot(self, review_id, *, summary):
+        self.summary_snapshots.append((review_id, summary))
+
+    def save_retrieval_snapshot(self, review_id, *, snapshot):
+        self.retrieval_snapshots.append((review_id, snapshot))
+
+    def mark_review_completed(self, review_id, *, status, completed_at, summary):
+        self.completed_calls.append((review_id, status, completed_at, summary))
+
+    def mark_review_failed(self, review_id, *, status, completed_at, error_message):
+        self.failed_calls.append((review_id, status, completed_at, error_message))
+
+    def list_asvs_level_definitions(self, ingestion_job_id):
+        return list(self.level_definitions)
+
+    def get_latest_active_ingestion_job(self, category_id):
+        return self.active_ingestion_job
+
+    def list_category_parameters(self, *, category_id, ingestion_job_id):
+        return list(self.parameters)
+
+    def list_diagram_requirements(self, *, category_id, ingestion_job_id, effective_asvs_level):
+        return []
 
 
 class _ScalarResult:
@@ -205,16 +252,13 @@ def test_classify_review_asvs_level_prefers_ingestion_job_definitions(monkeypatc
         name="Version Specific Standard",
         classification_guidance="Use L2 for this ASVS version when sensitive payment data is present.",
     )
+    repo = _FakeWorkflowRepository(level_definitions=[job_definition])
     pipeline = TSDAnalysisPipeline(
         ingestion_service=SimpleNamespace(),
         retrieval_service=SimpleNamespace(),
         debate_service=SimpleNamespace(),
         persistence_service=SimpleNamespace(),
-    )
-
-    monkeypatch.setattr(
-        "sdr.core.database.SessionLocal",
-        _SessionFactory([_Session(execute_value=[job_definition])]),
+        workflow_repository=repo,
     )
 
     captured = {}
@@ -233,7 +277,7 @@ def test_classify_review_asvs_level_prefers_ingestion_job_definitions(monkeypatc
         )
 
     monkeypatch.setattr(
-        "sdr.apps.ai.services.analysis.pipeline.classify_tsd_asvs_level",
+        "sdr.apps.ai.engine.pipeline.classify_tsd_asvs_level",
         _fake_classify,
     )
 
@@ -271,25 +315,26 @@ def test_pipeline_dry_run_executes_without_real_llm_or_db(monkeypatch, settings_
     retrieval = _FakeRetrievalService([applicable])
     debate = _FakeDebateService()
     persistence = _FakePersistenceService()
+    workflow_repository = _FakeWorkflowRepository(
+        latest_review=SimpleNamespace(status="pending", completed_at=None, error_message=None),
+        parameters=[applicable],
+    )
     pipeline = TSDAnalysisPipeline(
         ingestion_service=_FakeIngestionService(tsd_document),
         retrieval_service=retrieval,
         debate_service=debate,
         persistence_service=persistence,
-    )
-
-    status_session = _Session()
-    ingestion_job_session = _Session()
-    parameter_session = _Session(execute_value=[applicable])
-    overview_session = _Session()
-    monkeypatch.setattr(
-        "sdr.core.database.SessionLocal",
-        _SessionFactory([status_session, ingestion_job_session, parameter_session, overview_session]),
+        workflow_repository=workflow_repository,
     )
     completed = {}
     failures = []
     overview_calls = []
     monkeypatch.setattr(TSDAnalysisPipeline, "_is_cancelled", lambda self, review: False)
+    monkeypatch.setattr(
+        TSDAnalysisPipeline,
+        "_persist_summary_snapshot",
+        lambda self, review_obj, summary_obj: setattr(review_obj, "summary_json", summary_obj.to_dict()),
+    )
     monkeypatch.setattr(
         TSDAnalysisPipeline,
         "_classify_review_asvs_level",
@@ -328,7 +373,6 @@ def test_pipeline_dry_run_executes_without_real_llm_or_db(monkeypatch, settings_
             retrieval_query_details=kwargs.get("retrieval_query_details") or {},
             context_chunks=[],
             context_chunk_map={},
-            diagram_captions=[],
             killed_assumptions=list(kwargs.get("killed_assumptions", [])),
         ),
     )
@@ -351,6 +395,12 @@ def test_pipeline_dry_run_executes_without_real_llm_or_db(monkeypatch, settings_
 
     assert isinstance(summary, AnalysisSummary)
     assert summary.total_parameters == 1
+    assert summary.debate_total_parameters == 1
+    assert summary.debate_completed_parameters == 1
+    assert summary.debate_remaining_parameters == 0
+    assert summary.persistence_total_parameters == 1
+    assert summary.persistence_completed_parameters == 1
+    assert summary.persistence_remaining_parameters == 0
     assert summary.analysis_total_parameters == 1
     assert summary.analysis_processed_parameters == 1
     assert summary.analysis_remaining_parameters == 0
@@ -361,17 +411,32 @@ def test_pipeline_dry_run_executes_without_real_llm_or_db(monkeypatch, settings_
     assert failures == []
     assert review.overview == "Dry run overview"
     assert completed["summary"]["not_met_count"] == 1
+    assert completed["summary"]["debate_total_parameters"] == 1
+    assert completed["summary"]["debate_completed_parameters"] == 1
+    assert completed["summary"]["debate_remaining_parameters"] == 0
+    assert completed["summary"]["persistence_total_parameters"] == 1
+    assert completed["summary"]["persistence_completed_parameters"] == 1
+    assert completed["summary"]["persistence_remaining_parameters"] == 0
     assert completed["summary"]["analysis_total_parameters"] == 1
     assert completed["summary"]["analysis_processed_parameters"] == 1
     assert completed["summary"]["analysis_remaining_parameters"] == 0
     assert completed["summary"]["asvs"]["override_level"] == 2
     assert completed["summary"]["asvs"]["effective_level"] == 2
     assert completed["summary"]["asvs"]["categories"]["web_application"]["unknown_level_included_count"] == 0
+    assert completed["summary"]["asvs"]["categories"]["web_application"]["debate_total_count"] == 1
+    assert completed["summary"]["asvs"]["categories"]["web_application"]["debate_completed_count"] == 1
+    assert completed["summary"]["asvs"]["categories"]["web_application"]["debate_remaining_count"] == 0
+    assert completed["summary"]["asvs"]["categories"]["web_application"]["persistence_total_count"] == 1
+    assert completed["summary"]["asvs"]["categories"]["web_application"]["persistence_completed_count"] == 1
+    assert completed["summary"]["asvs"]["categories"]["web_application"]["persistence_remaining_count"] == 0
     assert completed["summary"]["asvs"]["categories"]["web_application"]["analysis_total_count"] == 1
     assert completed["summary"]["asvs"]["categories"]["web_application"]["analysis_processed_count"] == 1
     assert completed["summary"]["asvs"]["categories"]["web_application"]["analysis_remaining_count"] == 0
     assert persistence.persisted[0][1].parameter is applicable
     assert debate.calls[0].parameter is applicable
     assert retrieval.parameter_queries[0]["child_requirement"].startswith("Use MFA")
+    assert workflow_repository.running_calls
+    assert workflow_repository.retrieval_snapshots
+    assert workflow_repository.overviews == [(review.id, "Dry run overview")]
     assert tsd_document.cleaned_up is True
     assert overview_calls == [(review.id, 1)]

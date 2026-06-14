@@ -3,12 +3,16 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from collections import deque
 from types import SimpleNamespace
+import networkx as nx
+import pytest
 
 from sdr.apps.ai.agents.base import Citation, CriticResult, HunterResult, MediatorResult
-from sdr.apps.ai.retrieval.router import RetrievalResult
-from sdr.apps.ai.services.analysis.debate_service import DebateService
-from sdr.apps.ai.services.analysis.dto import AnalysisSummary, DebateOutput
-from sdr.apps.ai.services.analysis.pipeline import TSDAnalysisPipeline
+from sdr.apps.ai.retrieval.core import RetrievalResult
+from sdr.apps.ai.engine.debate.debate_service import DebateService
+from sdr.apps.ai.engine.dto import AnalysisSummary, DebateOutput
+from sdr.apps.ai.engine.classification.parent_applicability import ParentApplicabilityResult
+from sdr.apps.ai.engine.persistence.review_run_state_service import AnalysisCancelledError
+from sdr.apps.ai.engine.pipeline import TSDAnalysisPipeline
 
 
 def _pipeline():
@@ -253,6 +257,200 @@ def test_is_cancelled_supports_legacy_failed_marker(monkeypatch):
     assert _pipeline()._is_cancelled(review) is True
 
 
+def test_parent_applicability_gate_marks_children_na(monkeypatch, settings_override):
+    settings_override(
+        AI_PARENT_APPLICABILITY_ENABLED=True,
+        AI_PARENT_APPLICABILITY_CONFIDENCE_THRESHOLD=0.7,
+    )
+    pipeline = _pipeline()
+    review = SimpleNamespace(id=81)
+    category = SimpleNamespace(id=7, code="web_application")
+    ingestion_job = SimpleNamespace(id=11, version_no=5)
+    parent = _parent(1, title="Session Controls", description="Browser session requirements")
+    parameters = [
+        _parameter(1, parent=parent, text="Use secure cookie flags."),
+        _parameter(2, parent=parent, text="Expire browser sessions after inactivity."),
+    ]
+    summary = AnalysisSummary()
+    persisted = []
+
+    monkeypatch.setattr(TSDAnalysisPipeline, "_is_cancelled", lambda self, review: False)
+    monkeypatch.setattr(
+        TSDAnalysisPipeline,
+        "_persist_summary_snapshot",
+        lambda self, review_obj, summary_obj: setattr(review_obj, "summary_json", summary_obj.to_dict()),
+    )
+    monkeypatch.setattr(
+        TSDAnalysisPipeline,
+        "_persist_debate_output",
+        lambda self, **kwargs: persisted.append(
+            (
+                kwargs["parameter"].id,
+                kwargs["debate_output"].mediator_result.final_verdict,
+                kwargs["debate_output"].analysis_trace["parent_applicability"]["reasoning"],
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        TSDAnalysisPipeline,
+        "_get_parent_retrieval_result",
+        lambda self, **kwargs: RetrievalResult(
+            context_chunks=["The design is API-only and has no browser session state."],
+            source_block_ids=["p1_b1"],
+        ),
+    )
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.pipeline.classify_parent_applicability",
+        lambda **kwargs: ParentApplicabilityResult(
+            applicable=False,
+            confidence=0.92,
+            reasoning="The design is API-only and has no browser sessions.",
+            evidence=["API-only", "no browser session state"],
+        ),
+    )
+
+    applicable_parameters, parent_cache = pipeline._apply_parent_applicability_gate(
+        review=review,
+        category=category,
+        ingestion_job=ingestion_job,
+        parameters=parameters,
+        indexes=SimpleNamespace(),
+        tsd_document=SimpleNamespace(),
+        summary=summary,
+    )
+
+    assert applicable_parameters == []
+    assert parent_cache == {}
+    assert [item[0] for item in persisted] == [1, 2]
+    assert all(item[1] == "na" for item in persisted)
+    assert summary.applicability["parents_total"] == 1
+    assert summary.applicability["parents_not_applicable"] == 1
+    assert summary.applicability["parents_applicable"] == 0
+    assert summary.applicability["children_marked_na_by_parent"] == 2
+
+
+def test_parent_applicability_gate_falls_back_to_applicable_on_low_confidence(monkeypatch, settings_override):
+    settings_override(
+        AI_PARENT_APPLICABILITY_ENABLED=True,
+        AI_PARENT_APPLICABILITY_CONFIDENCE_THRESHOLD=0.7,
+    )
+    pipeline = _pipeline()
+    review = SimpleNamespace(id=82)
+    category = SimpleNamespace(id=7, code="web_application")
+    ingestion_job = SimpleNamespace(id=11, version_no=5)
+    parent = _parent(1, title="Session Controls", description="Browser session requirements")
+    parameters = [_parameter(1, parent=parent, text="Use secure cookie flags.")]
+    summary = AnalysisSummary()
+
+    monkeypatch.setattr(TSDAnalysisPipeline, "_is_cancelled", lambda self, review: False)
+    monkeypatch.setattr(
+        TSDAnalysisPipeline,
+        "_persist_summary_snapshot",
+        lambda self, review_obj, summary_obj: setattr(review_obj, "summary_json", summary_obj.to_dict()),
+    )
+    monkeypatch.setattr(
+        TSDAnalysisPipeline,
+        "_get_parent_retrieval_result",
+        lambda self, **kwargs: RetrievalResult(
+            context_chunks=["The design documentation is ambiguous about browser usage."],
+            source_block_ids=["p1_b1"],
+        ),
+    )
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.pipeline.classify_parent_applicability",
+        lambda **kwargs: ParentApplicabilityResult(
+            applicable=False,
+            confidence=0.45,
+            reasoning="Browser use is unclear.",
+            evidence=["ambiguous scope"],
+        ),
+    )
+
+    applicable_parameters, _ = pipeline._apply_parent_applicability_gate(
+        review=review,
+        category=category,
+        ingestion_job=ingestion_job,
+        parameters=parameters,
+        indexes=SimpleNamespace(),
+        tsd_document=SimpleNamespace(),
+        summary=summary,
+    )
+
+    assert [parameter.id for parameter in applicable_parameters] == [1]
+    assert summary.applicability["parents_total"] == 1
+    assert summary.applicability["parents_not_applicable"] == 0
+    assert summary.applicability["parents_applicable"] == 1
+    assert summary.applicability["parents"][0]["fallback_mode"] == "assume_applicable"
+
+
+def test_build_retrieval_snapshot_serializes_raptor_and_graph():
+    pipeline = _pipeline()
+    leaf = SimpleNamespace(
+        node_id="leaf-1",
+        level=0,
+        text="Leaf text preview",
+        page_numbers=[1],
+        source_block_ids=["p1_b1"],
+        children=[],
+        section_heading="Authentication",
+    )
+    root = SimpleNamespace(
+        node_id="root-1",
+        level=1,
+        text="Root summary text",
+        page_numbers=[1, 2],
+        source_block_ids=["p1_b1", "p2_b1"],
+        children=[leaf],
+        section_heading="Overview",
+    )
+    raptor_tree = SimpleNamespace(
+        total_nodes=2,
+        max_level=1,
+        root_node=root,
+        is_empty=lambda: False,
+        get_all_nodes=lambda: [root, leaf],
+    )
+
+    entity = SimpleNamespace(
+        entity_id="api_gateway",
+        name="API Gateway",
+        entity_type="service",
+        source_pages=[1],
+        source_block_ids=["p1_b1"],
+    )
+    relation_obj = SimpleNamespace(
+        confidence=0.88,
+        protocol="HTTPS",
+        is_encrypted=True,
+        requires_auth=True,
+        source_pages=[1],
+    )
+    graph_obj = nx.DiGraph()
+    graph_obj.add_node("api_gateway")
+    graph_obj.add_node("auth_service")
+    graph_obj.add_edge("api_gateway", "auth_service", relation="calls", relation_obj=relation_obj)
+    tsd_graph = SimpleNamespace(
+        total_entities=1,
+        total_relations=1,
+        entities={"api_gateway": entity},
+        graph=graph_obj,
+        is_empty=lambda: False,
+    )
+
+    snapshot = pipeline._build_retrieval_snapshot(
+        SimpleNamespace(raptor_tree=raptor_tree, tsd_graph=tsd_graph)
+    )
+
+    assert snapshot is not None
+    assert snapshot["status"] == "ready"
+    assert snapshot["raptor"]["status"] == "ready"
+    assert snapshot["raptor"]["root_node_id"] == "root-1"
+    assert snapshot["raptor"]["nodes"][1]["parent_id"] == "root-1"
+    assert snapshot["graph"]["status"] == "ready"
+    assert snapshot["graph"]["total_entities"] == 1
+    assert snapshot["graph"]["edges"][0]["relation_type"] == "calls"
+
+
 def test_batched_analysis_uses_wrapped_concurrency_probes(monkeypatch, settings_override):
     settings_override(
         AI_BATCH_DEBATE_ENABLED=True,
@@ -300,6 +498,11 @@ def test_batched_analysis_uses_wrapped_concurrency_probes(monkeypatch, settings_
     monkeypatch.setattr(TSDAnalysisPipeline, "_is_cancelled", lambda self, review: False)
     monkeypatch.setattr(
         TSDAnalysisPipeline,
+        "_persist_summary_snapshot",
+        lambda self, review_obj, summary_obj: setattr(review_obj, "summary_json", summary_obj.to_dict()),
+    )
+    monkeypatch.setattr(
+        TSDAnalysisPipeline,
         "_persist_debate_output",
         lambda self, **kwargs: persisted.append(kwargs["parameter"].id),
     )
@@ -326,9 +529,21 @@ def test_batched_analysis_uses_wrapped_concurrency_probes(monkeypatch, settings_
     )
 
     assert persisted == [1, 2]
+    assert summary.debate_total_parameters == 2
+    assert summary.debate_completed_parameters == 2
+    assert summary.debate_remaining_parameters == 0
+    assert summary.persistence_total_parameters == 2
+    assert summary.persistence_completed_parameters == 2
+    assert summary.persistence_remaining_parameters == 0
     assert summary.analysis_total_parameters == 2
     assert summary.analysis_processed_parameters == 2
     assert summary.analysis_remaining_parameters == 0
+    assert summary.asvs["categories"]["web_application"]["debate_total_count"] == 2
+    assert summary.asvs["categories"]["web_application"]["debate_completed_count"] == 2
+    assert summary.asvs["categories"]["web_application"]["debate_remaining_count"] == 0
+    assert summary.asvs["categories"]["web_application"]["persistence_total_count"] == 2
+    assert summary.asvs["categories"]["web_application"]["persistence_completed_count"] == 2
+    assert summary.asvs["categories"]["web_application"]["persistence_remaining_count"] == 0
     assert summary.asvs["categories"]["web_application"]["analysis_total_count"] == 2
     assert summary.asvs["categories"]["web_application"]["analysis_processed_count"] == 2
     assert summary.asvs["categories"]["web_application"]["analysis_remaining_count"] == 0
@@ -350,7 +565,7 @@ def test_validate_batch_outputs_rejects_missing_and_generic_results(settings_ove
     valid.mediator_result.final_citations = [Citation(block_id="p1_b1", page_number=1)]
     valid.critic_result.valid_citations = [Citation(block_id="p1_b1", page_number=1)]
     low_conf = _debate_output(params[1], confidence=0.4)
-    weak = _debate_output(params[2], reasoning="Too short.")
+    weak = _debate_output(params[2], confidence=0.8, reasoning="Too short.")
     generic = _debate_output(
         params[3],
         reasoning="All children in the batch are covered by the same evidence and therefore pass.",
@@ -436,3 +651,80 @@ def test_resolve_parameters_prefers_first_selected_category(monkeypatch):
     assert category is category_a
     assert ingestion_job is None
     assert parameters == []
+
+
+def test_debate_service_stops_before_critic_when_cancelled():
+    parameter = _parameter(1, text="Use MFA for all admin access.")
+    debate_input = SimpleNamespace(
+        parameter=parameter,
+        parameter_text=parameter.requirement_text,
+        parameter_section="Authentication",
+        contract={"domain": "iam_access_control"},
+        killed_assumptions=[],
+        hunter_plan={},
+        retrieval_query_details={},
+        context_chunks=["--- DOCUMENT CHUNK 1 OF 1 ---\np1_b1 Evidence."],
+        context_chunk_map={
+            "p1_b1": {
+                "text": "Evidence.",
+                "section": "Authentication",
+                "source": "retrieval_context",
+                "citation_grade": True,
+            }
+        },
+    )
+    tsd_document = SimpleNamespace(get_diagram_by_id=lambda *_args, **_kwargs: None)
+    retrieval_result = RetrievalResult(
+        context_chunks=list(debate_input.context_chunks),
+        source_block_ids=["p1_b1"],
+        evidence_metadata={},
+    )
+
+    class _Hunter:
+        def run(self, **_kwargs):
+            return HunterResult(
+                verdict="not_met",
+                confidence=0.42,
+                reasoning="Hunter found evidence.",
+                logic_summary="Hunter found evidence.",
+                citations=[Citation(block_id="p1_b1", page_number=1)],
+                evidence_found=True,
+            )
+
+    class _Critic:
+        def run(self, **_kwargs):
+            raise AssertionError("Critic should not run after cancellation")
+
+    class _Mediator:
+        def run(self, **_kwargs):
+            raise AssertionError("Mediator should not run after cancellation")
+
+    service = DebateService(hunter=_Hunter(), critic=_Critic(), mediator=_Mediator())
+    cancel_calls = {"count": 0}
+
+    def cancel_check():
+        cancel_calls["count"] += 1
+        return cancel_calls["count"] >= 5
+
+    with pytest.raises(AnalysisCancelledError):
+        service.run_debate(
+            debate_input=debate_input,
+            retrieval_result=retrieval_result,
+            tsd_document=tsd_document,
+            cancel_check=cancel_check,
+        )
+
+    assert cancel_calls["count"] >= 5
+
+
+def test_debate_output_can_embed_retrieval_result_without_forward_ref_error():
+    parameter = _parameter(1, text="Use MFA for all admin access.")
+    output = DebateOutput(
+        parameter=parameter,
+        hunter_result=HunterResult(verdict="not_met", confidence=0.1),
+        critic_result=CriticResult(),
+        mediator_result=MediatorResult(),
+        retrieval_result=RetrievalResult(context_chunks=["evidence"]),
+    )
+
+    assert output.retrieval_result.context_chunks == ["evidence"]

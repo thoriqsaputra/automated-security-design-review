@@ -89,7 +89,7 @@ def test_dispatch_review_analysis_task_runs_pipeline(monkeypatch):
     )
     called = {}
     monkeypatch.setattr(
-        "sdr.apps.ai.services.analysis.run_tsd_analysis",
+        "sdr.apps.ai.engine.run_tsd_analysis",
         lambda loaded_review: called.setdefault("review", loaded_review),
     )
 
@@ -113,7 +113,7 @@ def test_dispatch_review_analysis_task_marks_failed_and_retries(monkeypatch):
     def _boom(_review):
         raise RuntimeError("pipeline failed")
 
-    monkeypatch.setattr("sdr.apps.ai.services.analysis.run_tsd_analysis", _boom)
+    monkeypatch.setattr("sdr.apps.ai.engine.run_tsd_analysis", _boom)
 
     class RetryRaised(Exception):
         pass
@@ -148,7 +148,7 @@ def test_dispatch_review_analysis_task_does_not_retry_cancelled_review(monkeypat
     def _boom(_review):
         raise RuntimeError("pipeline failed after cancel")
 
-    monkeypatch.setattr("sdr.apps.ai.services.analysis.run_tsd_analysis", _boom)
+    monkeypatch.setattr("sdr.apps.ai.engine.run_tsd_analysis", _boom)
 
     retry_called = {"value": False}
 

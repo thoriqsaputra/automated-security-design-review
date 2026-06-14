@@ -156,3 +156,29 @@ def test_get_review_retrieval_visualization_returns_snapshot():
     payload = reviews_router_module.get_review_retrieval_visualization(review.id, db=_FakeSession(review=review))
 
     assert payload is review.retrieval_snapshot_json
+
+
+def test_review_progress_exposes_live_debate_and_persistence_counts():
+    review = Review(status=Review.STATUS_RUNNING)
+    review.summary_json = {
+        "debate_total_parameters": 10,
+        "debate_completed_parameters": 4,
+        "debate_remaining_parameters": 6,
+        "persistence_total_parameters": 10,
+        "persistence_completed_parameters": 2,
+        "persistence_remaining_parameters": 8,
+        "error_count": 1,
+        "applicability": {"children_marked_na_by_parent": 3},
+        "asvs": {"categories": {"web_application": {"debate_total_count": 10}}},
+    }
+
+    progress = review.progress
+
+    assert progress is not None
+    assert progress["stage"] == "debate"
+    assert progress["completed_items"] == 4
+    assert progress["remaining_items"] == 6
+    assert progress["failed_items"] == 1
+    assert progress["preparation"]["debate"]["total"] == 10
+    assert progress["preparation"]["persistence"]["completed"] == 2
+    assert progress["preparation"]["skipped_by_parent_applicability"] == 3

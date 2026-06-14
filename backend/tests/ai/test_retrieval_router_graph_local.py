@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-from sdr.apps.ai.retrieval.candidate import RetrievalCandidate
-from sdr.apps.ai.retrieval.graph_search import (
+from sdr.apps.ai.retrieval.core.candidates import RetrievalCandidate
+from sdr.apps.ai.retrieval.searchers.graph import (
     GraphSearchResponse,
     GraphSearchResult,
 )
-from sdr.apps.ai.retrieval.router import HybridRetrievalRouter
-from sdr.apps.ai.retrieval.vector_search import VectorSearchResponse, VectorSearchResult
+from sdr.apps.ai.retrieval.routing.router import HybridRetrievalRouter
+from sdr.apps.ai.retrieval.searchers.vector import VectorSearchResponse, VectorSearchResult
 from sdr.apps.ai.tsd_processing.graph_builder import GraphEntity, GraphRelation, TSDGraph
 
 
