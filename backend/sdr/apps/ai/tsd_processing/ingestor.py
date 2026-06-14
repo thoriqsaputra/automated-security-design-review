@@ -39,7 +39,7 @@ except ImportError:
 _MIN_BLOCK_TEXT_LENGTH = 20
 
 # Minimum image size in bytes — images below this are icons/logos, not diagrams.
-# Consistent with VisionAgent._MIN_IMAGE_BYTES in agents/vision.py.
+# Keep aligned with the diagram debate vision threshold in agents/vision.py.
 _MIN_DIAGRAM_BYTES = 512
 
 # Maximum caption search radius in points below a diagram bounding box.
@@ -266,10 +266,6 @@ class TSDPage:
         """Returns only the text blocks identified as headings."""
         return [b for b in self.text_blocks if b.is_heading]
 
-    @property
-    def has_diagrams(self) -> bool:
-        return bool(self.diagrams)
-
     def get_blocks_near_bbox(
         self,
         bbox: Tuple[float, float, float, float],
@@ -306,14 +302,6 @@ class TSDDocument:
         for page in self.pages:
             blocks.extend(page.text_blocks)
         return blocks
-
-    @property
-    def all_diagrams(self) -> List[DiagramBlock]:
-        """Returns all diagrams across all pages in document order."""
-        diagrams = []
-        for page in self.pages:
-            diagrams.extend(page.diagrams)
-        return diagrams
 
     @property
     def full_text(self) -> str:
@@ -365,6 +353,20 @@ class TSDDocument:
 # ---------------------------------------------------------------------------
 # TSD Ingestor
 # ---------------------------------------------------------------------------
+
+# Canonical document models now live in document_models.py. Rebind the public
+# names here so existing imports from tsd_processing.ingestor keep working.
+from sdr.apps.ai.tsd_processing.document_models import (  # noqa: E402
+    DiagramBlock as _CanonicalDiagramBlock,
+    TSDDocument as _CanonicalTSDDocument,
+    TSDPage as _CanonicalTSDPage,
+    TextBlock as _CanonicalTextBlock,
+)
+
+TextBlock = _CanonicalTextBlock
+DiagramBlock = _CanonicalDiagramBlock
+TSDPage = _CanonicalTSDPage
+TSDDocument = _CanonicalTSDDocument
 
 
 class TSDIngestor:

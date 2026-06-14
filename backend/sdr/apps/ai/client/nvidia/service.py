@@ -180,6 +180,7 @@ class NVIDIAAIService(AIServiceInterface):
             )
             resp_json = resp.json()
             content_text = resp_json.get("choices", [{}])[0].get("message", {}).get("content", "")
+            finish_reason = resp_json.get("choices", [{}])[0].get("finish_reason")
             
             # Extract usage if available
             usage = resp_json.get("usage", {})
@@ -190,6 +191,7 @@ class NVIDIAAIService(AIServiceInterface):
                 provider=AIProvider.NVIDIA,
                 usage=usage,
                 raw_usage=usage,
+                finish_reason=finish_reason,
                 status_code=resp.status_code,
             )
 
@@ -280,7 +282,7 @@ class NVIDIAAIService(AIServiceInterface):
     def get_available_models(self) -> List[AIModel]:
         provider = AIProvider.NVIDIA
         return [
-            AIModel(name=self.model_standard_extraction, provider=provider, max_tokens=4096),
-            AIModel(name=self.model_vision, provider=provider, max_tokens=4096),
+            AIModel(name=self.model_standard_extraction, provider=provider, max_tokens=8192),
+            AIModel(name=self.model_vision, provider=provider, max_tokens=8192),
             AIModel(name=self.model_embedding, provider=provider, max_tokens=2048, is_embedding_model=True),
         ]

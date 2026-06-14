@@ -11,9 +11,13 @@ from typing import Any, Dict, List, Optional, Tuple
 from sdr.core.config import settings
 
 from sdr.apps.ai.client import chat_completion, get_embeddings
-from sdr.apps.ai.tsd_processing.ingestor import TextBlock, TSDDocument
-from sdr.apps.ai.tsd_processing.content_filter import build_filtered_tsd_view
+from sdr.apps.ai.tsd_processing.document_models import TextBlock, TSDDocument
+from sdr.apps.ai.tsd_processing.prepared_view import PreparedTSDView, prepare_tsd_view
 from sdr.apps.ai.utils.concurrency import ConcurrencyProbe
+from sdr.apps.ai.prompts.indexing import (
+    RAPTOR_SUMMARISATION_SYSTEM_PROMPT,
+    build_raptor_summarisation_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -199,22 +203,16 @@ class RAPTORTreeBuilder:
     # Public entry point
     # ------------------------------------------------------------------
 
-    def build(self, tsd_document: TSDDocument, progress_callback=None) -> RAPTORTree:
+    def build(
+        self,
+        tsd_document: TSDDocument,
+        progress_callback=None,
+        prepared_view: Optional[PreparedTSDView] = None,
+    ) -> RAPTORTree:
         tree = RAPTORTree(document_name=tsd_document.document_name)
-
-        filtered_view = build_filtered_tsd_view(tsd_document)
-        tree.build_stats.update(
-            {
-                f"content_filter_{key}": value
-                for key, value in filtered_view.stats.items()
-            }
-        )
-        valid_blocks = [
-            b
-            for page in filtered_view.pages
-            for b in page.text_blocks
-            if b.is_valid()
-        ]
+        prepared = prepared_view or prepare_tsd_view(tsd_document)
+        tree.build_stats.update({f"content_filter_{key}": value for key, value in prepared.stats.items()})
+        valid_blocks = list(prepared.valid_blocks)
 
         if len(valid_blocks) < _MIN_LEAF_NODES:
             self.logger.warning(
@@ -252,7 +250,7 @@ class RAPTORTreeBuilder:
         # ------------------------------------------------------------------
         # Step 1: Build Level-0 leaf nodes from text blocks
         # ------------------------------------------------------------------
-        leaf_nodes = self._build_leaf_nodes(valid_blocks, tsd_document, filtered_view.pages)
+        leaf_nodes = self._build_leaf_nodes(valid_blocks, tsd_document, prepared.filtered_view.pages)
         tree.levels.append(leaf_nodes)
         if progress_callback:
             progress_callback(
@@ -716,14 +714,10 @@ class RAPTORTreeBuilder:
             level_instructions[1],
         )
 
-        prompt = (
-            f"You are summarising sections of a Technical Software Document "
-            f"(TSD) for a security compliance review pipeline.\n\n"
-            f"Instruction: {instruction}\n\n"
-            f"Target length: approximately {token_budget} tokens.\n\n"
-            f"Content to summarise:\n\n{combined_text}\n\n"
-            f"Output the summary as plain text only. "
-            f"No JSON, no bullet points, no markdown headers."
+        prompt = build_raptor_summarisation_prompt(
+            instruction=instruction,
+            token_budget=token_budget,
+            combined_text=combined_text,
         )
 
         try:
@@ -731,11 +725,7 @@ class RAPTORTreeBuilder:
                 messages=[
                     {
                         "role": "system",
-                        "content": (
-                            "You are a technical writer summarising security "
-                            "documentation for a compliance review pipeline. "
-                            "Be precise and preserve all security-relevant details."
-                        ),
+                        "content": RAPTOR_SUMMARISATION_SYSTEM_PROMPT,
                     },
                     {"role": "user", "content": prompt},
                 ],

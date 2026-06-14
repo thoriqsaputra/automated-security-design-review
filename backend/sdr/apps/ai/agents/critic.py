@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import json
 import logging
 from typing import Dict, List, Optional
 
 from sdr.core.config import settings
 
-from sdr.apps.ai.prompts.agent_prompt import (
+from sdr.apps.ai.prompts.agents import (
     CRITIC_SYSTEM_PROMPT,
     build_critic_prompt,
+    build_batch_critic_prompt,
 )
 from .base import (
     BaseAgent,
@@ -27,29 +27,9 @@ logger = logging.getLogger(__name__)
 
 
 class CriticAgent(BaseAgent):
-    """
-    Concrete implementation of the Critic agent.
-
-    The Critic is called once per security parameter, immediately after
-    the HunterAgent produces its HunterResult. It receives the same
-    context chunks the Hunter saw and independently verifies:
-
-        1. Do the cited block_ids actually exist in the context?
-        2. Does the quoted evidence genuinely satisfy the requirement,
-           or does it merely mention related concepts?
-        3. Is the Hunter's verdict correct, or should it be revised?
-
-    A CriticResult with outcome UPHOLD, OVERTURN, or PARTIAL is passed
-    to the MediatorAgent which produces the final binding verdict.
-
-    The Critic never raises — all errors are captured in CriticResult.error
-    so the pipeline can continue to the Mediator with degraded input rather
-    than failing entirely.
-    """
-
     system_prompt: str = CRITIC_SYSTEM_PROMPT
     model_component: str = "critic"
-    max_tokens: int = 4096
+    max_tokens: int = 8192
     temperature: float = 0.0
 
     def _build_user_prompt(
@@ -78,6 +58,8 @@ class CriticAgent(BaseAgent):
             hunter_checked_context=hunter_result.checked_context,
             hunter_evidence_quotes=hunter_result.evidence_quotes,
             hunter_evidence_assessment=hunter_result.evidence_assessment,
+            hunter_assumptions=hunter_result.assumptions,
+            hunter_cot_trace=hunter_result.cot_trace,
         )
 
     def run(
@@ -89,30 +71,6 @@ class CriticAgent(BaseAgent):
         hunter_result: HunterResult,
         cited_blocks: List[dict],
     ) -> CriticResult:
-        """
-        Executes the Critic agent for a single security parameter.
-
-        Pipeline:
-            1. Validate inputs — guard against missing parameter text.
-            2. Handle degenerate Hunter results before calling the LLM.
-            3. Build the user-turn prompt.
-            4. Call the LLM via _call_llm() from BaseAgent.
-            5. Parse the JSON response via _parse_json_response().
-            6. Extract and validate all fields with shared helpers.
-            7. Run post-parse citation cross-check against actual context.
-            8. Return a fully populated CriticResult.
-
-        Args:
-            parameter_text:    Full requirement text from CategoryParameterChild [3].
-            parameter_section: Parent section title from CategoryParameterParent [3].
-            context_chunks:    Same TSD context chunks given to the Hunter.
-                               Each chunk carries a positional banner prepended
-                               by chunk_text_with_context() [1].
-            hunter_result:     The HunterResult produced by HunterAgent.run().
-
-        Returns:
-            CriticResult — never raises. Check .error field for failures.
-        """
         # ------------------------------------------------------------------
         # 1. Input validation
         # ------------------------------------------------------------------
@@ -163,7 +121,7 @@ class CriticAgent(BaseAgent):
         #    Nothing to verify — Critic automatically upholds. This avoids
         #    an unnecessary LLM call for the most common compliant outcome.
         # ------------------------------------------------------------------
-        if self._can_auto_uphold_strong_not_met(hunter_result):
+        if self._can_auto_uphold_strong_not_met(hunter_result, contract):
             self.logger.info(
                 "CriticAgent.run: Hunter returned not_met with no citations "
                 "for parameter '%s...' — auto-upholding, skipping LLM call.",
@@ -375,31 +333,77 @@ class CriticAgent(BaseAgent):
         if not child_inputs:
             return {}
 
+        auto_upheld_results: Dict[str, CriticResult] = {}
+        llm_child_inputs: List[dict] = []
+        llm_hunter_results: Dict[str, HunterResult] = {}
+        
+        for item in child_inputs:
+            child_id = str(item.get("id"))
+            if not child_id or child_id == "None":
+                continue
+            contract = item.get("contract")
+            hunter_result = hunter_results.get(child_id) or HunterResult()
+            
+            if self._can_auto_uphold_strong_not_met(hunter_result, contract):
+                self.logger.info(
+                    "CriticAgent.run_batch: Hunter returned not_met with no citations "
+                    "for child '%s' — auto-upholding, skipping LLM.",
+                    child_id,
+                )
+                auto_upheld_results[child_id] = CriticResult(
+                    outcome=OUTCOME_UPHOLD,
+                    revised_verdict=VERDICT_NOT_MET,
+                    revised_confidence=hunter_result.confidence,
+                    reasoning=(
+                        "Critic auto-upheld: Hunter returned not_met with no "
+                        "citations or evidence. No LLM call required."
+                    ),
+                    logic_summary=(
+                        "Critic auto-upheld: Hunter returned not_met with no "
+                        "citations or evidence. No LLM call required."
+                    ),
+                    valid_citations=[],
+                    invalid_citation_ids=[],
+                    decision="uphold",
+                    weak_evidence=[],
+                    missed_evidence=[],
+                    objections=[],
+                    requires_rebuttal=False,
+                    raw_response=None,
+                    error=None,
+                )
+            else:
+                llm_child_inputs.append(item)
+                llm_hunter_results[child_id] = hunter_result
+
+        results: Dict[str, CriticResult] = auto_upheld_results.copy()
+
+        if not llm_child_inputs:
+            return results
+
         response = self._call_llm(
             self._build_batch_user_prompt(
-                child_inputs=child_inputs,
+                child_inputs=llm_child_inputs,
                 parameter_section=parameter_section,
                 context_chunks=context_chunks,
-                hunter_results=hunter_results,
+                hunter_results=llm_hunter_results,
                 cited_blocks_by_child=cited_blocks_by_child or {},
             )
         )
         if response.error:
             msg = f"LLM call failed: {response.error}"
             self.logger.error("CriticAgent.run_batch: %s", msg)
-            return {
-                str(item.get("id")): self._critic_error(msg, raw=response.content)
-                for item in child_inputs
-                if item.get("id") is not None
-            }
+            for item in llm_child_inputs:
+                c_id = str(item.get("id"))
+                results[c_id] = self._critic_error(msg, raw=response.content)
+            return results
 
         parsed = self._parse_json_response(response)
         if parsed is None:
             self.logger.error("CriticAgent.run_batch: failed to parse batch JSON.")
-            return {}
+            return results
 
-        allowed_ids = {str(item.get("id")) for item in child_inputs if item.get("id") is not None}
-        results: Dict[str, CriticResult] = {}
+        allowed_ids = {str(item.get("id")) for item in llm_child_inputs if item.get("id") is not None}
         for item in parsed.get("results", []):
             if not isinstance(item, dict):
                 continue
@@ -478,52 +482,17 @@ class CriticAgent(BaseAgent):
                 "checked_context": result.checked_context,
                 "evidence_quotes": list(result.evidence_quotes),
                 "evidence_assessment": result.evidence_assessment,
+                "assumptions": list(result.assumptions),
+                "cot_trace": result.cot_trace,
                 "citation_ids": [citation.block_id for citation in result.citations],
                 "cited_blocks": cited_blocks_by_child.get(str(child_id), []),
             }
-        return f"""\
-## PARENT SECURITY SECTION
-Section: {parameter_section}
-
-## CHILD PARAMETERS
-{json.dumps(child_inputs, indent=2)}
-
-## ORIGINAL TSD CONTEXT
-{"\n\n---\n\n".join(context_chunks)}
-
-## HUNTER FINDINGS BY CHILD ID
-{json.dumps(hunter_payload, indent=2)}
-
-Challenge or confirm each Hunter finding independently. Return strict JSON:
-
-{{
-  "results": [
-    {{
-      "child_id": "<id from CHILD PARAMETERS>",
-      "assumptions": ["<assumption>", "..."],
-      "logic_summary": "<concise evidence verification reasoning>",
-      "outcome": "UPHOLD" | "OVERTURN" | "PARTIAL",
-      "decision": "uphold" | "challenge" | "reject",
-      "revised_verdict": "met" | "not_met" | "na",
-      "revised_confidence": <float 0.0-1.0>,
-      "reasoning": "<one paragraph>",
-      "weak_evidence": ["<weakness>", "..."],
-      "missed_evidence": ["<missed evidence>", "..."],
-      "objections": ["<specific objection>", "..."],
-      "requires_rebuttal": <true | false>,
-      "valid_citations": [
-        {{"block_id": "<verified CONTEXT_CHUNK id>", "page_number": <integer>, "quoted_text": "<short quote>", "bbox": {{"x0": null, "y0": null, "x1": null, "y1": null}}}}
-      ],
-      "invalid_citation_ids": ["<block_id>", "..."]
-    }}
-  ]
-}}
-
-Rules:
-- Use child_id exactly as supplied.
-- Verify citations against ORIGINAL TSD CONTEXT for that child only.
-- Do not let evidence for one child satisfy a different child.
-"""
+        return build_batch_critic_prompt(
+            child_inputs=child_inputs,
+            parameter_section=parameter_section,
+            context_chunks=context_chunks,
+            hunter_payload=hunter_payload,
+        )
 
     # ------------------------------------------------------------------
     # Critic-specific private helpers
@@ -576,10 +545,15 @@ Rules:
                 return False
         return default
 
-    def _can_auto_uphold_strong_not_met(self, hunter_result: HunterResult) -> bool:
+    def _can_auto_uphold_strong_not_met(self, hunter_result: HunterResult, contract: Optional[dict] = None) -> bool:
         if not bool(getattr(settings, "AI_DEBATE_CRITIC_AUTO_UPHOLD_STRONG_NOT_MET", False)):
             return False
         if hunter_result.verdict != VERDICT_NOT_MET:
+            return False
+        # Only auto-uphold when the contract confirms the requirement is in scope.
+        # If the contract says it's not applicable, the Critic should let the
+        # Mediator handle the na verdict instead of rubber-stamping not_met.
+        if contract and not contract.get("in_scope", True):
             return False
         if hunter_result.citations or hunter_result.evidence_found:
             return False
@@ -634,34 +608,6 @@ Rules:
         valid_citations: List[Citation],
         context_chunks: List[str],
     ) -> tuple[List[Citation], List[str]]:
-        """
-        Performs a lightweight block_id presence check against the raw
-        context chunks as a second line of defence against hallucinated
-        citations that the LLM incorrectly marked as valid.
-
-        How it works:
-            Each chunk produced by chunk_text_with_context() [1] carries a
-            positional banner "--- DOCUMENT CHUNK N OF M ---" and the raw
-            text. The block_id (e.g. "p3_b12") is embedded inside the chunk
-            text by the TSD ingestor. We check that the block_id string
-            appears somewhere in the combined context.
-
-            This is intentionally a lightweight string presence check —
-            not a semantic verification. Semantic verification is the LLM's
-            job. This guard only catches outright hallucinated block_ids that
-            could not possibly exist in the document.
-
-        Args:
-            valid_citations: Citations the LLM marked as valid.
-            context_chunks:  The raw context chunks given to both agents.
-
-        Returns:
-            A tuple of:
-                - confirmed_citations: Citations whose block_ids were found
-                  in the context.
-                - additionally_invalidated: block_ids the LLM said were valid
-                  but that do not appear anywhere in the context text.
-        """
         if not valid_citations:
             return [], []
 
@@ -672,8 +618,6 @@ Rules:
             )
             return valid_citations, []
 
-        # Join all chunks into one searchable string once — O(n) build,
-        # O(1) per block_id lookup via substring search
         combined_context = "\n".join(context_chunks)
 
         confirmed: List[Citation] = []

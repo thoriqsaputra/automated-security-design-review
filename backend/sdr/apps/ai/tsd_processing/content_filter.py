@@ -9,7 +9,7 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from sdr.core.config import settings
 
-from sdr.apps.ai.tsd_processing.ingestor import DiagramBlock, TextBlock, TSDDocument, TSDPage
+from sdr.apps.ai.tsd_processing.document_models import DiagramBlock, TextBlock, TSDDocument, TSDPage
 
 
 _SECURITY_TERMS = (
@@ -82,6 +82,8 @@ _ADMIN_PATTERNS: Tuple[Tuple[str, re.Pattern[str]], ...] = (
     ("approval_signature", re.compile(r"\b(approval|approved\s+by|signature|sign[-\s]?off|reviewed\s+by)\b", re.I)),
     ("document_control", re.compile(r"\b(document\s+(control|owner|metadata|status)|classification:\s*|prepared\s+by|authored\s+by|distribution\s+list)\b", re.I)),
     ("table_of_contents", re.compile(r"\btable\s+of\s+contents\b|\.{4,}\s*\d{1,3}\b", re.I)),
+    ("list_of_figures", re.compile(r"\b(list\s+of\s+(figures|diagrams|images)|daftar\s+gambar)\b", re.I)),
+    ("list_of_tables", re.compile(r"\b(list\s+of\s+tables|daftar\s+tabel)\b", re.I)),
     ("glossary", re.compile(r"\b(glossary|acronyms?|abbreviations?)\b", re.I)),
     ("legal_notice", re.compile(r"\b(confidential|copyright|all\s+rights\s+reserved|legal\s+disclaimer|proprietary)\b", re.I)),
     ("references", re.compile(r"\b(references|bibliography)\b", re.I)),
@@ -89,6 +91,21 @@ _ADMIN_PATTERNS: Tuple[Tuple[str, re.Pattern[str]], ...] = (
 
 _OCR_GARBAGE_RE = re.compile(r"^[\W\d_]+$")
 _PAGE_NUMBER_RE = re.compile(r"^(page\s*)?\d{1,4}(\s+of\s+\d{1,4})?$", re.I)
+_LEADER_DOT_RE = re.compile(r"[.\u2024\u2025\u2026\u2027\u2219\u22ef\u00b7]{4,}")
+_OUTLINE_ENTRY_RE = re.compile(
+    r"\b(?:figure|fig\.?|diagram|table|appendix|lampiran|gambar|tabel)\s*[a-z0-9.-]*\b.*"
+    r"(?:[.\u2024\u2025\u2026\u2027\u2219\u22ef\u00b7]{4,}|\s{3,})\s*\d{1,4}\b",
+    re.I,
+)
+_UNICODE_PUNCT_TRANSLATION = str.maketrans({
+    "\u2024": ".",
+    "\u2025": ".",
+    "\u2026": ".",
+    "\u2027": ".",
+    "\u2219": ".",
+    "\u22ef": ".",
+    "\u00b7": ".",
+})
 
 
 @dataclass(frozen=True)
@@ -181,8 +198,8 @@ def build_filtered_tsd_view(tsd_document: TSDDocument) -> FilteredTSDDocumentVie
                 excluded_block_ids.append(block.block_id)
                 excluded_by_class[decision.content_class] += 1
 
-        diagram_context = _diagram_context(page.diagrams)
-        include_diagrams = bool(diagram_context and _should_include_text(diagram_context, None, min_score).include)
+        diagram_context = _filtered_diagram_context(page.diagrams, min_score=min_score)
+        include_diagrams = bool(diagram_context)
         filtered_text = _build_filtered_page_text(page, included_blocks, diagram_context if include_diagrams else "")
         if filtered_text.strip():
             filtered_pages.append(
@@ -278,7 +295,16 @@ def _should_include_text(
     score = len(terms) + (2 if explicit_scope else 0)
 
     admin_class = _admin_class(combined) or inherited_admin_class
-    if admin_class in {"revision_history", "approval_signature", "document_control", "table_of_contents", "glossary", "legal_notice"}:
+    if admin_class in {
+        "revision_history",
+        "approval_signature",
+        "document_control",
+        "table_of_contents",
+        "list_of_figures",
+        "list_of_tables",
+        "glossary",
+        "legal_notice",
+    }:
         if explicit_scope:
             return ContentFilterDecision(True, "explicit_scope", score, matched_terms=terms)
         return ContentFilterDecision(False, admin_class, score, f"excluded_{admin_class}", terms)
@@ -300,7 +326,8 @@ def _configured_min_score() -> int:
 
 
 def _normalize(value: str) -> str:
-    return re.sub(r"\s+", " ", (value or "").strip().lower())
+    value = (value or "").translate(_UNICODE_PUNCT_TRANSLATION)
+    return re.sub(r"\s+", " ", value.strip().lower())
 
 
 def _first_line(value: str) -> str:
@@ -321,8 +348,11 @@ def _has_explicit_scope_signal(text: str) -> bool:
 
 
 def _admin_class(text: str) -> Optional[str]:
+    normalized = _normalize(text)
+    if _looks_like_outline_entry(normalized):
+        return "table_of_contents"
     for content_class, pattern in _ADMIN_PATTERNS:
-        if pattern.search(text or ""):
+        if pattern.search(normalized):
             return content_class
     return None
 
@@ -337,11 +367,34 @@ def _diagram_context(diagrams: Sequence[DiagramBlock]) -> str:
     return "\n".join(part for part in parts if part.strip())
 
 
+def _filtered_diagram_context(diagrams: Sequence[DiagramBlock], *, min_score: int) -> str:
+    parts: List[str] = []
+    for diagram in diagrams or []:
+        for candidate in (
+            str(getattr(diagram, "caption", "") or "").strip(),
+            str(getattr(diagram, "surrounding_text", "") or "").strip(),
+        ):
+            if not candidate:
+                continue
+            if _should_include_text(candidate, None, min_score).include:
+                parts.append(candidate)
+    return "\n".join(parts)
+
+
+def _looks_like_outline_entry(text: str) -> bool:
+    normalized = _normalize(text)
+    if not normalized:
+        return False
+    if _LEADER_DOT_RE.search(normalized) and re.search(r"\d{1,4}\b", normalized):
+        return True
+    return bool(_OUTLINE_ENTRY_RE.search(normalized))
+
+
 def _build_filtered_page_text(page: TSDPage, blocks: Sequence[TextBlock], diagram_context: str = "") -> str:
     if not blocks and not diagram_context.strip():
         return ""
     parts: List[str] = []
-    if page.section_heading:
+    if page.section_heading and _admin_class(page.section_heading) is None:
         parts.append(str(page.section_heading).strip())
     parts.extend((block.text or "").strip() for block in blocks if (block.text or "").strip())
     if diagram_context.strip():

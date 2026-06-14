@@ -65,6 +65,10 @@ class OpenRouterAIService(AIServiceInterface):
                 "max_tokens": max_tokens or _DEFAULT_MAX_TOKENS,
                 "stream": stream,
             }
+
+            metadata = kwargs.get("metadata")
+            if metadata:
+                request_kwargs["extra_body"] = {"metadata": metadata}
             
             if "top_p" in kwargs:
                 request_kwargs["top_p"] = kwargs["top_p"]
@@ -89,6 +93,7 @@ class OpenRouterAIService(AIServiceInterface):
                 try:
                     response = self.client.chat.completions.create(**request_kwargs)
                     content_text = response.choices[0].message.content or ""
+                    finish_reason = getattr(response.choices[0], "finish_reason", None)
                     
                     # Extract usage if available
                     usage = None
@@ -104,7 +109,8 @@ class OpenRouterAIService(AIServiceInterface):
                         model=model_to_use,
                         provider=AIProvider.OPENROUTER,
                         usage=usage,
-                        raw_usage=usage
+                        raw_usage=usage,
+                        finish_reason=finish_reason,
                     )
                 except (json.JSONDecodeError, APIConnectionError, APIError) as e:
                     if attempt == 2:
@@ -170,5 +176,5 @@ class OpenRouterAIService(AIServiceInterface):
         provider = AIProvider.OPENROUTER
         return [
             AIModel(name=self.default_model, provider=provider, max_tokens=8192),
-            AIModel(name=self.fast_model, provider=provider, max_tokens=4096),
+            AIModel(name=self.fast_model, provider=provider, max_tokens=8192),
         ]

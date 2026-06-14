@@ -1,42 +1,27 @@
 from __future__ import annotations
 
-import json
 import logging
 from typing import Dict, List, Optional
 
-from sdr.apps.ai.prompts.agent_prompt import (
+from sdr.apps.ai.prompts.agents import (
     HUNTER_SYSTEM_PROMPT,
     build_hunter_prompt,
+    build_batch_hunter_prompt,
 )
 from .base import (
     BaseAgent,
     HunterResult,
-    VERDICT_MET,
     VERDICT_NOT_MET,
-    VERDICT_NA,
+    VERDICT_MET
 )
 
 logger = logging.getLogger(__name__)
 
 
 class HunterAgent(BaseAgent):
-    """
-    Concrete implementation of the Hunter agent.
-
-    The Hunter is called once per security parameter per TSD analysis run.
-    It receives pre-retrieved context chunks from the HybridRetrievalRouter
-    and produces an initial HunterResult that is passed to the CriticAgent.
-
-    It never raises — all errors are captured in HunterResult.error so
-    the pipeline can continue to the next parameter.
-    """
-
     system_prompt: str = HUNTER_SYSTEM_PROMPT
     model_component: str = "hunter"
-
-    # Hunter uses slightly higher max_tokens than default — reasoning
-    # paragraphs and multiple citations can be verbose
-    max_tokens: int = 4096
+    max_tokens: int = 8192
     temperature: float = 0.0
 
     def _build_user_prompt(
@@ -45,7 +30,6 @@ class HunterAgent(BaseAgent):
         parameter_section: str,
         contract: Optional[dict],
         context_chunks: List[str],
-        diagram_captions: Optional[List[str]] = None,
         persona_focus: Optional[str] = None,
         killed_assumptions: Optional[List[dict]] = None,
     ) -> str:
@@ -58,7 +42,6 @@ class HunterAgent(BaseAgent):
             parameter_section=parameter_section,
             contract=contract,
             context_chunks=context_chunks,
-            diagram_captions=diagram_captions,
             persona_focus=persona_focus,
             killed_assumptions=killed_assumptions,
         )
@@ -69,36 +52,9 @@ class HunterAgent(BaseAgent):
         parameter_section: str,
         contract: Optional[dict],
         context_chunks: List[str],
-        diagram_captions: Optional[List[str]] = None,
         persona_focus: Optional[str] = None,
         killed_assumptions: Optional[List[dict]] = None,
     ) -> HunterResult:
-        """
-        Executes the Hunter agent for a single security parameter.
-
-        Pipeline:
-            1. Validate inputs — guard against empty context.
-            2. Build the user-turn prompt.
-            3. Call the LLM via _call_llm() from BaseAgent.
-            4. Parse the JSON response via _parse_json_response().
-            5. Extract and validate all fields with shared helpers.
-            6. Return a fully populated HunterResult.
-
-        Args:
-            parameter_text:    Full requirement text from CategoryParameterChild.
-            parameter_section: Parent section title from CategoryParameterParent.
-            context_chunks:    Retrieved TSD text chunks — must be non-empty.
-                               Each chunk carries a positional banner
-                               "--- DOCUMENT CHUNK N OF M ---" prepended
-                               by chunk_text_with_context() [1].
-            diagram_captions:  Optional captions of diagrams in the context
-                               window — passed to the Vision agent separately
-                               but included here as textual signal for the
-                               Hunter.
-
-        Returns:
-            HunterResult — never raises. Check .error field for failures.
-        """
         # ------------------------------------------------------------------
         # 1. Input validation
         # ------------------------------------------------------------------
@@ -144,7 +100,6 @@ class HunterAgent(BaseAgent):
             parameter_section=parameter_section,
             contract=contract,
             context_chunks=context_chunks,
-            diagram_captions=diagram_captions,
             persona_focus=persona_focus,
             killed_assumptions=killed_assumptions,
         )
@@ -274,7 +229,6 @@ class HunterAgent(BaseAgent):
         child_inputs: List[dict],
         parameter_section: str,
         context_chunks: List[str],
-        diagram_captions: Optional[List[str]] = None,
         killed_assumptions: Optional[List[dict]] = None,
     ) -> Dict[str, HunterResult]:
         """
@@ -308,7 +262,6 @@ class HunterAgent(BaseAgent):
                 child_inputs=child_inputs,
                 parameter_section=parameter_section,
                 context_chunks=context_chunks,
-                diagram_captions=diagram_captions,
                 killed_assumptions=killed_assumptions,
             )
         )
@@ -396,75 +349,20 @@ class HunterAgent(BaseAgent):
         child_inputs: List[dict],
         parameter_section: str,
         context_chunks: List[str],
-        diagram_captions: Optional[List[str]],
         killed_assumptions: Optional[List[dict]],
     ) -> str:
-        chunks_text = "\n\n---\n\n".join(context_chunks)
-        diagrams_text = "\n".join(diagram_captions or [])
-        killed_text = json.dumps(killed_assumptions or [], indent=2)
-        children_text = json.dumps(child_inputs, indent=2)
-        return f"""\
-## PARENT SECURITY SECTION
-Section: {parameter_section}
-
-## CHILD PARAMETERS
-{children_text}
-
-## SHARED TSD CONTEXT
-{chunks_text}
-
-## DIAGRAM CAPTIONS
-{diagrams_text or "[]"}
-
-## INVALIDATED ASSUMPTIONS TO AVOID
-{killed_text}
-
-Analyse each child parameter independently. Do not merge child requirements.
-Return strict JSON with exactly one result object per child id:
-
-{{
-  "results": [
-    {{
-      "child_id": "<id from CHILD PARAMETERS>",
-      "assumptions": ["<assumption>", "..."],
-      "logic_summary": "<concise evidence-only reasoning>",
-      "verdict": "met" | "not_met" | "na",
-      "confidence": <float 0.0-1.0>,
-      "reasoning": "<one paragraph explaining this child's verdict>",
-      "checked_context": "<what context was checked for this child>",
-      "evidence_quotes": ["<short verbatim snippets from context, empty if none>"],
-      "evidence_assessment": "<why evidence satisfies or fails this child>",
-      "evidence_found": <true | false>,
-      "citations": [
-        {{"block_id": "<CONTEXT_CHUNK id only>", "page_number": <integer>, "quoted_text": "<short quote>", "bbox": {{"x0": null, "y0": null, "x1": null, "y1": null}}}}
-      ]
-    }}
-  ]
-}}
-
-Rules:
-- Use child_id exactly as supplied.
-- A "met" verdict must include at least one valid citation and evidence quote.
-- For "not_met", explain what explicit evidence is missing for that child.
-- Cite only block_ids from CONTEXT_CHUNK ids in SHARED TSD CONTEXT.
-"""
+        return build_batch_hunter_prompt(
+            child_inputs=child_inputs,
+            parameter_section=parameter_section,
+            context_chunks=context_chunks,
+            killed_assumptions=killed_assumptions,
+        )
 
     def _extract_evidence_found(
         self,
         parsed: dict,
         verdict: str,
     ) -> bool:
-        """
-        Extracts the evidence_found boolean from the parsed response.
-
-        Falls back to a verdict-derived heuristic if the field is absent:
-        - "met" → True
-        - "not_met" → False
-        - "na"  → False
-
-        This ensures evidence_found is always consistent with the verdict
-        even if the LLM omits the field.
-        """
         raw = parsed.get("evidence_found")
 
         if isinstance(raw, bool):

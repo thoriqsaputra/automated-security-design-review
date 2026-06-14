@@ -1,0 +1,447 @@
+from __future__ import annotations
+
+import logging
+from collections import deque
+from typing import Any, Callable, Dict, List, Optional
+
+from sdr.apps.ai.client.session import build_tsd_analysis_session_id, job_session_context
+from sdr.apps.ai.engine.classification.asvs_level import classify_tsd_asvs_level
+from sdr.apps.ai.engine.classification.parent_applicability import classify_parent_applicability
+from sdr.apps.ai.engine.config import AnalysisPipelineConfig
+from sdr.apps.ai.engine.debate.category_analysis_coordinator import CategoryAnalysisCoordinator
+from sdr.apps.ai.engine.debate.debate_input_factory import DebateInputFactory
+from sdr.apps.ai.engine.debate.debate_service import DebateService
+from sdr.apps.ai.engine.debate.diagram_analysis_coordinator import DiagramAnalysisCoordinator
+from sdr.apps.ai.engine.debate.diagram_debate_service import DiagramDebateService
+from sdr.apps.ai.engine.debate.text_debate_coordinator import TextDebateCoordinator
+import sdr.apps.ai.engine.debate.text_debate_coordinator as text_debate_module
+from sdr.apps.ai.engine.dto import AnalysisSummary
+from sdr.apps.ai.engine.persistence.persistence_service import PersistenceService
+from sdr.apps.ai.engine.persistence.progress_tracker import SummaryProgressService
+from sdr.apps.ai.engine.persistence.review_run_state_service import (
+    AnalysisCancelledError,
+    ReviewRunStateService,
+)
+from sdr.apps.ai.engine.persistence.workflow_repository import (
+    ReviewWorkflowRepository,
+    SqlAlchemyReviewWorkflowRepository,
+)
+from sdr.apps.ai.engine.preparation.ingestion_service import IngestionService
+from sdr.apps.ai.engine.preparation.retrieval_service import RetrievalService
+from sdr.apps.ai.engine.reporting.overview_generator import OverviewGenerator
+from sdr.apps.ai.engine.reporting.retrieval_snapshot_builder import RetrievalSnapshotBuilder
+from sdr.apps.reviews.models import Review
+from sdr.apps.reviews.models.choices import ReviewStatus
+
+logger = logging.getLogger(__name__)
+
+
+class TSDAnalysisPipeline:
+    def __init__(
+        self,
+        ingestion_service: Optional[IngestionService] = None,
+        retrieval_service: Optional[RetrievalService] = None,
+        debate_service: Optional[DebateService] = None,
+        persistence_service: Optional[PersistenceService] = None,
+        diagram_debate_service: Optional[DiagramDebateService] = None,
+        workflow_repository: Optional[ReviewWorkflowRepository] = None,
+        overview_generator: Optional[OverviewGenerator] = None,
+        debate_input_factory: Optional[DebateInputFactory] = None,
+        progress_service: Optional[SummaryProgressService] = None,
+        config: Optional[AnalysisPipelineConfig] = None,
+        mediator_agent_factory: Optional[Callable[[], Any]] = None,
+    ) -> None:
+        self.ingestion = ingestion_service or IngestionService()
+        self.retrieval = retrieval_service or RetrievalService()
+        self.debate = debate_service or DebateService()
+        self.persistence = persistence_service or PersistenceService()
+        self.diagram_debate_service = diagram_debate_service or DiagramDebateService()
+        self.workflow_repository = workflow_repository or SqlAlchemyReviewWorkflowRepository()
+        self.overview_generator = overview_generator or OverviewGenerator()
+        self.debate_input_factory = debate_input_factory or DebateInputFactory()
+        self.progress_service = progress_service or SummaryProgressService()
+        self.config = config or AnalysisPipelineConfig.from_settings()
+        self.mediator_agent_factory = mediator_agent_factory or self._default_mediator_agent_factory
+        self.run_state = ReviewRunStateService(workflow_repository=self.workflow_repository)
+        self.snapshot_builder = RetrievalSnapshotBuilder(workflow_repository=self.workflow_repository)
+        self.diagram_analysis = DiagramAnalysisCoordinator(
+            config=self.config,
+            workflow_repository=self.workflow_repository,
+            diagram_debate_service=self.diagram_debate_service,
+            persistence_service=self.persistence,
+        )
+        self.text_debate = TextDebateCoordinator(
+            config=self.config,
+            retrieval_service=self.retrieval,
+            debate_service=self.debate,
+            persistence_service=self.persistence,
+            debate_input_factory=self.debate_input_factory,
+            progress_service=self.progress_service,
+            run_state_service=self.run_state,
+            mediator_agent_factory=self.mediator_agent_factory,
+        )
+        self.category_analysis = CategoryAnalysisCoordinator(
+            config=self.config,
+            workflow_repository=self.workflow_repository,
+            progress_service=self.progress_service,
+            run_state_service=self.run_state,
+            text_debate_coordinator=self.text_debate,
+            diagram_analysis_coordinator=self.diagram_analysis,
+        )
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self._last_batch_concurrency_stats: Dict[str, Dict[str, Any]] = {}
+
+    def _default_mediator_agent_factory(self):
+        from sdr.apps.ai.agents.mediator import MediatorAgent
+
+        return MediatorAgent()
+
+    def run(self, review: Review) -> AnalysisSummary:
+        self.logger.info(
+            "TSDAnalysisPipeline.run: [START] review_id=%s design='%s'",
+            review.id,
+            review.design.name,
+        )
+        summary = AnalysisSummary()
+        latest = self.workflow_repository.get_latest_review(review.id)
+        if latest and latest.status == ReviewStatus.CANCELLED.value:
+            review.status = latest.status
+            review.completed_at = getattr(latest, "completed_at", None)
+            review.error_message = getattr(latest, "error_message", None)
+            return summary
+
+        self.run_state.mark_running(review)
+
+        try:
+            self.run_state.update_stage(review, summary, "1_ingestion")
+            ingestion_output = self.ingestion.ingest(review)
+            if ingestion_output is None:
+                self.run_state.fail_review(review, "Failed to ingest TSD document.")
+                return summary
+
+            tsd_document = ingestion_output.tsd_document
+            if not ingestion_output.is_valid_tsd:
+                summary.screened_out = True
+                self.run_state.fail_review(
+                    review,
+                    "Document failed TSD screening — does not appear to be a Technical Software Document.",
+                )
+                return summary
+
+            self.run_state.update_stage(review, summary, "2_retrieval")
+            indexes = self.retrieval.build_indexes(tsd_document)
+            self.snapshot_builder.save(review, indexes)
+
+            asvs_classification = self._classify_review_asvs_level(review, tsd_document)
+            effective_asvs_level = self._resolve_effective_asvs_level(review, asvs_classification)
+            summary.asvs = {
+                "classified_level": asvs_classification.get("level"),
+                "classification_confidence": asvs_classification.get("confidence"),
+                "classification_reasoning": asvs_classification.get("reasoning"),
+                "classification_evidence": asvs_classification.get("evidence", []),
+                "classification_error": asvs_classification.get("error"),
+                "definition_source": asvs_classification.get("definition_source"),
+                "definition_count": asvs_classification.get("definition_count"),
+                "override_level": getattr(review, "asvs_level_override", None),
+                "effective_level": effective_asvs_level,
+                "categories": {},
+            }
+
+            selected_categories = list(review.selected_categories)
+            categories = selected_categories or ([review.ingestion_job.category] if review.ingestion_job and review.ingestion_job.category else [])
+            if not categories:
+                self.run_state.complete_review(review, summary)
+                return summary
+
+            killed_assumptions_memory = deque(maxlen=16)
+            for category in categories:
+                self.run_state.raise_if_cancelled(review, phase="run.before_category")
+                self.category_analysis.run_category(
+                    review=review,
+                    category=category,
+                    indexes=indexes,
+                    tsd_document=tsd_document,
+                    summary=summary,
+                    effective_asvs_level=effective_asvs_level,
+                    killed_assumptions_memory=killed_assumptions_memory,
+                )
+
+            self.run_state.update_stage(review, summary, "7_overview")
+            overview = self.overview_generator.generate(review, summary)
+            if overview:
+                self.run_state.save_overview(review, overview)
+
+            self.run_state.complete_review(review, summary)
+            return summary
+        except Exception as exc:
+            if self.run_state.is_cancelled(review):
+                self.logger.warning(
+                    "TSDAnalysisPipeline.run: [CANCELLED] review_id=%s stopping after cancellation signal: %s",
+                    review.id,
+                    exc,
+                )
+                return summary
+            self.logger.exception("TSDAnalysisPipeline.run: [FATAL] review_id=%s: %s", review.id, exc)
+            self.run_state.fail_review(review, str(exc))
+            return summary
+        finally:
+            if "tsd_document" in locals():
+                tsd_document.cleanup_temporary_artifacts()
+
+    def _classify_review_asvs_level(self, review: Review, tsd_document) -> Dict[str, Any]:
+        try:
+            levels = []
+            definition_source = "missing"
+            ingestion_job_id = getattr(review, "ingestion_job_id", None)
+            if ingestion_job_id is None and getattr(review, "ingestion_job", None):
+                ingestion_job_id = getattr(review.ingestion_job, "id", None)
+            if ingestion_job_id is not None:
+                levels = self.workflow_repository.list_asvs_level_definitions(ingestion_job_id)
+                if levels:
+                    definition_source = "standard_document"
+            if not levels:
+                levels = [
+                    type("StaticLevel", (), {"level": 1, "code": "L1", "name": "Opportunistic", "description": "Baseline application security verification for common web applications.", "classification_guidance": "Use L1 when the TSD describes a standard application without high-value assets, regulated data, strong adversary assumptions, or extensive defense-in-depth controls."}),
+                    type("StaticLevel", (), {"level": 2, "code": "L2", "name": "Standard", "description": "Security verification for applications containing sensitive data or requiring meaningful assurance.", "classification_guidance": "Use L2 when the TSD describes sensitive data, authenticated business workflows, role-based access, payment or personal data processing, or a need for stronger control coverage than an opportunistic baseline."}),
+                    type("StaticLevel", (), {"level": 3, "code": "L3", "name": "Advanced", "description": "High-assurance verification for critical applications and high-value targets.", "classification_guidance": "Use L3 when the TSD describes critical systems, high-value assets, safety or mission impact, strong threat actors, strict regulatory obligations, or explicit high-assurance security architecture."}),
+                ]
+                definition_source = "static_fallback"
+            classification = classify_tsd_asvs_level(getattr(tsd_document, "full_text", "") or "", levels)
+            result = classification.to_dict()
+            result["definition_source"] = definition_source
+            result["definition_count"] = len(levels)
+            return result
+        except Exception as exc:
+            self.logger.exception(
+                "TSDAnalysisPipeline._classify_review_asvs_level: failed for review_id=%s",
+                getattr(review, "id", None),
+            )
+            return {
+                "level": 1,
+                "confidence": 0.0,
+                "reasoning": "ASVS classification failed; defaulted to L1.",
+                "evidence": [],
+                "error": str(exc),
+                "definition_source": "error",
+                "definition_count": 0,
+            }
+
+    def _resolve_effective_asvs_level(self, review: Review, classification: Dict[str, Any]) -> int:
+        override = getattr(review, "asvs_level_override", None)
+        try:
+            override_int = int(override) if override is not None else None
+        except (TypeError, ValueError):
+            override_int = None
+        if override_int in (1, 2, 3):
+            return override_int
+        level = classification.get("level")
+        try:
+            level_int = int(level) if level is not None else None
+        except (TypeError, ValueError):
+            level_int = None
+        if level_int in (1, 2, 3):
+            return level_int
+        return 1
+
+    def _resolve_parameters(self, review: Review) -> tuple:
+        category: Optional[Any] = None
+        selected_categories = list(review.selected_categories)
+        if selected_categories:
+            category = selected_categories[0]
+        elif review.ingestion_job and review.ingestion_job.category:
+            category = review.ingestion_job.category
+        if not category:
+            return None, None, []
+        if review.ingestion_job:
+            ingestion_job = review.ingestion_job
+        else:
+            ingestion_job = self.workflow_repository.get_latest_active_ingestion_job(category.id)
+        if not ingestion_job:
+            return category, None, []
+        parameters = self.workflow_repository.list_category_parameters(
+            category_id=category.id,
+            ingestion_job_id=ingestion_job.id,
+        )
+        return category, ingestion_job, parameters
+
+    def _prepare_category_stats(self, summary: AnalysisSummary, parameters: List[Any], category_code: str) -> None:
+        self.progress_service.prepare_category_stats(summary=summary, parameters=parameters, category_code=category_code)
+
+    def _initialize_category_progress(self, *, summary: AnalysisSummary, category_code: str, total_count: int) -> None:
+        self.progress_service.initialize_category_progress(summary=summary, category_code=category_code, total_count=total_count)
+
+    def _sync_analysis_aliases(self, summary: AnalysisSummary, category_code: Optional[str] = None) -> None:
+        self.progress_service.sync_analysis_aliases(summary=summary, category_code=category_code)
+
+    def _persist_summary_snapshot(self, review: Review, summary: AnalysisSummary) -> None:
+        try:
+            summary_dict = summary.to_dict()
+            self.workflow_repository.save_summary_snapshot(review.id, summary=summary_dict)
+            review.summary_json = summary_dict
+        except Exception as exc:
+            self.logger.exception(
+                "TSDAnalysisPipeline._persist_summary_snapshot: failed for review_id=%s: %s",
+                review.id,
+                exc,
+            )
+
+    def _update_stage(self, review: Review, summary: AnalysisSummary, stage: str) -> None:
+        summary.current_stage = stage
+        self._persist_summary_snapshot(review, summary)
+
+    def _persist_retrieval_snapshot(self, review: Review, indexes) -> None:
+        self.snapshot_builder.save(review, indexes)
+
+    def _build_retrieval_snapshot(self, indexes) -> Optional[Dict[str, Any]]:
+        return self.snapshot_builder.build_snapshot(indexes)
+
+    def _record_debate_progress(self, **kwargs) -> None:
+        self.text_debate.record_debate_progress(**kwargs)
+
+    def _record_persistence_progress(self, **kwargs) -> None:
+        self.text_debate.record_persistence_progress(**kwargs)
+
+    def _is_cancelled(self, review: Review) -> bool:
+        latest = self.workflow_repository.get_latest_review(review.id)
+        if not latest:
+            return False
+        if latest.status == ReviewStatus.CANCELLED.value:
+            return True
+        return (
+            latest.status == (ReviewStatus.FAILED.value if hasattr(ReviewStatus, "value") else ReviewStatus.FAILED)
+            and (latest.error_message or "").strip().lower().startswith("analysis was cancelled")
+        )
+
+    def _raise_if_cancelled(self, review: Review, *, phase: str) -> None:
+        if not self._is_cancelled(review):
+            return
+        self.logger.warning(
+            "TSDAnalysisPipeline.%s: cancellation detected review_id=%s",
+            phase,
+            review.id,
+        )
+        raise AnalysisCancelledError("Analysis was cancelled by user.")
+
+    def _group_parameters_by_parent(self, parameters: List[Any]):
+        return self.text_debate.group_parameters_by_parent(parameters)
+
+    def _split_batches(self, parameters: List[Any], batch_size: int):
+        return self.text_debate.split_batches(parameters, batch_size)
+
+    def _run_diagram_analysis(self, **kwargs) -> None:
+        self.diagram_analysis.run(**kwargs)
+
+    def _run_single_analysis_for_category(self, **kwargs) -> None:
+        original_is_cancelled = self.run_state.is_cancelled
+        original_persist_summary = self.run_state.persist_summary_snapshot
+        original_analyze = self.text_debate.analyze_single_child_with_retrieval_result
+        original_persist = self.text_debate.persist_debate_output
+        try:
+            self.run_state.is_cancelled = self._is_cancelled
+            self.run_state.persist_summary_snapshot = self._persist_summary_snapshot
+            self.text_debate.analyze_single_child_with_retrieval_result = self._analyze_single_child_with_retrieval_result
+            self.text_debate.persist_debate_output = self._persist_debate_output
+            self.text_debate.run_single_analysis_for_category(**kwargs)
+        finally:
+            self.run_state.is_cancelled = original_is_cancelled
+            self.run_state.persist_summary_snapshot = original_persist_summary
+            self.text_debate.analyze_single_child_with_retrieval_result = original_analyze
+            self.text_debate.persist_debate_output = original_persist
+
+    def _run_batched_analysis_for_category(self, **kwargs) -> None:
+        original_is_cancelled = self.run_state.is_cancelled
+        original_persist_summary = self.run_state.persist_summary_snapshot
+        original_get_parent = self.text_debate.get_parent_retrieval_result
+        original_analyze = self.text_debate.analyze_single_child_with_retrieval_result
+        original_persist = self.text_debate.persist_debate_output
+        try:
+            self.run_state.is_cancelled = self._is_cancelled
+            self.run_state.persist_summary_snapshot = self._persist_summary_snapshot
+            self.text_debate.get_parent_retrieval_result = self._get_parent_retrieval_result
+            self.text_debate.analyze_single_child_with_retrieval_result = self._analyze_single_child_with_retrieval_result
+            self.text_debate.persist_debate_output = self._persist_debate_output
+            self.text_debate.run_batched_analysis_for_category(**kwargs)
+            self._last_batch_concurrency_stats = dict(self.text_debate.last_batch_concurrency_stats)
+        finally:
+            self.run_state.is_cancelled = original_is_cancelled
+            self.run_state.persist_summary_snapshot = original_persist_summary
+            self.text_debate.get_parent_retrieval_result = original_get_parent
+            self.text_debate.analyze_single_child_with_retrieval_result = original_analyze
+            self.text_debate.persist_debate_output = original_persist
+
+    def _build_contract(self, parameter_text: str, parameter_section: str, parent_description: str = "") -> dict:
+        return self.debate_input_factory.build_contract(
+            parameter_text=parameter_text,
+            parameter_section=parameter_section,
+            parent_description=parent_description,
+        )
+
+    def _build_context_chunk_map(
+        self,
+        context_chunks: list,
+        retrieval_metadata: Optional[dict] = None,
+        tsd_document=None,
+        source_block_ids: Optional[list] = None,
+    ) -> dict:
+        return self.debate_input_factory.build_context_chunk_map(
+            context_chunks,
+            retrieval_metadata=retrieval_metadata,
+            tsd_document=tsd_document,
+            source_block_ids=source_block_ids,
+        )
+
+    def _build_xml_context_chunks(
+        self,
+        context_chunks: list,
+        retrieval_metadata: Optional[dict] = None,
+        tsd_document=None,
+        source_block_ids: Optional[list] = None,
+    ) -> list:
+        return self.debate_input_factory.build_xml_context_chunks(
+            context_chunks,
+            retrieval_metadata=retrieval_metadata,
+            tsd_document=tsd_document,
+            source_block_ids=source_block_ids,
+        )
+
+    def _apply_parent_applicability_gate(self, **kwargs):
+        original_is_cancelled = self.run_state.is_cancelled
+        original_get_parent = self.text_debate.get_parent_retrieval_result
+        original_persist = self.text_debate.persist_debate_output
+        original_classifier = text_debate_module.classify_parent_applicability
+        try:
+            self.run_state.is_cancelled = self._is_cancelled
+            self.text_debate.get_parent_retrieval_result = self._get_parent_retrieval_result
+            self.text_debate.persist_debate_output = self._persist_debate_output
+            text_debate_module.classify_parent_applicability = classify_parent_applicability
+            return self.text_debate.apply_parent_applicability_gate(**kwargs)
+        finally:
+            self.run_state.is_cancelled = original_is_cancelled
+            self.text_debate.get_parent_retrieval_result = original_get_parent
+            self.text_debate.persist_debate_output = original_persist
+            text_debate_module.classify_parent_applicability = original_classifier
+
+    def _validate_batch_outputs(self, expected_parameters: List[Any], batch_outputs: Dict[str, Any]):
+        return self.text_debate.validate_batch_outputs(expected_parameters, batch_outputs)
+
+    def _apply_not_met_evidence_gate(self, **kwargs):
+        return self.text_debate.apply_not_met_evidence_gate(**kwargs)
+
+    def _get_parent_retrieval_result(self, **kwargs):
+        return TextDebateCoordinator.get_parent_retrieval_result(self.text_debate, **kwargs)
+
+    def _persist_debate_output(self, **kwargs):
+        return TextDebateCoordinator.persist_debate_output(self.text_debate, **kwargs)
+
+    def _analyze_single_child_with_retrieval_result(self, **kwargs):
+        return TextDebateCoordinator.analyze_single_child_with_retrieval_result(self.text_debate, **kwargs)
+
+
+def run_tsd_analysis(review: Review) -> AnalysisSummary:
+    session_id = build_tsd_analysis_session_id(review.id)
+    logger.info("run_tsd_analysis: [ENTRY] review_id=%s session_id=%s", review.id, session_id)
+    pipeline = TSDAnalysisPipeline()
+    with job_session_context(session_id=session_id, job_type="tsd_analysis", job_id=review.id):
+        summary = pipeline.run(review)
+    logger.info("run_tsd_analysis: [EXIT] review_id=%s summary=%s", review.id, summary.to_dict())
+    return summary

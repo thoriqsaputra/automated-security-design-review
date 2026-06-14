@@ -1,0 +1,288 @@
+from __future__ import annotations
+
+from typing import Optional
+
+
+# ---------------------------------------------------------------------------
+# TSD Relevance Screening
+# ---------------------------------------------------------------------------
+
+TSD_SCREENING_SYSTEM_PROMPT = """\
+You are a security document classifier. Your job is to determine whether
+a provided document is a Technical Software Document (TSD) that describes
+a software system's architecture, components, and design decisions.
+
+OUTPUT: Strict JSON only. No prose outside the JSON object.
+"""
+
+
+def build_tsd_screening_prompt(document_text_sample: str) -> str:
+    """
+    Screens whether the uploaded document is actually a TSD before
+    running the full expensive analysis pipeline.
+
+    Called by TSDAnalysisOrchestrator._ingest_tsd() before committing
+    to RAPTOR tree and GraphRAG index construction — if the document
+    is not a TSD (e.g. a legal contract or a marketing PDF was uploaded
+    by mistake), we fail fast with a clear error rather than wasting
+    N×3 agent API calls.
+
+    Args:
+        document_text_sample: Representative excerpts from the TSD document
+                              from TSDIngestor.ingest() [ingestor.py].
+
+    Returns:
+        A fully formed prompt string.
+    """
+    return f"""\
+## DOCUMENT SAMPLE (representative excerpts)
+
+{document_text_sample}
+
+## YOUR TASK
+
+Determine whether the document above is a Technical Software Document (TSD)
+describing a software system — including architecture diagrams, component
+descriptions, API designs, data flows, infrastructure, or security controls.
+
+Respond with a single JSON object:
+
+{{
+  "is_tsd": <true | false>,
+  "confidence": <float 0.0–1.0>,
+  "document_type": "<your best guess at the document type>",
+  "reasoning": "<one sentence explanation>"
+}}
+
+Rules:
+- is_tsd = true  → document describes a software system's design or architecture
+- is_tsd = false → document is a contract, policy, standard, marketing material, etc.
+- confidence     → your certainty (1.0 = certain, 0.5 = ambiguous)
+- Do not classify a document as non-TSD only because the excerpt contains
+  table-of-contents, revision-history, approval, glossary, or front-matter text.
+- If any excerpt describes architecture, components, APIs, data flows,
+  infrastructure, databases, security controls, authentication, authorization,
+  or deployment of a software system, classify it as a TSD.
+- If the evidence is mixed or ambiguous, prefer is_tsd = true with lower
+  confidence instead of blocking analysis.
+"""
+
+# ---------------------------------------------------------------------------
+# Severity Justification
+# ---------------------------------------------------------------------------
+
+SEVERITY_JUSTIFICATION_SYSTEM_PROMPT = """\
+You are a security risk analyst justifying severity ratings for security
+compliance findings. You produce structured, evidence-based severity
+assessments aligned with CVSS-style risk reasoning.
+
+OUTPUT: Strict JSON only. No prose outside the JSON object.
+"""
+
+
+def build_severity_justification_prompt(
+    parameter_text: str,
+    parameter_section: str,
+    mediator_reasoning: str,
+    proposed_severity: str,
+    tsd_context: Optional[str] = None,
+) -> str:
+    """
+    Generates a detailed severity justification for a not_met Finding.
+
+    Called optionally by TSDAnalysisOrchestrator._persist_finding()
+    for CRITICAL and HIGH findings where a detailed severity_analysis
+    JSON is needed — stored in Finding.severity_analysis [3].
+
+    The Mediator already assigns a severity label in mediator.py, but
+    this prompt produces the structured breakdown (impact, likelihood,
+    affected components) that goes into Finding.severity_analysis.
+
+    Args:
+        parameter_text:     The full security requirement text.
+        parameter_section:  The parent section title.
+        mediator_reasoning: The Mediator's final verdict reasoning.
+        proposed_severity:  The severity already assigned by the Mediator
+                            ("critical" | "high" | "medium" | "low" | "info").
+        tsd_context:        Optional relevant TSD excerpt for additional context.
+
+    Returns:
+        A fully formed prompt string.
+    """
+    context_section = (
+        f"\n\n## RELEVANT TSD CONTEXT\n{tsd_context}"
+        if tsd_context
+        else ""
+    )
+
+    return f"""\
+## SECURITY PARAMETER
+
+Section:     {parameter_section}
+Requirement: {parameter_text}
+
+## MEDIATOR VERDICT
+
+Severity:  {proposed_severity.upper()}
+Reasoning: {mediator_reasoning}{context_section}
+
+## YOUR TASK
+
+Produce a structured severity justification for this not_met finding.
+
+Respond with a single JSON object:
+
+{{
+  "severity": "{proposed_severity}",
+  "severity_score": <float 0.0–10.0>,
+  "impact": {{
+    "confidentiality": "none" | "low" | "high",
+    "integrity":       "none" | "low" | "high",
+    "availability":    "none" | "low" | "high"
+  }},
+  "likelihood": "low" | "medium" | "high",
+  "affected_components": ["<component name>"],
+  "attack_vector": "network" | "adjacent" | "local" | "physical",
+  "justification": "<two sentence evidence-based justification>"
+}}
+
+Rules:
+- severity_score: 0.0–3.9 = low, 4.0–6.9 = medium, 7.0–8.9 = high, 9.0–10.0 = critical
+- affected_components: list the specific TSD components that are at risk
+- justification: reference the specific gap identified by the Mediator
+"""
+
+
+# ---------------------------------------------------------------------------
+# Parent Applicability
+# ---------------------------------------------------------------------------
+
+PARENT_APPLICABILITY_SYSTEM_PROMPT = (
+    "You are a senior application security analyst deciding whether a control family "
+    "is in scope for the documented design. Return strict JSON only."
+)
+
+
+def build_parent_applicability_prompt(
+    category_code: str,
+    version_label: str,
+    parent_title: str,
+    parent_description: str,
+    child_block: str,
+    context_text: str,
+) -> str:
+    return f"""\
+Decide whether this parent control family from a security standard is applicable to the documented TSD scope.
+
+Return only valid JSON:
+{{
+  "applicable": true,
+  "confidence": 0.0,
+  "reasoning": "short explanation",
+  "evidence": ["short evidence or scope signal", "..."]
+}}
+
+Rules:
+- applicable=false only when the TSD evidence shows the parent control family is out of scope for this design.
+- If applicability is unclear, prefer applicable=true with lower confidence.
+- Do not treat missing implementation detail as out of scope. This step is only about scope/applicability.
+
+STANDARD CATEGORY: {category_code}
+STANDARD VERSION: {version_label}
+PARENT TITLE: {parent_title}
+PARENT DESCRIPTION: {parent_description}
+CHILD REQUIREMENTS:
+{child_block}
+
+RETRIEVED TSD CONTEXT:
+{context_text[:3000]}
+"""
+
+
+# ---------------------------------------------------------------------------
+# ASVS Level Classification
+# ---------------------------------------------------------------------------
+
+ASVS_LEVEL_CLASSIFICATION_SYSTEM_PROMPT = (
+    "You classify application technical design documents against OWASP ASVS "
+    "levels. Prefer the lowest level that fits the documented risk and assurance "
+    "needs. Return strict JSON only."
+)
+
+
+def build_asvs_level_classification_prompt(
+    definitions: str,
+    sample_text: str,
+) -> str:
+    return f"""\
+Classify this Technical Software Document into exactly one OWASP ASVS verification level.
+
+Use these level definitions:
+{definitions}
+
+Return only valid JSON:
+{{
+  "level": 1 | 2 | 3,
+  "confidence": 0.0,
+  "reasoning": "short explanation",
+  "evidence": ["short quote or signal", "..."]
+}}
+
+TSD SAMPLE:
+{sample_text}
+"""
+
+
+# ---------------------------------------------------------------------------
+# Contract Synthesis
+# ---------------------------------------------------------------------------
+
+CONTRACT_SYNTHESIS_SYSTEM_PROMPT = (
+    "Generate a strict JSON contract with keys: given, when, then, not_sufficient, "
+    "in_scope, specific_enough, domain, confidence, synth_mode."
+)
+
+
+def build_contract_synthesis_prompt(
+    parameter_section: str,
+    parent_description: str,
+    child_context: str,
+    parameter_text: str,
+    domain: str,
+) -> str:
+    return f"""\
+Section: {parameter_section}
+Parent description: {parent_description}
+Child context: {child_context}
+Requirement: {parameter_text}
+Domain hint: {domain}
+Return JSON only."""
+
+
+def build_contract_repair_prompt(content: str) -> str:
+    return f"""\
+The following JSON has syntax errors. Fix it and return ONLY valid JSON.
+
+{content}"""
+
+
+# ---------------------------------------------------------------------------
+# Public exports
+# ---------------------------------------------------------------------------
+
+__all__ = [
+    # System prompts
+    "TSD_SCREENING_SYSTEM_PROMPT",
+    "SEVERITY_JUSTIFICATION_SYSTEM_PROMPT",
+    "PARENT_APPLICABILITY_SYSTEM_PROMPT",
+    "ASVS_LEVEL_CLASSIFICATION_SYSTEM_PROMPT",
+    "CONTRACT_SYNTHESIS_SYSTEM_PROMPT",
+    # Prompt builders
+    "build_tsd_screening_prompt",
+    "build_severity_justification_prompt",
+    "build_parent_applicability_prompt",
+    "build_asvs_level_classification_prompt",
+    "build_contract_synthesis_prompt",
+    "build_contract_repair_prompt",
+]
+

@@ -173,7 +173,7 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
     optionally generates + stores vector embeddings for every extracted
     requirement child.
     """
-    from sdr.apps.ai.services.extraction_services import (
+    from sdr.apps.ai.engine.extraction import (
         extract_asvs_level_definitions_from_document,
         extract_requirements_from_document,
         extract_diagram_requirements,

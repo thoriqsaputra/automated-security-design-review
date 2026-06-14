@@ -50,27 +50,15 @@ interface Props {
 
 export default function ReviewPipeline({ reviewStatus, currentStage }: Props) {
   const { nodes, edges } = useMemo(() => {
-    const createNode = (id: string, label: string, x: number, y: number, state: string, parentNode?: string, isGroup?: boolean) => {
+    const createNode = (id: string, label: string, x: number, y: number, state: string) => {
       const colors = stageColors[state];
       return {
         id,
         position: { x, y },
         data: { label },
-        parentNode,
-        extent: parentNode ? 'parent' as const : undefined,
         sourcePosition: Position.Right,
         targetPosition: Position.Left,
-        style: isGroup ? {
-          background: `${colors.bg}20`,
-          border: `2px dashed ${colors.border}`,
-          borderRadius: '12px',
-          width: 680,
-          height: 120,
-          color: colors.text,
-          fontSize: '12px',
-          fontWeight: 600,
-          padding: '10px',
-        } : {
+        style: {
           background: colors.bg,
           border: `2px solid ${colors.border}`,
           color: colors.text,
@@ -91,20 +79,9 @@ export default function ReviewPipeline({ reviewStatus, currentStage }: Props) {
       createNode('n2', '2. Retrieval Indexing', 250, 40, getStageState(reviewStatus, currentStage, '2_retrieval')),
       createNode('n3', '3. ASVS Classification', 500, 40, getStageState(reviewStatus, currentStage, '3_asvs_classification')),
       createNode('n4', '4. Parameter Resolution', 750, 40, getStageState(reviewStatus, currentStage, '4_parameter_resolution')),
-      
-      // Text Debate Group
-      createNode('g1', '5. Text Multi-Agent Debate Loop', 1000, 0, getStageState(reviewStatus, currentStage, '5_text_debate'), undefined, true),
-      createNode('n5_1', 'Hunter Agent', 20, 40, getStageState(reviewStatus, currentStage, '5_text_debate'), 'g1'),
-      createNode('n5_2', 'Critic Agent', 240, 40, getStageState(reviewStatus, currentStage, '5_text_debate'), 'g1'),
-      createNode('n5_3', 'Mediator Agent', 460, 40, getStageState(reviewStatus, currentStage, '5_text_debate'), 'g1'),
-
-      // Diagram Debate Group
-      createNode('g2', '6. Diagram Multi-Agent Debate Loop', 1730, 0, getStageState(reviewStatus, currentStage, '6_diagram_debate'), undefined, true),
-      createNode('n6_1', 'Vision Hunter', 20, 40, getStageState(reviewStatus, currentStage, '6_diagram_debate'), 'g2'),
-      createNode('n6_2', 'Vision Critic', 240, 40, getStageState(reviewStatus, currentStage, '6_diagram_debate'), 'g2'),
-      createNode('n6_3', 'Vision Mediator', 460, 40, getStageState(reviewStatus, currentStage, '6_diagram_debate'), 'g2'),
-
-      createNode('n7', '7. Generate Overview', 2460, 40, getStageState(reviewStatus, currentStage, '7_overview')),
+      createNode('n5', '5. Text Multi-Agent Debate Loop', 1000, 40, getStageState(reviewStatus, currentStage, '5_text_debate')),
+      createNode('n6', '6. Diagram Multi-Agent Debate Loop', 1250, 40, getStageState(reviewStatus, currentStage, '6_diagram_debate')),
+      createNode('n7', '7. Generate Overview', 1500, 40, getStageState(reviewStatus, currentStage, '7_overview')),
     ];
 
     const isEdgeActive = (sourceStage: string, targetStage: string) => {
@@ -114,12 +91,6 @@ export default function ReviewPipeline({ reviewStatus, currentStage }: Props) {
       const targetIndex = STAGES_ORDER.indexOf(targetStage);
       // Animate if the current stage is at or beyond the target stage
       return currentIndex >= targetIndex;
-    };
-
-    const isInternalGroupActive = (stage: string) => {
-      if (reviewStatus !== 'running') return false;
-      if (!currentStage) return true;
-      return currentStage === stage;
     };
 
     const createEdge = (source: string, target: string, animated: boolean) => ({
@@ -135,19 +106,9 @@ export default function ReviewPipeline({ reviewStatus, currentStage }: Props) {
       createEdge('n1', 'n2', isEdgeActive('1_ingestion', '2_retrieval')),
       createEdge('n2', 'n3', isEdgeActive('2_retrieval', '3_asvs_classification')),
       createEdge('n3', 'n4', isEdgeActive('3_asvs_classification', '4_parameter_resolution')),
-      createEdge('n4', 'g1', isEdgeActive('4_parameter_resolution', '5_text_debate')),
-      
-      // Inside Text Debate (animate only if this stage is currently active)
-      createEdge('n5_1', 'n5_2', isInternalGroupActive('5_text_debate')),
-      createEdge('n5_2', 'n5_3', isInternalGroupActive('5_text_debate')),
-      
-      createEdge('g1', 'g2', isEdgeActive('5_text_debate', '6_diagram_debate')),
-
-      // Inside Diagram Debate (animate only if this stage is currently active)
-      createEdge('n6_1', 'n6_2', isInternalGroupActive('6_diagram_debate')),
-      createEdge('n6_2', 'n6_3', isInternalGroupActive('6_diagram_debate')),
-
-      createEdge('g2', 'n7', isEdgeActive('6_diagram_debate', '7_overview')),
+      createEdge('n4', 'n5', isEdgeActive('4_parameter_resolution', '5_text_debate')),
+      createEdge('n5', 'n6', isEdgeActive('5_text_debate', '6_diagram_debate')),
+      createEdge('n6', 'n7', isEdgeActive('6_diagram_debate', '7_overview')),
     ];
 
     return { nodes: ns, edges: es };

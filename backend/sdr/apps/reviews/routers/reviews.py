@@ -6,7 +6,7 @@ from sqlalchemy import select
 from sdr.core.database import get_db
 from ..models import Review, Finding
 from ..models.choices import ReviewStatus
-from ..schemas import ReviewSchema, ReviewCreateSchema, FindingSchema
+from ..schemas import ReviewSchema, ReviewCreateSchema, FindingSchema, PaginatedResponse
 from ..tasks import dispatch_review_analysis
 
 router = APIRouter()
@@ -83,26 +83,61 @@ def get_review_retrieval_visualization(review_id: int, db: Session = Depends(get
     return {"status": "pending", "generated_at": None, "raptor": None, "graph": None}
 
 
-@router.get("/{review_id}/findings", response_model=List[FindingSchema])
+@router.get("/{review_id}/findings", response_model=PaginatedResponse[FindingSchema])
 def get_review_findings(
     review_id: int, 
-    skip: int = 0, 
-    limit: int = 50,
+    search: Optional[str] = Query(None, description="Search by title or description"),
+    met_status: Optional[str] = Query(None, description="Comma-separated statuses"),
+    severity: Optional[str] = Query(None, description="Comma-separated severities"),
+    finding_type: Optional[str] = Query(None, description="Comma-separated types"),
+    page: int = Query(1, ge=1), 
+    size: int = Query(10, ge=1, le=100),
     db: Session = Depends(get_db)
 ):
+    from sqlalchemy import and_, func
     review = db.get(Review, review_id)
     if not review:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review not found")
         
+    where_clauses = [Finding.review_id == review_id]
+
+    if search:
+        where_clauses.append(Finding.title.ilike(f"%{search}%") | Finding.description.ilike(f"%{search}%"))
+        
+    if met_status:
+        statuses = [s.strip() for s in met_status.split(",") if s.strip()]
+        if statuses:
+            where_clauses.append(Finding.met_status.in_(statuses))
+            
+    if severity:
+        severities = [s.strip() for s in severity.split(",") if s.strip()]
+        if severities:
+            where_clauses.append(Finding.severity.in_(severities))
+            
+    if finding_type:
+        types = [t.strip() for t in finding_type.split(",") if t.strip()]
+        if types:
+            where_clauses.append(Finding.finding_type.in_(types))
+
+    total = db.execute(select(func.count(Finding.id)).where(and_(*where_clauses))).scalar() or 0
+
     findings = db.execute(
         select(Finding)
-        .where(Finding.review_id == review_id)
+        .where(and_(*where_clauses))
         .order_by(Finding.created_at.desc())
-        .offset(skip)
-        .limit(limit)
+        .offset((page - 1) * size)
+        .limit(size)
     ).scalars().all()
     
-    return findings
+    total_pages = (total + size - 1) // size if total > 0 else 1
+    
+    return {
+        "items": findings,
+        "total": total,
+        "page": page,
+        "size": size,
+        "total_pages": total_pages
+    }
 
 
 @router.post("/{review_id}/trigger", response_model=ReviewSchema)
@@ -134,6 +169,7 @@ def trigger_review(review_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=500, detail=f"Failed to trigger review: {e}")
         
     return review
+
 
 @router.post("/{review_id}/cancel", response_model=ReviewSchema)
 def cancel_review(review_id: int, db: Session = Depends(get_db)):

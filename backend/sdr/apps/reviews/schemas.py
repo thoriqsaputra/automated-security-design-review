@@ -1,7 +1,17 @@
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, TypeVar, Generic
 
 from pydantic import BaseModel, ConfigDict, Field, EmailStr, computed_field
+
+T = TypeVar('T')
+
+class PaginatedResponse(BaseModel, Generic[T]):
+    items: List[T]
+    total: int
+    page: int
+    size: int
+    total_pages: int
+
 
 # ---------------------------------------------------------------------------
 # Citation Anchor

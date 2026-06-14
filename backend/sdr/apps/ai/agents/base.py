@@ -7,7 +7,7 @@ import logging
 try:
     sys.set_int_max_str_digits(0)
 except AttributeError:
-    pass  # For older Python versions
+    pass
 
 from dataclasses import asdict, dataclass, field
 from typing import Any, Dict, List, Optional
@@ -172,15 +172,23 @@ class BaseAgent:
             top_p=top_p,
         )
         self.logger.info(
-            "%s._call_llm: output_chars=%d max_tokens=%d error=%s",
+            "%s._call_llm: output_chars=%d max_tokens=%d finish_reason=%s error=%s",
             self.__class__.__name__,
             len(response.content or ""),
             self.max_tokens,
+            getattr(response, "finish_reason", None),
             bool(response.error),
         )
         return response
 
     def _parse_json_response(self, response: AIResponse) -> Optional[Dict[str, Any]]:
+        if getattr(response, "finish_reason", None) == "length":
+            self.logger.warning(
+                "%s._parse_json_response: response truncated by max_tokens; skipping JSON repair.",
+                self.__class__.__name__,
+            )
+            return None
+
         content = strip_thinking_block(response.content or "")
         content = strip_markdown_code_blocks(content)
         if not content.strip():
@@ -469,43 +477,6 @@ class BaseAgent:
             raw_response=raw,
             error=message,
         )
-
-
-def sanitize_hunter_handoff(result: HunterResult) -> Dict[str, Any]:
-        return {
-            "verdict": result.verdict,
-            "confidence": result.confidence,
-            "reasoning": result.reasoning,
-            "logic_summary": result.sanitized_logic_summary(),
-            "assumptions": list(result.assumptions),
-            "evidence_found": result.evidence_found,
-            "citations": [citation.to_dict() for citation in result.citations],
-            "checked_context": result.checked_context,
-            "evidence_quotes": list(result.evidence_quotes),
-            "evidence_assessment": result.evidence_assessment,
-            "error": result.error,
-        }
-
-
-def sanitize_critic_handoff(result: CriticResult) -> Dict[str, Any]:
-    return {
-        "outcome": result.outcome,
-        "revised_verdict": result.revised_verdict,
-        "revised_confidence": result.revised_confidence,
-        "reasoning": result.reasoning,
-        "logic_summary": result.sanitized_logic_summary(),
-        "assumptions": list(result.assumptions),
-        "valid_citations": [citation.to_dict() for citation in result.valid_citations],
-        "invalid_citation_ids": list(result.invalid_citation_ids),
-        "decision": result.decision,
-        "weak_evidence": list(result.weak_evidence),
-        "missed_evidence": list(result.missed_evidence),
-        "objections": list(result.objections),
-        "requires_rebuttal": result.requires_rebuttal,
-        "error": result.error,
-    }
-
-
 __all__ = [
     "BaseAgent",
     "Citation",
@@ -526,6 +497,5 @@ __all__ = [
     "VERDICT_NA",
     "VERDICT_NOT_MET",
     "VERDICT_PARTIAL",
-    "sanitize_critic_handoff",
-    "sanitize_hunter_handoff",
 ]
+

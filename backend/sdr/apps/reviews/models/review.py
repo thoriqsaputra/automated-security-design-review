@@ -67,3 +67,80 @@ class Review(Base):
         # We try to get design.name safely if joined
         design_name = getattr(self.design, "name", "Unknown Design") if self.design else "Unknown Design"
         return f"Review for {design_name} — {self.status}"
+
+    @property
+    def progress(self) -> Optional[Dict[str, Any]]:
+        summary = self.summary_json or {}
+        debate_total = int(summary.get("debate_total_parameters") or summary.get("analysis_total_parameters") or 0)
+        debate_completed = int(summary.get("debate_completed_parameters") or summary.get("analysis_processed_parameters") or 0)
+        debate_remaining = int(summary.get("debate_remaining_parameters") or summary.get("analysis_remaining_parameters") or 0)
+        persistence_total = int(summary.get("persistence_total_parameters") or debate_total or 0)
+        persistence_completed = int(summary.get("persistence_completed_parameters") or 0)
+        persistence_remaining = int(summary.get("persistence_remaining_parameters") or 0)
+        error_count = int(summary.get("error_count") or 0)
+        skipped_by_parent = int(
+            ((summary.get("applicability") or {}) if isinstance(summary.get("applicability"), dict) else {}).get(
+                "children_marked_na_by_parent",
+                0,
+            ) or 0
+        )
+
+        if (
+            self.status not in {ReviewStatus.RUNNING.value}
+            and debate_total == 0
+            and persistence_total == 0
+            and skipped_by_parent == 0
+        ):
+            return None
+
+        if debate_remaining > 0:
+            stage = "debate"
+            total_items = debate_total
+            completed_items = debate_completed
+            remaining_items = debate_remaining
+        elif persistence_remaining > 0:
+            stage = "persistence"
+            total_items = persistence_total
+            completed_items = persistence_completed
+            remaining_items = persistence_remaining
+        elif self.status == ReviewStatus.RUNNING.value:
+            stage = "preparation"
+            total_items = max(debate_total, persistence_total)
+            completed_items = debate_completed if debate_total else persistence_completed
+            remaining_items = max(debate_remaining, persistence_remaining)
+        else:
+            stage = "completed"
+            total_items = max(debate_total, persistence_total)
+            completed_items = max(debate_completed, persistence_completed, total_items)
+            remaining_items = 0
+
+        progress_percent = int(round((completed_items / total_items) * 100)) if total_items > 0 else 0
+        label = (
+            f"Debate {debate_completed}/{debate_total} · "
+            f"Persistence {persistence_completed}/{persistence_total}"
+        )
+        return {
+            "stage": stage,
+            "label": label,
+            "total_items": total_items,
+            "completed_items": completed_items,
+            "failed_items": error_count,
+            "remaining_items": remaining_items,
+            "progress_percent": progress_percent,
+            "current_parameter_reference": None,
+            "current_parameter_title": None,
+            "preparation": {
+                "debate": {
+                    "total": debate_total,
+                    "completed": debate_completed,
+                    "remaining": debate_remaining,
+                },
+                "persistence": {
+                    "total": persistence_total,
+                    "completed": persistence_completed,
+                    "remaining": persistence_remaining,
+                },
+                "skipped_by_parent_applicability": skipped_by_parent,
+                "categories": summary.get("asvs", {}).get("categories", {}) if isinstance(summary.get("asvs"), dict) else {},
+            },
+        }

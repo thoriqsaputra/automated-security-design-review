@@ -30,6 +30,7 @@ class AIResponse:
     error: Optional[str] = None
     status_code: Optional[int] = None
     error_code: Optional[str] = None
+    finish_reason: Optional[str] = None
 
 class AIServiceInterface(ABC):
     @abstractmethod

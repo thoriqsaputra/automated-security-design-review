@@ -13,9 +13,19 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from sdr.core.config import settings
 
 from sdr.apps.ai.client import chat_completion, get_embeddings
-from sdr.apps.ai.tsd_processing.ingestor import TSDDocument, TSDPage, TextBlock
-from sdr.apps.ai.tsd_processing.content_filter import build_filtered_tsd_view
+from sdr.apps.ai.tsd_processing.document_models import TSDDocument, TSDPage, TextBlock
+from sdr.apps.ai.tsd_processing.graph_embedding_formatter import (
+    build_entity_embedding_text,
+    build_relation_embedding_text,
+)
+from sdr.apps.ai.tsd_processing.prepared_view import PreparedTSDView, prepare_tsd_view
+from sdr.apps.ai.tsd_processing.raptor_graph_linker import RaptorGraphLinker
 from sdr.apps.ai.utils.concurrency import ConcurrencyProbe
+from sdr.apps.ai.prompts.indexing import (
+    GRAPH_EXTRACTION_SYSTEM_PROMPT,
+    build_graph_extraction_prompt,
+    build_graph_retry_extraction_prompt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -341,19 +351,26 @@ class TSDGraphBuilder:
             ),
             _DEFAULT_GRAPH_EMBED_BATCH_SIZE,
         )
+        self.linker = RaptorGraphLinker()
 
     # ------------------------------------------------------------------
     # Public entry point
     # ------------------------------------------------------------------
 
-    def build(self, tsd_document: TSDDocument, progress_callback=None) -> TSDGraph:
+    def build(
+        self,
+        tsd_document: TSDDocument,
+        progress_callback=None,
+        prepared_view: Optional[PreparedTSDView] = None,
+    ) -> TSDGraph:
         tsd_graph = TSDGraph(document_name=tsd_document.document_name)
         build_started = time.monotonic()
-        filtered_view = build_filtered_tsd_view(tsd_document)
+        prepared = prepared_view or prepare_tsd_view(tsd_document)
+        filtered_view = prepared.filtered_view
         tsd_graph.build_stats.update(
             {
                 f"content_filter_{key}": value
-                for key, value in filtered_view.stats.items()
+                for key, value in prepared.stats.items()
             }
         )
 
@@ -401,15 +418,7 @@ class TSDGraphBuilder:
         all_entities: Dict[str, GraphEntity] = {}
         all_relations: List[GraphRelation] = []
 
-        pages_with_text: List[TSDPage] = []
-        for page in filtered_view.pages:
-            if not page.all_text.strip():
-                self.logger.debug(
-                    "TSDGraphBuilder.build: page %d has no text — skipping.",
-                    page.page_number,
-                )
-                continue
-            pages_with_text.append(page)
+        pages_with_text: List[TSDPage] = list(prepared.pages_with_text)
 
         extracted_pages: List[Tuple[int, List[GraphEntity], List[GraphRelation]]] = []
         if pages_with_text:
@@ -692,26 +701,10 @@ class TSDGraphBuilder:
         return succeeded, failed
 
     def _entity_embedding_text(self, entity: GraphEntity) -> str:
-        text = (
-            f"Entity {entity.name} type {entity.entity_type}. "
-            f"Description {entity.description or 'N/A'}."
-        ).strip()
-        return text[:_MAX_ENTITY_EMBED_TEXT_CHARS]
+        return build_entity_embedding_text(entity)
 
     def _relation_embedding_text(self, relation: GraphRelation) -> str:
-        flags: List[str] = []
-        if relation.protocol:
-            flags.append(f"protocol={relation.protocol}")
-        if relation.is_encrypted is not None:
-            flags.append(f"encrypted={relation.is_encrypted}")
-        if relation.requires_auth is not None:
-            flags.append(f"auth={relation.requires_auth}")
-        text = (
-            f"Relation {relation.source_entity_id} {relation.relation_type} {relation.target_entity_id}. "
-            f"Description {relation.description or 'N/A'}. "
-            f"{' '.join(flags)}"
-        ).strip()
-        return text[:_MAX_RELATION_EMBED_TEXT_CHARS]
+        return build_relation_embedding_text(relation)
 
     # ------------------------------------------------------------------
     # Per-page entity/relation extraction
@@ -776,12 +769,7 @@ class TSDGraphBuilder:
                     messages=[
                         {
                             "role": "system",
-                            "content": (
-                                "You are a security architecture analyst extracting "
-                                "entities and relationships from Technical Software "
-                                "Documents for a security compliance review pipeline. "
-                                "Output strictly valid JSON only."
-                            ),
+                            "content": GRAPH_EXTRACTION_SYSTEM_PROMPT,
                         },
                         {"role": "user", "content": prompt},
                     ],
@@ -835,75 +823,14 @@ class TSDGraphBuilder:
         page_text: str,
         page_number: int,
     ) -> str:
-        """
-        Builds the entity/relation extraction prompt for a single page.
-
-        The JSON schema is strict — only valid entity types and relation
-        types from _VALID_ENTITY_TYPES and _VALID_RELATION_TYPES are
-        accepted. The LLM is instructed to use null for unknown security
-        metadata fields rather than guessing.
-
-        Args:
-            page_text:   The cleaned text content of the page.
-            page_number: Used only for context labelling in the prompt.
-
-        Returns:
-            A fully formed prompt string.
-        """
         entity_types = ", ".join(sorted(_VALID_ENTITY_TYPES))
         relation_types = ", ".join(sorted(_VALID_RELATION_TYPES))
-
-        return f"""\
-## TSD PAGE {page_number} — ENTITY AND RELATION EXTRACTION
-
-Extract all named architectural entities and directed security-relevant
-relationships from the text below.
-
-### VALID ENTITY TYPES
-{entity_types}
-
-### VALID RELATION TYPES
-{relation_types}
-
-### OUTPUT SCHEMA
-Return a single JSON object with exactly two keys:
-
-{{
-  "entities": [
-    {{
-      "entity_id": "<lowercase_slug_no_spaces>",
-      "name": "<original name as it appears in the text>",
-      "entity_type": "<one of the valid entity types above>",
-      "description": "<short phrase or null>"
-    }}
-  ],
-  "relations": [
-    {{
-      "source_entity_id": "<entity_id of the source>",
-      "target_entity_id": "<entity_id of the target>",
-      "relation_type": "<one of the valid relation types above>",
-      "description": "<short phrase or null>",
-      "is_encrypted": <true | false | null>,
-      "requires_auth": <true | false | null>,
-      "protocol": "<e.g. TLS 1.2, mTLS, HTTPS, JWT or null>",
-      "confidence": <float 0.0-1.0>
-    }}
-  ]
-}}
-
-### RULES
-- entity_id must be a lowercase slug: "api_gateway", "user_db", "auth_service"
-- Only extract entities explicitly named in the text — do not infer
-- Only include relations between entities you have extracted above
-- Return minified JSON only, with no prose, comments, markdown, or code fences
-- Keep descriptions short phrases, not sentences
-- Set is_encrypted / requires_auth to null if the text does not state it
-- Set confidence to 1.0 only if the relation is explicitly stated
-- If no entities or relations are found, return empty lists
-
-### TEXT
-{page_text}
-"""
+        return build_graph_extraction_prompt(
+            page_text=page_text,
+            page_number=page_number,
+            entity_types=entity_types,
+            relation_types=relation_types,
+        )
 
     def _build_retry_extraction_prompt(
         self,
@@ -911,6 +838,8 @@ Return a single JSON object with exactly two keys:
         page_number: int,
         previous_failure: Optional[Dict[str, Any]] = None,
     ) -> str:
+        entity_types = ", ".join(sorted(_VALID_ENTITY_TYPES))
+        relation_types = ", ".join(sorted(_VALID_RELATION_TYPES))
         failure_hint = ""
         if previous_failure:
             failure_hint = (
@@ -918,16 +847,12 @@ Return a single JSON object with exactly two keys:
                 f"{previous_failure.get('pos', 'unknown')}: "
                 f"{previous_failure.get('message', 'decode_error')}.\n"
             )
-        return (
-            f"{self._build_extraction_prompt(page_text, page_number)}\n"
-            "### RETRY REQUIREMENTS\n"
-            f"{failure_hint}"
-            "- Return one minified JSON object only.\n"
-            "- Do not include markdown, backticks, commentary, or explanations.\n"
-            "- Use null, true, and false JSON literals only.\n"
-            "- Do not include trailing commas.\n"
-            "- Keep each description to a short phrase or null.\n"
-            "- Avoid newline characters inside string values.\n"
+        return build_graph_retry_extraction_prompt(
+            page_text=page_text,
+            page_number=page_number,
+            entity_types=entity_types,
+            relation_types=relation_types,
+            failure_hint=failure_hint,
         )
 
     def _extract_from_page_deterministic(
@@ -1462,20 +1387,7 @@ Return a single JSON object with exactly two keys:
         tsd_graph.edge_to_block_ids = dict(edge_to_block_ids)
 
     def link_raptor_entities(self, tsd_graph: TSDGraph, raptor_tree: Any) -> None:
-        if tsd_graph is None or raptor_tree is None or raptor_tree.is_empty():
-            return
-        raptor_node_to_entities: Dict[str, Set[str]] = defaultdict(set)
-        entity_to_raptor_node_ids: Dict[str, Set[str]] = defaultdict(set)
-        for node in raptor_tree.get_all_nodes():
-            node_block_ids = set(getattr(node, "source_block_ids", []) or [])
-            if not node_block_ids:
-                continue
-            for entity_id, blocks in tsd_graph.entity_to_block_ids.items():
-                if node_block_ids.intersection(blocks):
-                    raptor_node_to_entities[node.node_id].add(entity_id)
-                    entity_to_raptor_node_ids[entity_id].add(node.node_id)
-        tsd_graph.raptor_node_to_entities = dict(raptor_node_to_entities)
-        tsd_graph.entity_to_raptor_node_ids = dict(entity_to_raptor_node_ids)
+        self.linker.link(tsd_graph, raptor_tree)
 
 
 # ---------------------------------------------------------------------------

@@ -4,9 +4,10 @@ import logging
 import json
 from typing import Dict, List, Optional
 
-from sdr.apps.ai.prompts.agent_prompt import (
+from sdr.apps.ai.prompts.agents import (
     MEDIATOR_SYSTEM_PROMPT,
     build_mediator_prompt,
+    build_batch_mediator_prompt,
 )
 from .base import (
     BaseAgent,
@@ -30,31 +31,9 @@ logger = logging.getLogger(__name__)
 
 
 class MediatorAgent(BaseAgent):
-    """
-    Concrete implementation of the Mediator agent.
-
-    The Mediator is the final arbiter in the Multi-Agent Debate pipeline.
-    It is called once per security parameter after both the Hunter and
-    Critic have produced their results.
-
-    Key responsibilities:
-        1. Weigh the Hunter's initial finding against the Critic's challenge.
-        2. Produce a single binding final verdict (met / not_met / na).
-        3. Select only Critic-verified citations as final evidence.
-        4. Assign severity and remediation recommendation for not_met verdicts.
-        5. Provide a concise executive-level justification.
-
-    The MediatorResult is persisted directly to the Finding model [3] by
-    analysis_service.py — this is the only agent output that touches the DB.
-
-    The Mediator never raises — all errors are captured in MediatorResult.error
-    so the pipeline can mark the Finding with an error state and continue
-    to the next parameter.
-    """
-
     system_prompt: str = MEDIATOR_SYSTEM_PROMPT
     model_component: str = "mediator"
-    max_tokens: int = 2048  # Mediator output is concise by design
+    max_tokens: int = 4096  # Give the structured JSON enough room to finish cleanly
     temperature: float = 0.0
 
     def _build_user_prompt(
@@ -85,6 +64,10 @@ class MediatorAgent(BaseAgent):
             critic_objections=critic_result.objections,
             critic_weak_evidence=critic_result.weak_evidence,
             critic_missed_evidence=critic_result.missed_evidence,
+            hunter_assumptions=hunter_result.assumptions,
+            hunter_cot_trace=hunter_result.cot_trace,
+            critic_assumptions=critic_result.assumptions,
+            critic_cot_trace=critic_result.cot_trace,
             debate_history=debate_history or [],
         )
 
@@ -97,29 +80,6 @@ class MediatorAgent(BaseAgent):
         critic_result: CriticResult,
         debate_history: Optional[List[dict]] = None,
     ) -> MediatorResult:
-        """
-        Executes the Mediator agent for a single security parameter.
-
-        Pipeline:
-            1.  Validate inputs.
-            2.  Handle fast-path cases to avoid unnecessary LLM calls.
-            3.  Build the user-turn prompt.
-            4.  Call the LLM via _call_llm() from BaseAgent.
-            5.  Parse the JSON response via _parse_json_response().
-            6.  Extract and validate all fields with shared helpers.
-            7.  Run post-parse severity/verdict consistency checks.
-            8.  Reconcile final citations from Critic-verified set.
-            9.  Return a fully populated MediatorResult.
-
-        Args:
-            parameter_text:    Full requirement text from CategoryParameterChild [3].
-            parameter_section: Parent section title from CategoryParameterParent [3].
-            hunter_result:     The HunterResult produced by HunterAgent.run().
-            critic_result:     The CriticResult produced by CriticAgent.run().
-
-        Returns:
-            MediatorResult — never raises. Check .error field for failures.
-        """
         # ------------------------------------------------------------------
         # 1. Input validation
         # ------------------------------------------------------------------
@@ -132,10 +92,6 @@ class MediatorAgent(BaseAgent):
         # 2. Fast-path cases
         # ------------------------------------------------------------------
 
-        # Fast-path A: Both agents agree with high confidence — skip LLM call.
-        # Agreement threshold is set conservatively at 0.75 to avoid
-        # fast-pathing ambiguous findings. Only UPHOLD (not PARTIAL/OVERTURN)
-        # qualifies, and both verdicts must match exactly.
         fast_path_result = self._try_fast_path(
             parameter_text=parameter_text,
             hunter_result=hunter_result,
@@ -189,6 +145,18 @@ class MediatorAgent(BaseAgent):
             # Fall back to the Critic's revised verdict rather than
             # returning an uninformative error — the pipeline can still
             # persist a finding with degraded but usable data
+            return self._fallback_to_critic(
+                critic_result=critic_result,
+                error_msg=msg,
+                raw=response.content,
+            )
+
+        if self._response_was_truncated(response):
+            msg = (
+                "LLM response was truncated by max_tokens; "
+                "falling back to Critic output without JSON repair."
+            )
+            self.logger.error("MediatorAgent.run: %s", msg)
             return self._fallback_to_critic(
                 critic_result=critic_result,
                 error_msg=msg,
@@ -345,9 +313,38 @@ class MediatorAgent(BaseAgent):
         if not child_inputs:
             return {}
 
+        auto_upheld_results: Dict[str, MediatorResult] = {}
+        llm_child_inputs: List[dict] = []
+        
+        for item in child_inputs:
+            child_id = str(item.get("id"))
+            if not child_id or child_id == "None":
+                continue
+            parameter_text = item.get("requirement") or str(item.get("text") or "")
+            hunter_result = hunter_results.get(child_id) or HunterResult()
+            critic_result = critic_results.get(child_id) or CriticResult()
+            debate_history = (debate_history_by_child or {}).get(child_id, [])
+
+            fast_path_result = self._try_fast_path(
+                parameter_text=parameter_text,
+                hunter_result=hunter_result,
+                critic_result=critic_result,
+                debate_history=debate_history,
+            )
+            
+            if fast_path_result is not None:
+                auto_upheld_results[child_id] = fast_path_result
+            else:
+                llm_child_inputs.append(item)
+
+        results: Dict[str, MediatorResult] = auto_upheld_results.copy()
+
+        if not llm_child_inputs:
+            return results
+
         response = self._call_llm(
             self._build_batch_user_prompt(
-                child_inputs=child_inputs,
+                child_inputs=llm_child_inputs,
                 parameter_section=parameter_section,
                 hunter_results=hunter_results,
                 critic_results=critic_results,
@@ -357,23 +354,36 @@ class MediatorAgent(BaseAgent):
         if response.error:
             msg = f"LLM call failed: {response.error}"
             self.logger.error("MediatorAgent.run_batch: %s", msg)
-            return {
-                str(item.get("id")): self._fallback_to_critic(
-                    critic_result=critic_results.get(str(item.get("id"))) or CriticResult(),
+            for item in llm_child_inputs:
+                c_id = str(item.get("id"))
+                results[c_id] = self._fallback_to_critic(
+                    critic_result=critic_results.get(c_id) or CriticResult(),
                     error_msg=msg,
                     raw=response.content,
                 )
-                for item in child_inputs
-                if item.get("id") is not None
-            }
+            return results
+
+        if self._response_was_truncated(response):
+            msg = (
+                "LLM response was truncated by max_tokens; "
+                "falling back to Critic output without JSON repair."
+            )
+            self.logger.error("MediatorAgent.run_batch: %s", msg)
+            for item in llm_child_inputs:
+                c_id = str(item.get("id"))
+                results[c_id] = self._fallback_to_critic(
+                    critic_result=critic_results.get(c_id) or CriticResult(),
+                    error_msg=msg,
+                    raw=response.content,
+                )
+            return results
 
         parsed = self._parse_json_response(response)
         if parsed is None:
             self.logger.error("MediatorAgent.run_batch: failed to parse batch JSON.")
-            return {}
+            return results
 
-        allowed_ids = {str(item.get("id")) for item in child_inputs if item.get("id") is not None}
-        results: Dict[str, MediatorResult] = {}
+        allowed_ids = {str(item.get("id")) for item in llm_child_inputs if item.get("id") is not None}
         for item in parsed.get("results", []):
             if not isinstance(item, dict):
                 continue
@@ -454,12 +464,16 @@ class MediatorAgent(BaseAgent):
                     "verdict": hunter.verdict,
                     "confidence": hunter.confidence,
                     "reasoning": hunter.logic_summary or hunter.reasoning,
+                    "assumptions": list(hunter.assumptions),
+                    "cot_trace": hunter.cot_trace,
                 },
                 "critic": {
                     "outcome": critic.outcome,
                     "revised_verdict": critic.revised_verdict,
                     "revised_confidence": critic.revised_confidence,
                     "reasoning": critic.logic_summary or critic.reasoning,
+                    "assumptions": list(critic.assumptions),
+                    "cot_trace": critic.cot_trace,
                     "valid_citations": [citation.to_dict() for citation in critic.valid_citations],
                     "weak_evidence": list(critic.weak_evidence),
                     "missed_evidence": list(critic.missed_evidence),
@@ -467,46 +481,11 @@ class MediatorAgent(BaseAgent):
                 },
                 "debate_history": debate_history_by_child.get(str(child_id), []),
             }
-        return f"""\
-## PARENT SECURITY SECTION
-Section: {parameter_section}
-
-## CHILD PARAMETERS
-{json.dumps(child_inputs, indent=2)}
-
-## DEBATE INPUTS BY CHILD ID
-{json.dumps(payload, indent=2)}
-
-Produce one final binding verdict per child independently. Return strict JSON:
-
-{{
-  "results": [
-    {{
-      "child_id": "<id from CHILD PARAMETERS>",
-      "assumptions": ["<assumption>", "..."],
-      "logic_summary": "<concise final reasoning>",
-      "final_verdict": "met" | "not_met" | "na",
-      "confidence": <float 0.0-1.0>,
-      "finding_description": "<factual summary of the system state regarding this requirement>",
-      "reasoning": "<2-3 sentence executive justification for the verdict>",
-      "verified_evidence": ["<accepted evidence>", "..."],
-      "rejected_evidence": ["<insufficient or rejected evidence>", "..."],
-      "debate_rounds_used": <integer>,
-      "final_citations": [
-        {{"block_id": "<Critic-verified block_id only>", "page_number": <integer>, "quoted_text": "<short quote>", "bbox": {{"x0": null, "y0": null, "x1": null, "y1": null}}}}
-      ],
-      "severity": "critical" | "high" | "medium" | "low" | "info" | null,
-      "recommendation": "<remediation if not_met, else null>"
-    }}
-  ]
-}}
-
-Rules:
-- Use child_id exactly as supplied.
-- final_citations must be selected only from that child's Critic valid_citations.
-- A "met" final verdict requires Critic-verified evidence for that same child.
-- If evidence is only partial, final_verdict is "not_met".
-"""
+        return build_batch_mediator_prompt(
+            parameter_section=parameter_section,
+            child_inputs=child_inputs,
+            payload=payload,
+        )
 
     # ------------------------------------------------------------------
     # Fast-path logic
@@ -519,21 +498,6 @@ Rules:
         critic_result: CriticResult,
         debate_history: Optional[List[dict]] = None,
     ) -> Optional[MediatorResult]:
-        """
-        Returns a MediatorResult without an LLM call when the debate has
-        a clear, high-confidence resolution that does not need arbitration.
-
-        Fast-path conditions (ALL must be true):
-            - Critic outcome is UPHOLD (not PARTIAL or OVERTURN)
-            - Hunter and Critic verdicts match exactly
-            - Both confidence scores are >= 0.75
-            - Neither agent errored
-
-        This eliminates LLM calls for the most common and clear-cut cases,
-        reducing cost and latency significantly across large parameter sets.
-
-        Returns None if fast-path conditions are not met.
-        """
         _FAST_PATH_CONFIDENCE_THRESHOLD = 0.75
 
         if hunter_result.error or critic_result.error:
@@ -542,7 +506,7 @@ Rules:
         if critic_result.outcome != OUTCOME_UPHOLD:
             return None
 
-        if debate_history:
+        if debate_history and len(debate_history) > 1:
             return None
 
         if critic_result.requires_rebuttal or critic_result.objections:
@@ -645,32 +609,6 @@ Rules:
         critic_valid_citations: List[Citation],
         parameter_text: str,
     ) -> List[Citation]:
-        """
-        Ensures the Mediator's final citations are a strict subset of the
-        Critic's verified citations.
-
-        The Mediator LLM may return block_ids the Critic never verified —
-        a subtle hallucination where the Mediator invents new evidence not
-        present in the Critic's verified set. This method filters the
-        Mediator's citation list to only include block_ids that appear in
-        critic_valid_citations.
-
-        If the LLM returns no citations but the Critic verified some,
-        the Critic's verified citations are used directly as the final set
-        — they are already the most trustworthy evidence available.
-
-        If neither set has citations, an empty list is returned — this is
-        valid for not_met findings where no evidence exists.
-
-        Args:
-            llm_citations:          Citations returned by the Mediator LLM.
-            critic_valid_citations: Citations the Critic verified as valid.
-            parameter_text:         Used only in log messages.
-
-        Returns:
-            A deduplicated list of final Citation objects, ordered by
-            page_number then bbox_y0 for consistent frontend rendering.
-        """
         if not critic_valid_citations:
             # Critic verified nothing — no citations can be considered final
             if llm_citations:
@@ -770,21 +708,6 @@ Rules:
         parsed: dict,
         final_verdict: str,
     ) -> Optional[str]:
-        """
-        Extracts and validates the severity field from the Mediator's
-        parsed response.
-
-        Severity must only be set for not_met findings — the post-parse
-        consistency check in run() will clear it for met/na verdicts,
-        but we validate here as a first line of defence.
-
-        Args:
-            parsed:        The parsed JSON dict from the LLM response.
-            final_verdict: The validated final verdict string.
-
-        Returns:
-            A valid severity string from VALID_SEVERITIES, or None.
-        """
         raw = parsed.get("severity")
 
         # Severity is only meaningful for not_met findings
@@ -805,29 +728,6 @@ Rules:
         verdict: str,
         confidence: float,
     ) -> Optional[str]:
-        """
-        Infers a severity level from the averaged confidence score when
-        the fast-path is taken and no LLM severity assignment is available.
-
-        Used exclusively by _try_fast_path() — the LLM is not called in
-        fast-path cases, so severity must be derived heuristically.
-
-        Mapping (not_met only):
-            confidence >= 0.90  → critical  (very high certainty of gap)
-            confidence >= 0.80  → high
-            confidence >= 0.70  → medium
-            confidence <  0.70  → low       (lower certainty)
-
-        For met/na verdicts, always returns None — severity is not
-        applicable to compliant or out-of-scope findings.
-
-        Args:
-            verdict:    The agreed fast-path verdict.
-            confidence: The averaged confidence from Hunter and Critic.
-
-        Returns:
-            A valid severity string, or None for met/na verdicts.
-        """
         if verdict != VERDICT_NOT_MET:
             return None
 
@@ -849,20 +749,6 @@ Rules:
         parsed: dict,
         final_verdict: str,
     ) -> Optional[str]:
-        """
-        Extracts the recommendation field from the Mediator's parsed response.
-
-        Recommendations are only meaningful for not_met findings — a met
-        or na finding requires no remediation action. Returns None for
-        met/na verdicts regardless of what the LLM returned.
-
-        Args:
-            parsed:        The parsed JSON dict from the LLM response.
-            final_verdict: The validated final verdict string.
-
-        Returns:
-            A stripped recommendation string, or None.
-        """
         if final_verdict != VERDICT_NOT_MET:
             return None
 
@@ -877,39 +763,7 @@ Rules:
         recommendation = raw.strip()
         return recommendation if recommendation else None
 
-    # ------------------------------------------------------------------
-    # Reasoning helper
-    # ------------------------------------------------------------------
 
-    def _extract_mediator_reasoning(self, parsed: dict) -> str:
-        """
-        Extracts and sanitises the reasoning field from the Mediator's
-        parsed response.
-
-        The Mediator's reasoning is the executive-level justification
-        stored in Finding.mediator_reasoning [review models]. It should
-        be concise — 2 to 3 sentences per the prompt contract.
-
-        Falls back to a generic message if the field is missing or empty
-        so downstream code always has a non-null string to persist.
-
-        Args:
-            parsed: The parsed JSON dict from the LLM response.
-
-        Returns:
-            A non-empty reasoning string.
-        """
-        raw = parsed.get("reasoning") or ""
-        reasoning = str(raw).strip()
-
-        if not reasoning:
-            self.logger.debug(
-                "MediatorAgent._extract_mediator_reasoning: reasoning "
-                "field missing or empty in LLM response."
-            )
-            return "No reasoning provided by the Mediator agent."
-
-        return reasoning
 
     # ------------------------------------------------------------------
     # Fallback helper
@@ -921,33 +775,6 @@ Rules:
         error_msg: str,
         raw: Optional[str] = None,
     ) -> MediatorResult:
-        """
-        Produces a MediatorResult derived from the Critic's output when
-        the Mediator's LLM call fails or returns unparseable content.
-
-        This is preferable to returning a bare error result because:
-        - The Critic's revised_verdict is already a validated, challenged
-          verdict — it is more reliable than VERDICT_NOT_MET as a blind default.
-        - The Critic's valid_citations have already been cross-checked —
-          they are safe to use as final citations without re-verification.
-        - The pipeline can persist a Finding with degraded but real data
-          rather than a placeholder, giving the human reviewer something
-          meaningful to act on.
-
-        The error is recorded in MediatorResult.error so the analysis
-        service can mark the finding with a degraded state indicator
-        without blocking the rest of the parameter evaluation loop.
-
-        Args:
-            critic_result: The CriticResult to derive the fallback from.
-            error_msg:     The error message describing why the fallback
-                           was triggered.
-            raw:           Optional raw LLM response content for audit.
-
-        Returns:
-            A MediatorResult populated from the Critic's output with the
-            error field set to indicate degraded mode.
-        """
         self.logger.warning(
             "MediatorAgent._fallback_to_critic: falling back to Critic "
             "revised_verdict='%s' revised_confidence=%.2f due to: %s",
@@ -981,6 +808,9 @@ Rules:
             raw_response=raw,
             error=error_msg,
         )
+
+    def _response_was_truncated(self, response) -> bool:
+        return getattr(response, "finish_reason", None) == "length"
 
 
 # ---------------------------------------------------------------------------

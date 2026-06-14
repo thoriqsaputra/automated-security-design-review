@@ -7,7 +7,7 @@ from sqlalchemy.orm import joinedload
 
 from sdr.core.database import SessionLocal
 from sdr.apps.ai.client import chat_completion
-from sdr.apps.ai.prompts.analysis_prompts import (
+from sdr.apps.ai.prompts.analysis import (
     SEVERITY_JUSTIFICATION_SYSTEM_PROMPT,
     build_severity_justification_prompt,
 )
