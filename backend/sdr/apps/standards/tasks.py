@@ -167,6 +167,48 @@ def _coerce_asvs_level(requirement_item: Any) -> Optional[int]:
     return None
 
 
+def _resolve_detected_page_ranges(
+    detected_ranges: Optional[Dict[str, Any]],
+    requested_ranges: Optional[Dict[str, Any]],
+) -> Dict[str, Any]:
+    detected = dict(detected_ranges or {})
+    requested = dict(requested_ranges or {})
+    effective: Dict[str, Optional[int]] = {}
+    field_sources: Dict[str, str] = {}
+    for field_name in (
+        "start_page",
+        "end_page",
+        "level_definition_start_page",
+        "level_definition_end_page",
+    ):
+        override_value = requested.get(field_name)
+        if override_value is not None:
+            effective[field_name] = override_value
+            field_sources[field_name] = "manual_override"
+        else:
+            effective[field_name] = detected.get(field_name)
+            field_sources[field_name] = "auto_detected"
+
+    return {
+        "effective": effective,
+        "page_detection": {
+            "source": detected.get("source", "heuristic"),
+            "matched_anchors": detected.get("matched_anchors", {}),
+            "detected": {
+                key: detected.get(key)
+                for key in (
+                    "start_page",
+                    "end_page",
+                    "level_definition_start_page",
+                    "level_definition_end_page",
+                )
+            },
+            "requested_overrides": requested,
+            "field_sources": field_sources,
+        },
+    }
+
+
 def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] = None) -> Dict[str, Any]:
     """
     Ingests all StandardSourceDocuments attached to an ingestion job and
@@ -174,6 +216,7 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
     requirement child.
     """
     from sdr.apps.ai.engine.extraction import (
+        detect_asvs_page_ranges,
         extract_asvs_level_definitions_from_document,
         extract_requirements_from_document,
         extract_diagram_requirements,
@@ -191,10 +234,12 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
 
         # Preserve configuration from router before overwriting summary
         old_summary = job.summary_json or {}
-        start_page = old_summary.get("start_page")
-        end_page = old_summary.get("end_page")
-        level_definition_start_page = old_summary.get("level_definition_start_page")
-        level_definition_end_page = old_summary.get("level_definition_end_page")
+        requested_ranges = {
+            "start_page": old_summary.get("start_page"),
+            "end_page": old_summary.get("end_page"),
+            "level_definition_start_page": old_summary.get("level_definition_start_page"),
+            "level_definition_end_page": old_summary.get("level_definition_end_page"),
+        }
 
         summary: Dict[str, Any] = {
             'inserted': 0,
@@ -208,10 +253,17 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
             'mode': mode,
             'resolved_categories': {job.category.code if job.category else "unknown": 0},
             'version_no': getattr(job, 'version_no', 1),
-            'start_page': start_page,
-            'end_page': end_page,
-            'level_definition_start_page': level_definition_start_page,
-            'level_definition_end_page': level_definition_end_page,
+            'start_page': requested_ranges["start_page"],
+            'end_page': requested_ranges["end_page"],
+            'level_definition_start_page': requested_ranges["level_definition_start_page"],
+            'level_definition_end_page': requested_ranges["level_definition_end_page"],
+            'page_detection': {
+                'source': 'pending',
+                'matched_anchors': {},
+                'detected': {},
+                'requested_overrides': requested_ranges,
+                'field_sources': {},
+            },
             'asvs_level_definitions': {
                 'status': 'pending',
                 'count': 0,
@@ -311,6 +363,15 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                         flag_modified(job, "summary_json")
                         db.commit()
 
+                    detected_ranges = detect_asvs_page_ranges(source_doc)
+                    resolved_ranges = _resolve_detected_page_ranges(detected_ranges, requested_ranges)
+                    summary.update(resolved_ranges["effective"])
+                    summary["page_detection"] = resolved_ranges["page_detection"]
+                    job.summary_json = summary
+                    from sqlalchemy.orm.attributes import flag_modified
+                    flag_modified(job, "summary_json")
+                    db.commit()
+
                     start_page = summary.get("start_page")
                     end_page = summary.get("end_page")
                     level_definition_start_page = summary.get("level_definition_start_page")
@@ -344,10 +405,9 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                             'status': 'extracted' if level_definitions else 'fallback',
                             'count': len(level_definitions),
                             'source': 'standard_document' if level_definitions else 'static_fallback',
-                            'reason': None if level_definitions else 'No ASVS level definitions extracted from configured page range.',
+                            'reason': None if level_definitions else 'No ASVS level definitions extracted from selected page range.',
                         }
                         job.summary_json = summary
-                        from sqlalchemy.orm.attributes import flag_modified
                         flag_modified(job, "summary_json")
                         db.commit()
                     else:
@@ -355,7 +415,7 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                             'status': 'fallback',
                             'count': 0,
                             'source': 'static_fallback',
-                            'reason': 'No ASVS level definition page range configured.',
+                            'reason': 'ASVS level definition pages could not be detected.',
                         }
 
                     requirements_by_section = extract_requirements_from_document(

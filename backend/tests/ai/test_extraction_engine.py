@@ -1,9 +1,11 @@
 from contextlib import nullcontext
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
 from sdr.apps.ai.engine.extraction import (
     ASVSLevelDefinitionExtractionService,
+    detect_asvs_page_ranges,
     ExtractionConfig,
     ExtractionLLMClient,
     RequirementDocumentExtractionService,
@@ -143,3 +145,29 @@ def test_engine_function_wrapper_uses_api_patch_points():
         result = extract_structured_requirements("5.4.1 Generic Web Service Security")
 
     assert result["5.4 API and Web Service"][0]["requirement"] == "5.4.1 Generic Web Service Security"
+
+
+def test_detect_asvs_page_ranges_for_asvs_5_pdf():
+    repo_root = Path(__file__).resolve().parents[3]
+    pdf_path = repo_root / "dataset/Standard/OWASP_Application_Security_Verification_Standard_5.0.0_en.pdf"
+    source_doc = SimpleNamespace(id=1, name=pdf_path.name, document=str(pdf_path))
+
+    result = detect_asvs_page_ranges(source_doc)
+
+    assert result["level_definition_start_page"] == 12
+    assert result["level_definition_end_page"] == 14
+    assert result["start_page"] == 23
+    assert result["end_page"] == 95
+
+
+def test_detect_asvs_page_ranges_for_asvs_4_pdf():
+    repo_root = Path(__file__).resolve().parents[3]
+    pdf_path = repo_root / "dataset/Standard/OWASP Application Security Verification Standard 4.0.3-en.pdf"
+    source_doc = SimpleNamespace(id=1, name=pdf_path.name, document=str(pdf_path))
+
+    result = detect_asvs_page_ranges(source_doc)
+
+    assert result["level_definition_start_page"] == 11
+    assert result["level_definition_end_page"] == 12
+    assert result["start_page"] == 17
+    assert result["end_page"] == 63

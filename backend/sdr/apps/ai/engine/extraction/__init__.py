@@ -1,4 +1,5 @@
 from .api import (
+    detect_asvs_page_ranges,
     extract_asvs_level_definitions_from_document,
     extract_diagram_requirements,
     extract_requirements_from_document,
@@ -24,6 +25,7 @@ from .services import (
     ASVSLevelDefinitionExtractionService,
     DiagramRequirementExtractionService,
     RequirementDocumentExtractionService,
+    ASVSPageRangeDetectionService,
     StructuredRequirementExtractionService,
 )
 
@@ -31,10 +33,12 @@ __all__ = [
     "ExtractionConfig",
     "StandardDocumentReader",
     "ExtractionLLMClient",
+    "detect_asvs_page_ranges",
     "extract_asvs_level_definitions_from_document",
     "extract_structured_requirements",
     "extract_requirements_from_document",
     "extract_diagram_requirements",
+    "ASVSPageRangeDetectionService",
     "ASVSLevelDefinitionExtractionService",
     "StructuredRequirementExtractionService",
     "RequirementDocumentExtractionService",

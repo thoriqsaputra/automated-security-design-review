@@ -11,6 +11,7 @@ from .document_reader import StandardDocumentReader
 from .llm_client import ExtractionLLMClient
 from .services import (
     ASVSLevelDefinitionExtractionService,
+    ASVSPageRangeDetectionService,
     DiagramRequirementExtractionService,
     RequirementDocumentExtractionService,
     StructuredRequirementExtractionService,
@@ -30,6 +31,15 @@ def _build_document_reader() -> StandardDocumentReader:
 
 def _build_llm_client() -> ExtractionLLMClient:
     return ExtractionLLMClient(chat_completion=chat_completion)
+
+
+def detect_asvs_page_ranges(
+    source_doc: StandardSourceDocument,
+) -> Dict[str, Any]:
+    service = ASVSPageRangeDetectionService(
+        get_local_file_path=get_local_file_path,
+    )
+    return service.detect(source_doc).to_dict()
 
 
 def extract_asvs_level_definitions_from_document(

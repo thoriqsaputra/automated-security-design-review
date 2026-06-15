@@ -19,6 +19,7 @@ from sdr.apps.standards.models import StandardSourceDocument
 from .config import ExtractionConfig
 from .document_reader import StandardDocumentReader
 from .llm_client import ExtractionLLMClient
+from .page_detection import ASVSPageRangeDetectionService
 from .normalizers import (
     _canonicalize_diagram_requirements,
     _clean_asvs_level_definitions,
