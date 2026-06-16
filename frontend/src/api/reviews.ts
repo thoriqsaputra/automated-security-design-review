@@ -1,6 +1,7 @@
 import api from './client';
 
 export type JsonRecord = Record<string, unknown>;
+export type ReviewAnalysisMode = 'default' | 'text_only' | 'diagram_only';
 
 export interface PaginatedResponse<T> {
   items: T[];
@@ -146,6 +147,7 @@ export interface Review {
   retrieval_snapshot_json?: RetrievalVisualization | null;
   overview: string | null;
   asvs_level_override: number | null;
+  analysis_mode: ReviewAnalysisMode;
   finding_counts: Record<string, number>;
   progress: ReviewProgress | null;
   created_at: string;
@@ -159,15 +161,24 @@ export const listReviews = (designId?: number) =>
 
 export const getReview = (id: number) => api.get<Review>(`/reviews/${id}`);
 
-export const createReview = (designId: number, categoryId: number, asvsLevelOverride?: number | null) =>
+export const createReview = (
+  designId: number,
+  categoryId: number,
+  asvsLevelOverride?: number | null,
+  analysisMode: ReviewAnalysisMode = 'default',
+) =>
   api.post<Review>('/reviews/', {
     design_id: designId,
     category_id: categoryId,
     asvs_level_override: asvsLevelOverride ?? null,
+    analysis_mode: analysisMode,
   });
 
-export const triggerReview = (id: number) =>
-  api.post<Review>(`/reviews/${id}/trigger`);
+export const triggerReview = (id: number, analysisMode?: ReviewAnalysisMode) =>
+  api.post<Review>(
+    `/reviews/${id}/trigger`,
+    analysisMode ? { analysis_mode: analysisMode } : undefined,
+  );
 
 export const cancelReview = (id: number) =>
   api.post<Review>(`/reviews/${id}/cancel`);

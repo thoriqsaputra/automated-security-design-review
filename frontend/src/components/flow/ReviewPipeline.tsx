@@ -84,7 +84,7 @@ export default function ReviewPipeline({ reviewStatus, currentStage }: Props) {
       createNode('n7', '7. Generate Overview', 1500, 40, getStageState(reviewStatus, currentStage, '7_overview')),
     ];
 
-    const isEdgeActive = (sourceStage: string, targetStage: string) => {
+    const isEdgeActive = (targetStage: string) => {
       if (reviewStatus !== 'running') return false;
       if (!currentStage) return true; // animate all if we don't know
       const currentIndex = STAGES_ORDER.indexOf(currentStage);
@@ -103,12 +103,12 @@ export default function ReviewPipeline({ reviewStatus, currentStage }: Props) {
     });
 
     const es: Edge[] = [
-      createEdge('n1', 'n2', isEdgeActive('1_ingestion', '2_retrieval')),
-      createEdge('n2', 'n3', isEdgeActive('2_retrieval', '3_asvs_classification')),
-      createEdge('n3', 'n4', isEdgeActive('3_asvs_classification', '4_parameter_resolution')),
-      createEdge('n4', 'n5', isEdgeActive('4_parameter_resolution', '5_text_debate')),
-      createEdge('n5', 'n6', isEdgeActive('5_text_debate', '6_diagram_debate')),
-      createEdge('n6', 'n7', isEdgeActive('6_diagram_debate', '7_overview')),
+      createEdge('n1', 'n2', isEdgeActive('2_retrieval')),
+      createEdge('n2', 'n3', isEdgeActive('3_asvs_classification')),
+      createEdge('n3', 'n4', isEdgeActive('4_parameter_resolution')),
+      createEdge('n4', 'n5', isEdgeActive('5_text_debate')),
+      createEdge('n5', 'n6', isEdgeActive('6_diagram_debate')),
+      createEdge('n6', 'n7', isEdgeActive('7_overview')),
     ];
 
     return { nodes: ns, edges: es };

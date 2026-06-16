@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
+import type { ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Globe, Upload } from 'lucide-react';
 import Card from '../components/ui/Card';
+import LoadingSpinner from '../components/ui/LoadingSpinner';
 import Modal from '../components/ui/Modal';
 import { listCategories, createIngestionJob, type StandardCategory } from '../api/standards';
 
-const categoryIcons: Record<string, React.ReactNode> = {
+const categoryIcons: Record<string, ReactNode> = {
   web_application: <Globe size={28} className="text-white" />,
 };
 
@@ -55,11 +57,7 @@ export default function StandardsHub() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-2 border-flame border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <LoadingSpinner />;
   }
 
   return (

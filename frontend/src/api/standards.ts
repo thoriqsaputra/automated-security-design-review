@@ -79,9 +79,19 @@ export interface IngestionJob {
   updated_at: string;
 }
 
+export interface DiagramRequirement {
+  id: number;
+  stable_key: string;
+  asvs_level: number | null;
+  requirement_text: string;
+  verification_hint: string;
+  parent_section: string;
+}
+
 export interface CategoryParams {
   category: StandardCategory;
   parameters: ParameterParent[];
+  diagram_requirements?: DiagramRequirement[];
 }
 
 export const listCategories = () => api.get<StandardCategory[]>('/standards/categories/');

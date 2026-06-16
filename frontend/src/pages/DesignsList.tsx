@@ -1,11 +1,12 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, FileText, Trash2 } from 'lucide-react';
 import Card from '../components/ui/Card';
 import StatusBadge from '../components/ui/StatusBadge';
 import EmptyState from '../components/ui/EmptyState';
-import Modal from '../components/ui/Modal';
+import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { listDesigns, createDesign, deleteDesign, type Design } from '../api/designs';
+import DesignUploadModal from '../features/designs/components/DesignUploadModal';
 
 export default function DesignsList() {
   const navigate = useNavigate();
@@ -23,10 +24,11 @@ export default function DesignsList() {
   useEffect(() => { load(); }, []);
 
   const handleCreate = async () => {
-    if (!name.trim() || !file) return;
+    if (!file) return;
+    const finalName = name.trim() || file.name.replace(/\.[^/.]+$/, "");
     setUploading(true);
     try {
-      await createDesign(name, file);
+      await createDesign(finalName, file);
       setShowModal(false);
       setName('');
       setFile(null);
@@ -44,11 +46,7 @@ export default function DesignsList() {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center h-64">
-        <div className="w-8 h-8 border-2 border-flame border-t-transparent rounded-full animate-spin" />
-      </div>
-    );
+    return <LoadingSpinner />;
   }
 
   return (
@@ -109,37 +107,16 @@ export default function DesignsList() {
         </div>
       )}
 
-      {/* Upload Modal */}
-      <Modal open={showModal} onClose={() => setShowModal(false)} title="Upload Design Document">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1.5">Design Name</label>
-            <input
-              type="text"
-              value={name}
-              onChange={e => setName(e.target.value)}
-              placeholder="e.g. Payment Gateway TSD"
-              className="w-full px-3 py-2.5 rounded-lg bg-surface border border-surface-border text-text-primary text-sm placeholder:text-text-muted focus:outline-none focus:border-crimson transition-colors"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1.5">Document (PDF)</label>
-            <input
-              type="file"
-              accept=".pdf"
-              onChange={e => setFile(e.target.files?.[0] || null)}
-              className="w-full text-sm text-text-muted file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-midnight-lighter file:text-text-secondary file:font-medium file:cursor-pointer hover:file:bg-surface-hover file:transition-colors"
-            />
-          </div>
-          <button
-            onClick={handleCreate}
-            disabled={!name.trim() || !file || uploading}
-            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-crimson to-flame text-white text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:shadow-lg hover:shadow-crimson/30 transition-all"
-          >
-            {uploading ? 'Uploading...' : 'Upload'}
-          </button>
-        </div>
-      </Modal>
+      <DesignUploadModal
+        open={showModal}
+        name={name}
+        file={file}
+        uploading={uploading}
+        onClose={() => setShowModal(false)}
+        onNameChange={setName}
+        onFileChange={setFile}
+        onSubmit={() => void handleCreate()}
+      />
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import React from 'react';
+import { Fragment } from 'react';
 import { useLocation, Link } from 'react-router-dom';
 import { ChevronRight } from 'lucide-react';
 
@@ -25,7 +25,7 @@ export default function TopBar() {
             Home
           </Link>
           {crumbs.map((c, i) => (
-            <React.Fragment key={c.path}>
+            <Fragment key={c.path}>
               <ChevronRight size={14} className="text-text-muted" />
               {i === crumbs.length - 1 ? (
                 <span className="text-text-primary font-medium capitalize">{c.label}</span>
@@ -34,7 +34,7 @@ export default function TopBar() {
                   {c.label}
                 </Link>
               )}
-            </React.Fragment>
+            </Fragment>
           ))}
         </nav>
       </div>

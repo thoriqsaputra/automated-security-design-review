@@ -1,0 +1,360 @@
+import type { ReactNode } from 'react';
+import type { Finding } from '../../../api/reviews';
+import {
+  formatLabel,
+  formatValue,
+  isPresent,
+  isRecord,
+  stringList,
+} from '../utils/reviewPresentation';
+import type { DetailItem } from '../utils/reviewPresentation';
+
+export function TextBlock({ title, children }: { title: string; children: ReactNode }) {
+  if (!isPresent(children)) {
+    return null;
+  }
+
+  return (
+    <section>
+      <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-1">{title}</p>
+      <div className="text-sm text-text-secondary leading-relaxed">{children}</div>
+    </section>
+  );
+}
+
+export function FieldGrid({ items }: { items: DetailItem[] }) {
+  const visibleItems = items.filter((item) => isPresent(item.value));
+  if (visibleItems.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3">
+      {visibleItems.map((item) => (
+        <div key={item.label} className="bg-midnight/30 p-3 rounded-lg border border-surface-border">
+          <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">{item.label}</p>
+          <div className="mt-1 text-sm text-text-primary break-words">{item.value}</div>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+export function ChipList({ items }: { items: string[] }) {
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {items.map((item) => (
+        <span key={item} className="rounded-full border border-surface-border bg-midnight px-2 py-1 text-xs text-text-secondary">
+          {formatLabel(item)}
+        </span>
+      ))}
+    </div>
+  );
+}
+
+export function JsonPanel({ title, value }: { title: string; value: unknown }) {
+  if (!isPresent(value)) {
+    return null;
+  }
+
+  return (
+    <details className="rounded-lg border border-surface-border bg-midnight/50">
+      <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-text-muted uppercase tracking-wider">
+        {title}
+      </summary>
+      <pre className="max-h-72 overflow-auto border-t border-surface-border px-3 py-2 text-xs text-text-secondary whitespace-pre-wrap">
+        {JSON.stringify(value, null, 2)}
+      </pre>
+    </details>
+  );
+}
+
+export function SeverityAnalysisSection({ analysis }: { analysis: Record<string, unknown> | null }) {
+  if (!analysis || Object.keys(analysis).length === 0) {
+    return null;
+  }
+
+  const isV2 = analysis.version === 'v2' || analysis.source === 'deterministic_risk_rubric';
+  if (isV2) {
+    const dimensions = isRecord(analysis.dimensions) ? analysis.dimensions : {};
+    const domainBase = isRecord(dimensions.domain_base) ? dimensions.domain_base : {};
+    const impact = isRecord(dimensions.impact_capabilities) ? dimensions.impact_capabilities : {};
+    const exposure = isRecord(dimensions.exposure_capabilities) ? dimensions.exposure_capabilities : {};
+    const keywords = isRecord(dimensions.keyword_signals) ? dimensions.keyword_signals : {};
+    const confidence = isRecord(dimensions.confidence_adjustment) ? dimensions.confidence_adjustment : {};
+    const caps = Array.isArray(analysis.caps) ? analysis.caps.filter(isRecord) : [];
+    const matchedImpact = stringList(impact.matched);
+    const matchedExposure = stringList(exposure.matched);
+    const matchedKeywords = stringList(keywords.matched);
+    const appliedCaps = caps.filter((cap) => cap.applied);
+
+    return (
+      <section className="space-y-3 rounded-xl border border-surface-border bg-midnight/30 p-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          <div>
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Severity Analysis</p>
+            {isPresent(analysis.explanation) && (
+              <p className="mt-1 text-sm text-text-secondary leading-relaxed">{String(analysis.explanation)}</p>
+            )}
+          </div>
+          <div className="rounded-xl border border-flame/30 bg-flame/10 px-3 py-2 text-right">
+            <p className="text-[10px] font-semibold text-flame uppercase tracking-wider">{formatValue(analysis.final_severity)}</p>
+            <p className="text-lg font-semibold text-text-primary">{formatValue(analysis.final_score)}</p>
+          </div>
+        </div>
+
+        <FieldGrid
+          items={[
+            { label: 'Rubric', value: formatValue(analysis.version) },
+            { label: 'Domain Base', value: `${formatValue(domainBase.score)} (${formatValue(domainBase.domain)})` },
+            { label: 'Impact Delta', value: formatValue(impact.delta) },
+            { label: 'Exposure Delta', value: formatValue(exposure.delta) },
+            { label: 'Keyword Delta', value: formatValue(keywords.delta) },
+            { label: 'Confidence Delta', value: formatValue(confidence.delta) },
+            {
+              label: 'Confidence',
+              value: isPresent(confidence.confidence_score)
+                ? `${(Number(confidence.confidence_score) * 100).toFixed(0)}%`
+                : null,
+            },
+          ]}
+        />
+
+        {(matchedImpact.length > 0 || matchedExposure.length > 0 || matchedKeywords.length > 0) && (
+          <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+            <div>
+              <p className="mb-1 text-[10px] font-semibold text-text-muted uppercase tracking-wider">Impact Signals</p>
+              <ChipList items={matchedImpact} />
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-semibold text-text-muted uppercase tracking-wider">Exposure Signals</p>
+              <ChipList items={matchedExposure} />
+            </div>
+            <div>
+              <p className="mb-1 text-[10px] font-semibold text-text-muted uppercase tracking-wider">Risk Keywords</p>
+              <ChipList items={matchedKeywords} />
+            </div>
+          </div>
+        )}
+
+        {caps.length > 0 && (
+          <div>
+            <p className="mb-1 text-[10px] font-semibold text-text-muted uppercase tracking-wider">Caps</p>
+            <div className="flex flex-wrap gap-1.5">
+              {caps.map((cap) => (
+                <span
+                  key={`${String(cap.kind)}-${String(cap.cap)}`}
+                  className={`rounded-full border px-2 py-1 text-xs ${
+                    cap.applied
+                      ? 'border-amber-500/30 bg-amber-500/10 text-amber-300'
+                      : 'border-surface-border bg-midnight text-text-muted'
+                  }`}
+                >
+                  {formatLabel(String(cap.kind || 'cap'))}: {formatValue(cap.cap)}
+                </span>
+              ))}
+            </div>
+            {appliedCaps.length > 0 && (
+              <p className="mt-1 text-xs text-text-muted">
+                Applied {appliedCaps.length} cap(s) to avoid overstating uncertain findings.
+              </p>
+            )}
+          </div>
+        )}
+
+        <JsonPanel title="Raw Severity Analysis" value={analysis} />
+      </section>
+    );
+  }
+
+  const impact = isRecord(analysis.impact) ? analysis.impact : {};
+  const affectedComponents = stringList(analysis.affected_components);
+
+  return (
+    <section className="space-y-3 rounded-xl border border-surface-border bg-midnight/30 p-4">
+      <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Severity Analysis</p>
+      <FieldGrid
+        items={[
+          { label: 'Severity', value: formatValue(analysis.severity) },
+          { label: 'Severity Score', value: formatValue(analysis.severity_score) },
+          { label: 'Likelihood', value: formatValue(analysis.likelihood) },
+          { label: 'Attack Vector', value: formatValue(analysis.attack_vector) },
+          { label: 'Confidentiality', value: formatValue(impact.confidentiality) },
+          { label: 'Integrity', value: formatValue(impact.integrity) },
+          { label: 'Availability', value: formatValue(impact.availability) },
+        ]}
+      />
+      {affectedComponents.length > 0 && (
+        <div>
+          <p className="mb-1 text-[10px] font-semibold text-text-muted uppercase tracking-wider">Affected Components</p>
+          <ChipList items={affectedComponents} />
+        </div>
+      )}
+      {isPresent(analysis.justification) && (
+        <p className="text-sm text-text-secondary leading-relaxed">{String(analysis.justification)}</p>
+      )}
+      <JsonPanel title="Raw Severity Analysis" value={analysis} />
+    </section>
+  );
+}
+
+export function FindingDetails({ finding }: { finding: Finding }) {
+  const auditItems = [
+    { label: 'Finding ID', value: finding.id },
+    { label: 'Review ID', value: finding.review_id },
+    { label: 'Category ID', value: finding.category_id },
+    { label: 'Parent Parameter ID', value: finding.parent_parameter_id },
+    { label: 'Child Parameter ID', value: finding.child_parameter_id },
+    { label: 'Has Citations', value: finding.has_citations ? 'Yes' : 'No' },
+    { label: 'Citation Count', value: finding.citation_count },
+    { label: 'Created At', value: new Date(finding.created_at).toLocaleString() },
+    { label: 'Updated At', value: new Date(finding.updated_at).toLocaleString() },
+  ];
+
+  return (
+    <div className="mt-4 space-y-4 border-t border-surface-border pt-4 md:pl-9">
+      <TextBlock title="Description">{finding.description}</TextBlock>
+      <FieldGrid
+        items={[
+          { label: 'Met Status', value: finding.met_status ? formatLabel(finding.met_status) : null },
+          { label: 'Severity', value: finding.severity ? formatLabel(finding.severity) : null },
+          {
+            label: 'Confidence',
+            value: finding.confidence_score !== null ? `${(finding.confidence_score * 100).toFixed(0)}%` : null,
+          },
+          { label: 'Severity Score', value: finding.severity_score !== null ? finding.severity_score.toFixed(1) : null },
+          { label: 'Finding Type', value: formatLabel(finding.finding_type) },
+          { label: 'Actionable', value: finding.is_actionable ? 'Yes' : 'No' },
+        ]}
+      />
+
+      <TextBlock title="Reason">{finding.reason}</TextBlock>
+      <TextBlock title="Recommendation">{finding.recommendation}</TextBlock>
+
+      <section className="space-y-3 rounded-xl border border-surface-border bg-surface-base/50 p-4">
+        <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Requirement Traceability</p>
+        <FieldGrid
+          items={[
+            { label: 'Reference', value: finding.requirement_reference },
+            { label: 'Category', value: [finding.category_code, finding.category_name].filter(Boolean).join(' - ') },
+            { label: 'Parent Parameter', value: finding.parent_parameter_title },
+            { label: 'Child Stable Key', value: finding.child_parameter_stable_key },
+            { label: 'Child Ordinal', value: finding.child_parameter_ordinal },
+          ]}
+        />
+        <TextBlock title="Requirement Text">
+          {finding.requirement_text && (
+            <span className="italic">
+              {finding.requirement_reference && (
+                <span className="font-semibold text-text-primary mr-2">[{finding.requirement_reference}]</span>
+              )}
+              {finding.requirement_text}
+            </span>
+          )}
+        </TextBlock>
+      </section>
+
+      <SeverityAnalysisSection analysis={finding.severity_analysis} />
+
+      {(finding.diagram_id || finding.diagram_caption || finding.diagram_image_url || finding.vision_reasoning || finding.vision_thought_process) && (
+        <section className="space-y-3 rounded-xl border border-surface-border bg-midnight/30 p-4">
+          <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Diagram And Vision Analysis</p>
+          {finding.diagram_image_url && (
+            <div className="overflow-hidden rounded-xl border border-surface-border bg-surface-base">
+              <div className="flex items-center justify-between gap-3 border-b border-surface-border px-3 py-2">
+                <div>
+                  <p className="text-sm font-semibold text-text-primary">Related Diagram</p>
+                  {finding.diagram_caption && <p className="text-xs text-text-muted">{finding.diagram_caption}</p>}
+                </div>
+                <a
+                  href={finding.diagram_image_url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="shrink-0 rounded-lg border border-surface-border px-2 py-1 text-xs font-semibold text-text-secondary hover:text-text-primary"
+                >
+                  Open image
+                </a>
+              </div>
+              <div className="flex max-h-[520px] items-center justify-center overflow-auto bg-midnight/40 p-3">
+                <img
+                  src={finding.diagram_image_url}
+                  alt={finding.diagram_caption || finding.diagram_id || 'Related diagram'}
+                  className="max-h-[480px] max-w-full rounded-lg object-contain"
+                  loading="lazy"
+                />
+              </div>
+            </div>
+          )}
+          <FieldGrid
+            items={[
+              { label: 'Diagram ID', value: finding.diagram_id },
+              { label: 'Diagram Caption', value: finding.diagram_caption },
+            ]}
+          />
+          <TextBlock title="Vision Reasoning">{finding.vision_reasoning}</TextBlock>
+          <TextBlock title="Vision Thought Process">{finding.vision_thought_process}</TextBlock>
+        </section>
+      )}
+
+      {(finding.hunter_reasoning || finding.critic_reasoning || finding.mediator_reasoning || finding.hunter_thought_process || finding.critic_thought_process || finding.mediator_thought_process) && (
+        <section className="space-y-3 rounded-xl border border-surface-border bg-surface-base/50 p-4">
+          <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Agent Audit</p>
+          <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+            {[
+              { role: 'Hunter', color: 'text-flame', reasoning: finding.hunter_reasoning, thought: finding.hunter_thought_process },
+              { role: 'Critic', color: 'text-burgundy-light', reasoning: finding.critic_reasoning, thought: finding.critic_thought_process },
+              { role: 'Mediator', color: 'text-emerald-400', reasoning: finding.mediator_reasoning, thought: finding.mediator_thought_process },
+            ].map((agent) => (
+              <div key={agent.role} className="space-y-2 rounded-lg border border-surface-border bg-midnight p-3">
+                <p className={`text-[10px] font-bold uppercase tracking-wider ${agent.color}`}>{agent.role}</p>
+                <TextBlock title="Reasoning">{agent.reasoning}</TextBlock>
+                <TextBlock title="Thought Process">{agent.thought}</TextBlock>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {finding.citations && finding.citations.length > 0 && (
+        <section className="space-y-2 rounded-xl border border-surface-border bg-surface-base/50 p-4">
+          <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Evidence Citations</p>
+          <div className="space-y-2">
+            {finding.citations.map((citation) => (
+              <div key={citation.id} className="bg-surface-base border border-surface-border rounded p-3">
+                <p className="text-[10px] font-mono text-text-muted mb-1 flex flex-wrap items-center gap-2">
+                  <span className="bg-midnight px-1.5 py-0.5 rounded">Page {citation.page_number}</span>
+                  <span className="bg-midnight px-1.5 py-0.5 rounded">{citation.anchor_type}</span>
+                  <span className="opacity-70 break-all">{citation.block_id}</span>
+                </p>
+                {citation.quoted_text && (
+                  <p className="text-sm text-text-secondary italic border-l-2 border-flame/50 pl-3 py-0.5">
+                    "{citation.quoted_text}"
+                  </p>
+                )}
+                <FieldGrid
+                  items={[
+                    { label: 'X0', value: citation.bbox_x0 },
+                    { label: 'Y0', value: citation.bbox_y0 },
+                    { label: 'X1', value: citation.bbox_x1 },
+                    { label: 'Y1', value: citation.bbox_y1 },
+                    { label: 'Created At', value: new Date(citation.created_at).toLocaleString() },
+                  ]}
+                />
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      <section className="space-y-3 rounded-xl border border-surface-border bg-midnight/30 p-4">
+        <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Raw Audit</p>
+        <FieldGrid items={auditItems} />
+        <JsonPanel title="Raw Finding Payload" value={finding} />
+      </section>
+    </div>
+  );
+}
