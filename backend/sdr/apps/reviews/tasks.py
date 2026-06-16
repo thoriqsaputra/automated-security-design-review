@@ -37,7 +37,7 @@ def dispatch_review_analysis_task(self, review_id: int):
                 select(Review)
                 .options(
                     joinedload(Review.design),
-                    joinedload(Review.selected_categories),
+                    joinedload(Review.category),
                     joinedload(Review.ingestion_job).joinedload(StandardIngestionJob.category)
                 )
                 .where(Review.id == review_id)

@@ -147,24 +147,22 @@ class TSDAnalysisPipeline:
                 "categories": {},
             }
 
-            selected_categories = list(review.selected_categories)
-            categories = selected_categories or ([review.ingestion_job.category] if review.ingestion_job and review.ingestion_job.category else [])
-            if not categories:
+            category = review.category or (review.ingestion_job.category if review.ingestion_job else None)
+            if not category:
                 self.run_state.complete_review(review, summary)
                 return summary
 
             killed_assumptions_memory = deque(maxlen=16)
-            for category in categories:
-                self.run_state.raise_if_cancelled(review, phase="run.before_category")
-                self.category_analysis.run_category(
-                    review=review,
-                    category=category,
-                    indexes=indexes,
-                    tsd_document=tsd_document,
-                    summary=summary,
-                    effective_asvs_level=effective_asvs_level,
-                    killed_assumptions_memory=killed_assumptions_memory,
-                )
+            self.run_state.raise_if_cancelled(review, phase="run.before_category")
+            self.category_analysis.run_category(
+                review=review,
+                category=category,
+                indexes=indexes,
+                tsd_document=tsd_document,
+                summary=summary,
+                effective_asvs_level=effective_asvs_level,
+                killed_assumptions_memory=killed_assumptions_memory,
+            )
 
             self.run_state.update_stage(review, summary, "7_overview")
             overview = self.overview_generator.generate(review, summary)
@@ -244,12 +242,7 @@ class TSDAnalysisPipeline:
         return 1
 
     def _resolve_parameters(self, review: Review) -> tuple:
-        category: Optional[Any] = None
-        selected_categories = list(review.selected_categories)
-        if selected_categories:
-            category = selected_categories[0]
-        elif review.ingestion_job and review.ingestion_job.category:
-            category = review.ingestion_job.category
+        category = review.category or (review.ingestion_job.category if review.ingestion_job else None)
         if not category:
             return None, None, []
         if review.ingestion_job:

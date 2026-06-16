@@ -8,12 +8,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship, backref
 from sdr.core.database import Base
 from .choices import ReviewAnalysisMode, ReviewStatus
 
-review_category_association = Table(
-    "reviews_review_categories",
-    Base.metadata,
-    Column("review_id", Integer, ForeignKey("reviews_review.id", ondelete="CASCADE"), primary_key=True),
-    Column("category_id", Integer, ForeignKey("standards_standardcategory.id", ondelete="CASCADE"), primary_key=True),
-)
+
 
 class Review(Base):
     """
@@ -42,6 +37,7 @@ class Review(Base):
     # Removing 'requested_by' and 'reviewer' as AUTH_USER_MODEL has been removed in the project.
     
     ingestion_job_id: Mapped[Optional[int]] = mapped_column(ForeignKey("standards_standingestionjob.id", ondelete="SET NULL"), nullable=True, index=True)
+    category_id: Mapped[Optional[int]] = mapped_column(ForeignKey("standards_standardcategory.id", ondelete="SET NULL"), nullable=True, index=True)
     
     status: Mapped[str] = mapped_column(String(24), default=ReviewStatus.PENDING.value, index=True)
     analysis_mode: Mapped[str] = mapped_column(
@@ -63,9 +59,9 @@ class Review(Base):
 
     # Relationships
     design = relationship("Design", backref=backref("reviews", cascade="all, delete-orphan", passive_deletes=True))
+    category = relationship("StandardCategory")
     ingestion_job = relationship("StandardIngestionJob")
     findings = relationship("Finding", back_populates="review", cascade="all, delete-orphan")
-    selected_categories = relationship("StandardCategory", secondary=review_category_association)
 
     __table_args__ = (
         Index("idx_review_design_status", "design_id", "status"),

@@ -55,6 +55,7 @@ def create_review(payload: ReviewCreateSchema, db: Session = Depends(get_db)):
 
     review = Review(
         design_id=payload.design_id,
+        category_id=category.id,
         ingestion_job_id=job.id,
         status=Review.STATUS_PENDING,
         asvs_level_override=payload.asvs_level_override,
@@ -62,8 +63,6 @@ def create_review(payload: ReviewCreateSchema, db: Session = Depends(get_db)):
     )
     db.add(review)
     db.flush()
-
-    review.selected_categories.append(category)
 
     db.commit()
     db.refresh(review)
