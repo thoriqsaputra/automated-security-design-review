@@ -17,23 +17,6 @@ OUTPUT: Strict JSON only. No prose outside the JSON object.
 
 
 def build_tsd_screening_prompt(document_text_sample: str) -> str:
-    """
-    Screens whether the uploaded document is actually a TSD before
-    running the full expensive analysis pipeline.
-
-    Called by TSDAnalysisOrchestrator._ingest_tsd() before committing
-    to RAPTOR tree and GraphRAG index construction — if the document
-    is not a TSD (e.g. a legal contract or a marketing PDF was uploaded
-    by mistake), we fail fast with a clear error rather than wasting
-    N×3 agent API calls.
-
-    Args:
-        document_text_sample: Representative excerpts from the TSD document
-                              from TSDIngestor.ingest() [ingestor.py].
-
-    Returns:
-        A fully formed prompt string.
-    """
     return f"""\
 ## DOCUMENT SAMPLE (representative excerpts)
 
@@ -170,7 +153,9 @@ def build_parent_applicability_prompt(
     parent_description: str,
     child_block: str,
     context_text: str,
+    scope_terms: Optional[list[str]] = None,
 ) -> str:
+    scope_term_block = ", ".join([str(item).strip() for item in (scope_terms or []) if str(item).strip()]) or "none"
     return f"""\
 Decide whether this parent control family from a security standard is applicable to the documented TSD scope.
 
@@ -178,19 +163,24 @@ Return only valid JSON:
 {{
   "applicable": true,
   "confidence": 0.0,
+  "decision_mode": "positive_match" | "negative_match" | "unclear",
   "reasoning": "short explanation",
   "evidence": ["short evidence or scope signal", "..."]
 }}
 
 Rules:
-- applicable=false only when the TSD evidence shows the parent control family is out of scope for this design.
-- If applicability is unclear, prefer applicable=true with lower confidence.
+- applicable=true only when the TSD explicitly describes the subsystem, capability, or scope that this parent control family governs.
+- applicable=false when the TSD indicates the design does not use that subsystem/capability, or when the retrieved context is generic and does not directly match this family.
+- If applicability is unclear, return applicable=false and decision_mode="unclear".
 - Do not treat missing implementation detail as out of scope. This step is only about scope/applicability.
+- Do not infer applicability from broad security language unless it directly matches the family-specific scope terms.
 
 STANDARD CATEGORY: {category_code}
 STANDARD VERSION: {version_label}
+
 PARENT TITLE: {parent_title}
 PARENT DESCRIPTION: {parent_description}
+FAMILY SCOPE TERMS: {scope_term_block}
 CHILD REQUIREMENTS:
 {child_block}
 

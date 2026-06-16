@@ -12,7 +12,8 @@ You are a Vision Security Critic.
 Your job is to re-examine the same diagram image and challenge the \
 VisionHunter's claims. You verify whether the cited visual evidence \
 actually exists in the diagram and whether it truly addresses the \
-claimed requirement.
+claimed requirement. You must also challenge whether the image is even \
+an architecture/security-relevant diagram in the first place.
 
 Use the verification_hint for each requirement as your criteria for \
 what to look for.
@@ -33,6 +34,8 @@ visual element, invalidate that claim.
 to see that are NOT actually in the diagram.
 - Do not introduce new requirements or claims not in the Hunter's assessment.
 - Be strict: visual evidence must be EXPLICIT, not implied.
+- If the image is not architecture/security-relevant, overturn any \
+Hunter "not_met" conclusion and classify the image as "non_architecture".
 """
 
 
@@ -79,16 +82,20 @@ Respond with a single JSON object:
 
 {{
 {_REASONING_SCHEMA},
+  "diagram_scope_verdict": "architecture_relevant" | "non_architecture" | "uncertain",
+  "diagram_scope_reasoning": "<why the image is or is not architecture/security-relevant>",
   "outcome": "uphold" | "overturn",
   "invalidated_requirements": [
     {{
       "requirement_id": "<ID>",
+      "verdict": {_VERDICT_VALUES},
       "reason": "<why this claim is invalid>"
     }}
   ],
   "validated_requirements": [
     {{
-      "requirement_id": "<ID>"
+      "requirement_id": "<ID>",
+      "verdict": {_VERDICT_VALUES}
     }}
   ],
   "hallucinated_claims": ["<specific unsupported claim from Hunter>"],

@@ -94,11 +94,40 @@ def test_parent_applicability_classification_repairs_malformed_json(monkeypatch)
         parent_title="Authentication",
         parent_description="Authentication controls",
         child_requirements=["Require MFA"],
-        retrieved_context="Evidence text",
+        retrieved_context="Authentication is enforced with MFA for administrator login flows.",
     )
 
     assert result.applicable is False
     assert result.confidence == 0.9
     assert result.evidence == ["missing scope"]
+    assert result.decision_mode == "negative_match"
     assert result.error is None
     assert calls["count"] == 2
+
+
+def test_parent_applicability_classification_skips_when_context_has_no_family_signal(monkeypatch):
+    calls = {"count": 0}
+
+    def fake_chat_completion(**_kwargs):
+        calls["count"] += 1
+        return SimpleNamespace(content="{}", error=None)
+
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.classification.parent_applicability.chat_completion",
+        fake_chat_completion,
+    )
+
+    result = classify_parent_applicability(
+        category_code="web_application",
+        version_label="v1.0",
+        parent_title="Session Management",
+        parent_description="Browser session and cookie protections",
+        child_requirements=["Use secure cookie flags."],
+        retrieved_context="The service uses API tokens between backend services and has no browser workflow.",
+    )
+
+    assert result.applicable is False
+    assert result.confidence == 0.9
+    assert result.decision_mode == "no_scope_match"
+    assert result.error is None
+    assert calls["count"] == 0

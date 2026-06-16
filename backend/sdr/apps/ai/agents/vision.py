@@ -17,6 +17,7 @@ from .base import BaseAgent, VERDICT_MET, VERDICT_NA, VERDICT_NOT_MET
 from sdr.core.config import settings
 
 logger = logging.getLogger(__name__)
+_DIAGRAM_SCOPE_VALUES = {"architecture_relevant", "non_architecture", "uncertain"}
 
 
 @dataclass
@@ -143,8 +144,43 @@ def _format_requirements_with_hints(requirements: List[Any]) -> str:
 def _apply_diagram_evidence_policy(
     mediator_result: Dict[str, Any],
     critic_result: Dict[str, Any],
+    hunter_result: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
+    hunter_result = dict(hunter_result or {})
     verdict = str(mediator_result.get("final_verdict", VERDICT_NA)).strip().lower()
+    assessments = list(
+        mediator_result.get("assessed_requirements")
+        or hunter_result.get("requirement_assessments")
+        or []
+    )
+
+    hunter_scope = _normalize_diagram_scope_verdict(hunter_result.get("diagram_scope_verdict"))
+    critic_scope = _normalize_diagram_scope_verdict(critic_result.get("diagram_scope_verdict"))
+    mediator_scope = _normalize_diagram_scope_verdict(mediator_result.get("diagram_scope_verdict"))
+    scope_reasoning = (
+        critic_result.get("diagram_scope_reasoning")
+        if critic_scope == "non_architecture"
+        else hunter_result.get("diagram_scope_reasoning")
+        if hunter_scope == "non_architecture"
+        else mediator_result.get("diagram_scope_reasoning")
+        or critic_result.get("diagram_scope_reasoning")
+        or hunter_result.get("diagram_scope_reasoning")
+    )
+
+    if "diagram_scope_verdict" not in mediator_result:
+        mediator_result["diagram_scope_verdict"] = mediator_scope
+    if scope_reasoning:
+        mediator_result["diagram_scope_reasoning"] = scope_reasoning
+
+    if hunter_scope == "non_architecture" or critic_scope == "non_architecture":
+        mediator_result["diagram_scope_verdict"] = "non_architecture"
+        if scope_reasoning:
+            mediator_result["diagram_scope_reasoning"] = scope_reasoning
+        assessments = _force_assessment_verdicts_na(assessments, default_summary="Image is not an architecture/security-relevant diagram.")
+        mediator_result["assessed_requirements"] = assessments
+        mediator_result["final_verdict"] = VERDICT_NA
+        mediator_result["verdict_policy_source"] = "diagram_non_architecture_image"
+        return mediator_result
 
     hallucinated = critic_result.get("hallucinated_claims") or []
     if hallucinated and verdict == VERDICT_NOT_MET:
@@ -155,11 +191,40 @@ def _apply_diagram_evidence_policy(
         if not_met_in_invalidated or len(hallucinated) >= 2:
             mediator_result["final_verdict"] = VERDICT_NA
             mediator_result["verdict_policy_source"] = "diagram_hallucinated_evidence"
+            verdict = VERDICT_NA
 
     validated = critic_result.get("validated_requirements") or []
     if verdict == VERDICT_MET and not validated:
         mediator_result["final_verdict"] = VERDICT_NA
         mediator_result["verdict_policy_source"] = "diagram_met_without_validated_evidence"
+        verdict = VERDICT_NA
+
+    if assessments:
+        applicable_assessments = [
+            assessment
+            for assessment in assessments
+            if str(assessment.get("verdict", "")).strip().lower() in {VERDICT_MET, VERDICT_NOT_MET}
+        ]
+        if applicable_assessments:
+            mediator_result.setdefault("assessed_requirements", assessments)
+        elif all(
+            str(assessment.get("verdict", "")).strip().lower() == VERDICT_NA
+            for assessment in assessments
+        ):
+            mediator_result["assessed_requirements"] = _force_assessment_verdicts_na(
+                assessments,
+                default_summary="The requirement is not applicable because the image does not establish security-relevant architecture scope.",
+            )
+            mediator_result["final_verdict"] = VERDICT_NA
+            mediator_result["verdict_policy_source"] = "diagram_all_requirements_not_applicable"
+            verdict = VERDICT_NA
+        elif verdict == VERDICT_NOT_MET and not applicable_assessments:
+            mediator_result["final_verdict"] = VERDICT_NA
+            mediator_result["verdict_policy_source"] = "diagram_no_applicable_security_scope"
+            verdict = VERDICT_NA
+    elif verdict == VERDICT_NOT_MET:
+        mediator_result["final_verdict"] = VERDICT_NA
+        mediator_result["verdict_policy_source"] = "diagram_no_applicable_security_scope"
 
     return mediator_result
 
@@ -203,6 +268,30 @@ def _calibrate_diagram_confidence(
 
     mediator_result["confidence"] = round(adjusted, 2)
     return mediator_result
+
+
+def _normalize_diagram_scope_verdict(value: Any) -> str:
+    normalized = str(value or "uncertain").strip().lower()
+    return normalized if normalized in _DIAGRAM_SCOPE_VALUES else "uncertain"
+
+
+def _force_assessment_verdicts_na(
+    assessments: List[Dict[str, Any]],
+    *,
+    default_summary: str,
+) -> List[Dict[str, Any]]:
+    normalized: List[Dict[str, Any]] = []
+    for assessment in assessments:
+        item = dict(assessment or {})
+        item["verdict"] = VERDICT_NA
+        if not item.get("summary") and item.get("reasoning"):
+            item["summary"] = item.get("reasoning")
+        if not item.get("summary") and item.get("visual_evidence"):
+            item["summary"] = item.get("visual_evidence")
+        item.setdefault("summary", default_summary)
+        item.setdefault("reasoning", item["summary"])
+        normalized.append(item)
+    return normalized
 
 __all__ = [
     "DiagramInput",

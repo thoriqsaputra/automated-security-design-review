@@ -11,6 +11,7 @@ from sqlalchemy import delete, select, update
 from sdr.core.database import SessionLocal
 from sdr.core.config import settings
 from sdr.apps.standards.utils import (
+    build_diagram_requirement_analysis_text,
     build_parameter_analysis_text,
     stable_key,
     normalize_requirement_text,
@@ -23,7 +24,10 @@ from sdr.apps.ai.client.session import (
 )
 
 from sdr.apps.ai.rate_limiter import get_rate_limiter
-from sdr.apps.ai.utils.embedding import generate_and_store_embeddings
+from sdr.apps.ai.utils.embedding import (
+    generate_and_store_diagram_requirement_embeddings,
+    generate_and_store_embeddings,
+)
 from .models import (
     ASVSLevelDefinition,
     CategoryParameterChild,
@@ -247,6 +251,8 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
             'errors': 0,
             'embeddings_created': 0,
             'embeddings_failed': 0,
+            'diagram_requirement_embeddings_created': 0,
+            'diagram_requirement_embeddings_failed': 0,
             'diagram_requirements': 0,
             'diagram_extraction_status': 'pending',
             'diagram_extraction_error': None,
@@ -569,6 +575,10 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                         category_id=job.category_id,
                         ingestion_job_id=job.id,
                     )
+                    source_params_by_key = {
+                        param.stable_key: param
+                        for param in diagram_req_params
+                    }
 
                     # Clear previous diagram requirements for this job
                     db.execute(
@@ -576,8 +586,9 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                         .where(CategoryDiagramRequirement.ingestion_job_id == job.id)
                     )
 
+                    persisted_diagram_requirements = []
                     for dreq in diagram_reqs:
-                        db.add(CategoryDiagramRequirement(
+                        persisted = CategoryDiagramRequirement(
                             category_id=dreq["category_id"],
                             ingestion_job_id=dreq["ingestion_job_id"],
                             stable_key=dreq["stable_key"],
@@ -587,10 +598,44 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                             asvs_level=dreq.get("asvs_level"),
                             parent_section=dreq["parent_section"],
                             ordinal=dreq.get("ordinal", 0),
-                        ))
+                        )
+                        db.add(persisted)
+                        persisted_diagram_requirements.append(persisted)
+
+                    db.flush()
+
+                    diagram_items_to_embed = []
+                    for dreq in persisted_diagram_requirements:
+                        source_parameter = None
+                        if dreq.source_requirement_key != "composite":
+                            source_parameter = source_params_by_key.get(dreq.source_requirement_key)
+                        retrieval_text = build_diagram_requirement_analysis_text(
+                            dreq,
+                            source_parameter=source_parameter,
+                        )
+                        normalized_text = normalize_requirement_text(retrieval_text)
+                        if not normalized_text:
+                            continue
+                        diagram_items_to_embed.append(
+                            {
+                                "diagram_requirement": dreq,
+                                "text": normalized_text,
+                                "content_hash": dreq.stable_key,
+                            }
+                        )
 
                     db.commit()
                     summary['diagram_requirements'] = len(diagram_reqs)
+                    if diagram_items_to_embed:
+                        try:
+                            generate_and_store_diagram_requirement_embeddings(
+                                diagram_items_to_embed,
+                                job.id,
+                                summary,
+                            )
+                        except Exception as exc:
+                            logger.error("Error generating diagram requirement embeddings: %s", exc)
+                            summary['diagram_requirement_embeddings_failed'] = len(diagram_items_to_embed)
                     summary['diagram_extraction_status'] = 'completed'
                     summary['diagram_extraction_error'] = None
                     logger.info(

@@ -28,6 +28,8 @@ class IngestionSummarySchema(BaseModel):
     errors: int = Field(default=0)
     embeddings_created: int = Field(default=0)
     embeddings_failed: int = Field(default=0)
+    diagram_requirement_embeddings_created: int = Field(default=0)
+    diagram_requirement_embeddings_failed: int = Field(default=0)
     mode: str = Field(default="manual")
     version_no: int = Field(default=1)
     resolved_categories: Dict[str, int] = Field(default_factory=dict)
@@ -36,6 +38,7 @@ class IngestionSummarySchema(BaseModel):
     end_page: Optional[int] = None
     level_definition_start_page: Optional[int] = None
     level_definition_end_page: Optional[int] = None
+    page_detection: Dict[str, Any] = Field(default_factory=dict)
     asvs_level_definitions: Dict[str, Any] = Field(default_factory=dict)
 
 

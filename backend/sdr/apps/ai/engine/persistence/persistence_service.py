@@ -230,6 +230,16 @@ class PersistenceService:
                 or hunter_result.get("requirement_assessments")
                 or []
             )
+            diagram_scope_verdict = (
+                mediator_result.get("diagram_scope_verdict")
+                or critic_result.get("diagram_scope_verdict")
+                or hunter_result.get("diagram_scope_verdict")
+            )
+            diagram_scope_reasoning = (
+                mediator_result.get("diagram_scope_reasoning")
+                or critic_result.get("diagram_scope_reasoning")
+                or hunter_result.get("diagram_scope_reasoning")
+            )
             met_status = str(mediator_result.get("final_verdict") or "na").strip().lower() or "na"
             confidence_score = mediator_result.get("confidence")
             severity_payload = self._build_diagram_severity_payload(
@@ -282,6 +292,8 @@ class PersistenceService:
                     },
                     "assessed_requirements": assessed_requirements,
                     "analysis_trace": {
+                        "diagram_scope_verdict": diagram_scope_verdict,
+                        "diagram_scope_reasoning": diagram_scope_reasoning,
                         "assessed_requirements": assessed_requirements,
                         "debate_rounds": getattr(diagram_debate_output, "debate_rounds", 1),
                         "hunter_result": hunter_result,

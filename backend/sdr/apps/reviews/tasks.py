@@ -48,7 +48,7 @@ def dispatch_review_analysis_task(self, review_id: int):
                 return
             db.expunge_all()
             
-        from sdr.apps.ai.engine.pipeline import run_tsd_analysis
+        from sdr.apps.ai.engine import run_tsd_analysis
         run_tsd_analysis(review)
         logger.info(f"Analysis for review {review_id} completed successfully.")
             

@@ -19,8 +19,9 @@ from sdr.apps.standards.models import StandardSourceDocument
 from .config import ExtractionConfig
 from .document_reader import StandardDocumentReader
 from .llm_client import ExtractionLLMClient
-from .page_detection import ASVSPageRangeDetectionService
+from .page_detection import ASVSPageRangeDetectionService, ASVSRequirementLevelDetectionService
 from .normalizers import (
+    _backfill_requirement_levels,
     _canonicalize_diagram_requirements,
     _clean_asvs_level_definitions,
     _coerce_asvs_level,
@@ -93,7 +94,11 @@ class ASVSLevelDefinitionExtractionService:
                     response.error,
                 )
                 return []
-            parsed = parse_json_response(response.content)
+            parsed = parse_json_with_repair(
+                response.content or "{}",
+                llm_client=self.llm_client,
+                max_tokens=1800,
+            )
             return _clean_asvs_level_definitions(parsed)
         except Exception as exc:
             self.logger.exception("extract_asvs_level_definitions_from_document: failed: %s", exc)
@@ -164,10 +169,12 @@ class RequirementDocumentExtractionService:
         *,
         document_reader: StandardDocumentReader,
         structured_extractor: StructuredRequirementExtractionService,
+        requirement_level_detector: Optional[ASVSRequirementLevelDetectionService] = None,
         config: ExtractionConfig,
     ) -> None:
         self.document_reader = document_reader
         self.structured_extractor = structured_extractor
+        self.requirement_level_detector = requirement_level_detector
         self.config = config
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
@@ -313,6 +320,20 @@ class RequirementDocumentExtractionService:
             len(merged),
             sum(len(v) for v in merged.values()),
         )
+        if self.requirement_level_detector and merged:
+            detected = self.requirement_level_detector.detect(
+                source_doc,
+                start_page=start_page,
+                end_page=end_page,
+            )
+            backfilled = _backfill_requirement_levels(merged, detected.levels)
+            self.logger.info(
+                "extract_requirements_from_document: backfilled %d ASVS level(s) from deterministic PDF parsing. indexed_rows=%d matched_pages=%d source=%s",
+                backfilled,
+                len(detected.levels),
+                detected.matched_pages,
+                detected.source,
+            )
         return merged
 
 

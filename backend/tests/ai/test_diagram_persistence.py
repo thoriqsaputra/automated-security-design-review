@@ -3,6 +3,8 @@ from __future__ import annotations
 import base64
 from types import SimpleNamespace
 
+import sdr.apps.designs.models  # noqa: F401
+
 from sdr.apps.ai.engine.dto import AnalysisSummary
 from sdr.apps.ai.engine.persistence.persistence_service import PersistenceService
 
@@ -56,12 +58,12 @@ def test_persist_diagram_debate_finding_creates_top_level_diagram_finding(monkey
     service = PersistenceService()
     session = _Session()
     monkeypatch.setattr(
-        "sdr.apps.ai.engine.persistence_service.SessionLocal",
+        "sdr.apps.ai.engine.persistence.persistence_service.SessionLocal",
         lambda: _SessionContext(session),
     )
     uploaded = {}
     monkeypatch.setattr(
-        "sdr.apps.ai.engine.persistence_service.storage_service.upload_file",
+        "sdr.apps.ai.engine.persistence.persistence_service.storage_service.upload_file",
         lambda content, object_name, content_type: uploaded.update(
             {
                 "size": len(content),
@@ -137,11 +139,11 @@ def test_persist_diagram_debate_finding_caps_requirement_reference_to_db_limit(m
     service = PersistenceService()
     session = _Session()
     monkeypatch.setattr(
-        "sdr.apps.ai.engine.persistence_service.SessionLocal",
+        "sdr.apps.ai.engine.persistence.persistence_service.SessionLocal",
         lambda: _SessionContext(session),
     )
     monkeypatch.setattr(
-        "sdr.apps.ai.engine.persistence_service.storage_service.upload_file",
+        "sdr.apps.ai.engine.persistence.persistence_service.storage_service.upload_file",
         lambda content, object_name, content_type: None,
     )
 
@@ -198,3 +200,78 @@ def test_persist_diagram_debate_finding_caps_requirement_reference_to_db_limit(m
     assert finding is not None
     assert finding.requirement_reference is not None
     assert len(finding.requirement_reference) <= 128
+
+
+def test_persist_diagram_debate_finding_preserves_non_architecture_scope(monkeypatch):
+    service = PersistenceService()
+    session = _Session()
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.persistence.persistence_service.SessionLocal",
+        lambda: _SessionContext(session),
+    )
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.persistence.persistence_service.storage_service.upload_file",
+        lambda content, object_name, content_type: None,
+    )
+
+    review = SimpleNamespace(id=88)
+    category = SimpleNamespace(id=4, code="web_application")
+    diagram = SimpleNamespace(
+        diagram_id="d-2",
+        caption="Login screenshot",
+        page_number=5,
+        bbox_x0=1.0,
+        bbox_y0=2.0,
+        bbox_x1=3.0,
+        bbox_y1=4.0,
+        image_format="png",
+        image_b64=base64.b64encode(b"x" * 600).decode("ascii"),
+    )
+    diagram_output = SimpleNamespace(
+        diagram=diagram,
+        hunter_result={
+            "diagram_scope_verdict": "non_architecture",
+            "diagram_scope_reasoning": "The image is a UI screenshot.",
+            "reasoning": "This is not an architecture diagram.",
+            "missing_controls": [],
+            "requirement_assessments": [
+                {"requirement_id": "D-V2", "verdict": "na", "reasoning": "Screenshots are out of scope."}
+            ],
+        },
+        critic_result={
+            "diagram_scope_verdict": "non_architecture",
+            "diagram_scope_reasoning": "The image is not architecture/security-relevant.",
+            "reasoning": "The Hunter should not treat a screenshot as a missing control.",
+            "hallucinated_claims": [],
+        },
+        mediator_result={
+            "diagram_scope_verdict": "non_architecture",
+            "diagram_scope_reasoning": "The image is a screenshot, so the requirement is not applicable.",
+            "final_verdict": "na",
+            "confidence": 0.58,
+            "finding_description": "The image is a screenshot rather than an architecture/security-relevant diagram.",
+            "reasoning": "The requirement cannot be assessed from a UI screenshot.",
+            "recommendation": None,
+            "assessed_requirements": [
+                {"requirement_id": "D-V2", "verdict": "na", "summary": "The screenshot is out of scope for this diagram requirement."}
+            ],
+        },
+        debate_rounds=1,
+        error=None,
+    )
+    summary = AnalysisSummary()
+
+    finding = service.persist_diagram_debate_finding(
+        review=review,
+        category=category,
+        diagram_debate_output=diagram_output,
+        summary=summary,
+    )
+
+    assert finding is session.finding
+    assert finding.met_status == "na"
+    assert finding.requirement_metadata["analysis_trace"]["diagram_scope_verdict"] == "non_architecture"
+    assert finding.requirement_metadata["analysis_trace"]["diagram_scope_reasoning"] == (
+        "The image is a screenshot, so the requirement is not applicable."
+    )
+    assert finding.requirement_metadata["analysis_trace"]["mediator_result"]["diagram_scope_verdict"] == "non_architecture"

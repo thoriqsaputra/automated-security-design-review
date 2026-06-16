@@ -6,7 +6,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship, backref
 
 from sdr.core.database import Base
-from .choices import ReviewStatus
+from .choices import ReviewAnalysisMode, ReviewStatus
 
 review_category_association = Table(
     "reviews_review_categories",
@@ -30,6 +30,9 @@ class Review(Base):
     STATUS_FAILED = ReviewStatus.FAILED.value
     STATUS_APPROVED = ReviewStatus.APPROVED.value
     STATUS_REJECTED = ReviewStatus.REJECTED.value
+    ANALYSIS_MODE_DEFAULT = ReviewAnalysisMode.DEFAULT.value
+    ANALYSIS_MODE_TEXT_ONLY = ReviewAnalysisMode.TEXT_ONLY.value
+    ANALYSIS_MODE_DIAGRAM_ONLY = ReviewAnalysisMode.DIAGRAM_ONLY.value
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
@@ -41,6 +44,12 @@ class Review(Base):
     ingestion_job_id: Mapped[Optional[int]] = mapped_column(ForeignKey("standards_standingestionjob.id", ondelete="SET NULL"), nullable=True, index=True)
     
     status: Mapped[str] = mapped_column(String(24), default=ReviewStatus.PENDING.value, index=True)
+    analysis_mode: Mapped[str] = mapped_column(
+        String(24),
+        default=ReviewAnalysisMode.DEFAULT.value,
+        server_default=ReviewAnalysisMode.DEFAULT.value,
+        nullable=False,
+    )
     overview: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     asvs_level_override: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
@@ -61,6 +70,10 @@ class Review(Base):
     __table_args__ = (
         Index("idx_review_design_status", "design_id", "status"),
         CheckConstraint("asvs_level_override IS NULL OR asvs_level_override IN (1, 2, 3)", name="ck_review_asvs_level_override_range"),
+        CheckConstraint(
+            "analysis_mode IN ('default', 'text_only', 'diagram_only')",
+            name="ck_review_analysis_mode_valid",
+        ),
     )
 
     def __str__(self):

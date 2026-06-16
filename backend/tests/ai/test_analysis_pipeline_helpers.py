@@ -9,6 +9,7 @@ import pytest
 from sdr.apps.ai.agents.base import Citation, CriticResult, HunterResult, MediatorResult
 from sdr.apps.ai.retrieval.core import RetrievalResult
 from sdr.apps.ai.engine.debate.debate_service import DebateService
+from sdr.apps.ai.engine.debate.category_analysis_coordinator import CategoryAnalysisCoordinator
 from sdr.apps.ai.engine.dto import AnalysisSummary, DebateOutput
 from sdr.apps.ai.engine.classification.parent_applicability import ParentApplicabilityResult
 from sdr.apps.ai.engine.persistence.review_run_state_service import AnalysisCancelledError
@@ -329,7 +330,7 @@ def test_parent_applicability_gate_marks_children_na(monkeypatch, settings_overr
     assert summary.applicability["children_marked_na_by_parent"] == 2
 
 
-def test_parent_applicability_gate_falls_back_to_applicable_on_low_confidence(monkeypatch, settings_override):
+def test_parent_applicability_gate_skips_on_low_confidence_by_default(monkeypatch, settings_override):
     settings_override(
         AI_PARENT_APPLICABILITY_ENABLED=True,
         AI_PARENT_APPLICABILITY_CONFIDENCE_THRESHOLD=0.7,
@@ -363,6 +364,70 @@ def test_parent_applicability_gate_falls_back_to_applicable_on_low_confidence(mo
             confidence=0.45,
             reasoning="Browser use is unclear.",
             evidence=["ambiguous scope"],
+            decision_mode="unclear",
+        ),
+    )
+    persisted = []
+    monkeypatch.setattr(
+        TSDAnalysisPipeline,
+        "_persist_debate_output",
+        lambda self, **kwargs: persisted.append(kwargs["parameter"].id),
+    )
+
+    applicable_parameters, _ = pipeline._apply_parent_applicability_gate(
+        review=review,
+        category=category,
+        ingestion_job=ingestion_job,
+        parameters=parameters,
+        indexes=SimpleNamespace(),
+        tsd_document=SimpleNamespace(),
+        summary=summary,
+    )
+
+    assert applicable_parameters == []
+    assert persisted == [1]
+    assert summary.applicability["parents_total"] == 1
+    assert summary.applicability["parents_not_applicable"] == 1
+    assert summary.applicability["parents_applicable"] == 0
+    assert summary.applicability["parents"][0]["fallback_mode"] == "skip"
+
+
+def test_parent_applicability_gate_can_assume_applicable_on_low_confidence(monkeypatch, settings_override):
+    settings_override(
+        AI_PARENT_APPLICABILITY_ENABLED=True,
+        AI_PARENT_APPLICABILITY_CONFIDENCE_THRESHOLD=0.7,
+        AI_PARENT_APPLICABILITY_FALLBACK_MODE="assume_applicable",
+    )
+    pipeline = _pipeline()
+    review = SimpleNamespace(id=82)
+    category = SimpleNamespace(id=7, code="web_application")
+    ingestion_job = SimpleNamespace(id=11, version_no=5)
+    parent = _parent(1, title="Session Controls", description="Browser session requirements")
+    parameters = [_parameter(1, parent=parent, text="Use secure cookie flags.")]
+    summary = AnalysisSummary()
+
+    monkeypatch.setattr(TSDAnalysisPipeline, "_is_cancelled", lambda self, review: False)
+    monkeypatch.setattr(
+        TSDAnalysisPipeline,
+        "_persist_summary_snapshot",
+        lambda self, review_obj, summary_obj: setattr(review_obj, "summary_json", summary_obj.to_dict()),
+    )
+    monkeypatch.setattr(
+        TSDAnalysisPipeline,
+        "_get_parent_retrieval_result",
+        lambda self, **kwargs: RetrievalResult(
+            context_chunks=["The design documentation is ambiguous about browser usage."],
+            source_block_ids=["p1_b1"],
+        ),
+    )
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.pipeline.classify_parent_applicability",
+        lambda **kwargs: ParentApplicabilityResult(
+            applicable=False,
+            confidence=0.45,
+            reasoning="Browser use is unclear.",
+            evidence=["ambiguous scope"],
+            decision_mode="unclear",
         ),
     )
 
@@ -719,7 +784,7 @@ def test_debate_service_stops_before_critic_when_cancelled():
 
 def test_debate_output_can_embed_retrieval_result_without_forward_ref_error():
     parameter = _parameter(1, text="Use MFA for all admin access.")
-    output = DebateOutput(
+    output = DebateOutput.model_construct(
         parameter=parameter,
         hunter_result=HunterResult(verdict="not_met", confidence=0.1),
         critic_result=CriticResult(),
@@ -728,3 +793,88 @@ def test_debate_output_can_embed_retrieval_result_without_forward_ref_error():
     )
 
     assert output.retrieval_result.context_chunks == ["evidence"]
+
+
+def _category_analysis_coordinator():
+    return CategoryAnalysisCoordinator(
+        config=SimpleNamespace(batch_debate_enabled=True),
+        workflow_repository=SimpleNamespace(),
+        progress_service=SimpleNamespace(),
+        run_state_service=SimpleNamespace(),
+        text_debate_coordinator=SimpleNamespace(),
+        diagram_analysis_coordinator=SimpleNamespace(),
+    )
+
+
+def test_category_analysis_coordinator_skips_diagrams_in_text_only_mode(monkeypatch):
+    coordinator = _category_analysis_coordinator()
+    parameter = _parameter(1)
+    calls = {"text": 0, "diagram": 0}
+    stages = []
+    summary = AnalysisSummary()
+    summary.asvs["categories"] = {}
+
+    coordinator.workflow_repository.get_latest_active_ingestion_job = lambda _category_id: SimpleNamespace(id=11)
+    coordinator.workflow_repository.list_category_parameters = lambda **_kwargs: [parameter]
+    coordinator.progress_service.prepare_category_stats = lambda **_kwargs: None
+    coordinator.progress_service.initialize_category_progress = lambda **_kwargs: None
+    coordinator.progress_service.sync_analysis_aliases = lambda **_kwargs: None
+    coordinator.run_state.update_stage = lambda *_args, **kwargs: stages.append(kwargs.get("stage") or _args[2])
+    coordinator.run_state.persist_summary_snapshot = lambda *_args, **_kwargs: None
+    coordinator.run_state.is_cancelled = lambda _review: False
+    coordinator.text_debate.apply_parent_applicability_gate = lambda **_kwargs: ([parameter], {})
+    coordinator.text_debate.run_batched_analysis_for_category = lambda **_kwargs: calls.__setitem__("text", calls["text"] + 1)
+    coordinator.text_debate.run_single_analysis_for_category = lambda **_kwargs: None
+    coordinator.diagram_analysis.run = lambda **_kwargs: calls.__setitem__("diagram", calls["diagram"] + 1)
+
+    coordinator.run_category(
+        review=SimpleNamespace(analysis_mode="text_only", ingestion_job=None),
+        category=SimpleNamespace(id=5, code="web_application"),
+        indexes=None,
+        tsd_document=None,
+        summary=summary,
+        effective_asvs_level=2,
+        killed_assumptions_memory=deque(),
+    )
+
+    assert calls["text"] == 1
+    assert calls["diagram"] == 0
+    assert "6_diagram_debate" not in stages
+
+
+def test_category_analysis_coordinator_skips_text_path_in_diagram_only_mode(monkeypatch):
+    coordinator = _category_analysis_coordinator()
+    parameter = _parameter(1)
+    calls = {"text_gate": 0, "text": 0, "diagram": 0}
+    stages = []
+    summary = AnalysisSummary()
+    summary.asvs["categories"] = {}
+
+    coordinator.workflow_repository.get_latest_active_ingestion_job = lambda _category_id: SimpleNamespace(id=11)
+    coordinator.workflow_repository.list_category_parameters = lambda **_kwargs: [parameter]
+    coordinator.progress_service.prepare_category_stats = lambda **_kwargs: None
+    coordinator.progress_service.initialize_category_progress = lambda **_kwargs: None
+    coordinator.progress_service.sync_analysis_aliases = lambda **_kwargs: None
+    coordinator.run_state.update_stage = lambda *_args, **kwargs: stages.append(kwargs.get("stage") or _args[2])
+    coordinator.run_state.persist_summary_snapshot = lambda *_args, **_kwargs: None
+    coordinator.run_state.is_cancelled = lambda _review: False
+    coordinator.text_debate.apply_parent_applicability_gate = lambda **_kwargs: calls.__setitem__("text_gate", calls["text_gate"] + 1)
+    coordinator.text_debate.run_batched_analysis_for_category = lambda **_kwargs: calls.__setitem__("text", calls["text"] + 1)
+    coordinator.text_debate.run_single_analysis_for_category = lambda **_kwargs: None
+    coordinator.diagram_analysis.run = lambda **_kwargs: calls.__setitem__("diagram", calls["diagram"] + 1)
+
+    coordinator.run_category(
+        review=SimpleNamespace(analysis_mode="diagram_only", ingestion_job=None),
+        category=SimpleNamespace(id=5, code="web_application"),
+        indexes=None,
+        tsd_document=None,
+        summary=summary,
+        effective_asvs_level=2,
+        killed_assumptions_memory=deque(),
+    )
+
+    assert calls["text_gate"] == 0
+    assert calls["text"] == 0
+    assert calls["diagram"] == 1
+    assert stages[-1] == "6_diagram_debate"
+    assert summary.total_parameters == 0

@@ -12,7 +12,11 @@ from sdr.apps.ai.engine.extraction import (
 from sdr.apps.standards.schemas import CategoryParameterChildSchema
 from sdr.apps.standards.tasks import _coerce_requirement_details, _coerce_requirement_text
 from sdr.apps.standards.tasks import _coerce_asvs_level
-from sdr.apps.standards.utils import build_parameter_analysis_text, normalize_requirement_text
+from sdr.apps.standards.utils import (
+    build_diagram_requirement_analysis_text,
+    build_parameter_analysis_text,
+    normalize_requirement_text,
+)
 
 
 def test_build_parameter_analysis_text_combines_heading_and_details():
@@ -31,6 +35,27 @@ def test_build_parameter_analysis_text_supports_legacy_heading_only():
     child = SimpleNamespace(requirement_text="Use MFA", details="")
 
     assert build_parameter_analysis_text(child) == "Use MFA"
+
+
+def test_build_diagram_requirement_analysis_text_enriches_with_source_parameter():
+    diagram_requirement = SimpleNamespace(
+        parent_section="V1 Architecture",
+        requirement_text="Show trust boundary",
+        verification_hint="Boundary line must separate public and internal zones.",
+    )
+    source_parameter = SimpleNamespace(
+        requirement_text="1.4.1 Trust Boundaries",
+        details="Applications should identify and document trust boundaries.",
+    )
+
+    text = build_diagram_requirement_analysis_text(
+        diagram_requirement,
+        source_parameter=source_parameter,
+    )
+
+    assert "V1 Architecture" in text
+    assert "Show trust boundary" in text
+    assert "Applications should identify and document trust boundaries." in text
 
 
 def test_coerce_requirement_text_and_details_from_structured_item():
@@ -118,6 +143,76 @@ def test_extract_structured_requirements_preserves_details():
     assert item["asvs_level"] == 2
 
 
+def test_extract_structured_requirements_filters_note_paragraphs():
+    response = SimpleNamespace(
+        error=None,
+        model="mock-model",
+        provider="mock-provider",
+        usage=None,
+        content="""
+        {
+          "V5 Validation": [
+            {
+              "requirement": "Note: Using parameterized queries or escaping SQL is not always sufficient",
+              "details": "Table and column names cannot be escaped safely.",
+              "verbatim_quote": "Note: Using parameterized queries or escaping SQL is not always sufficient...",
+              "context_marker": "V5.3"
+            },
+            {
+              "requirement": "5.3.4 SQL queries must separate data values from query structure",
+              "details": "Applications must treat identifiers and sort clauses as trusted-only inputs.",
+              "verbatim_quote": "Verify that parameterized queries separate data values from query structure.",
+              "context_marker": "V5.3.4",
+              "asvs_level": 2
+            }
+          ]
+        }
+        """,
+    )
+
+    with patch("sdr.apps.ai.engine.extraction.api.chat_completion", return_value=response):
+        result = extract_structured_requirements("V5 SQL requirements")
+
+    assert [item["requirement"] for item in result["V5 Validation"]] == [
+        "5.3.4 SQL queries must separate data values from query structure"
+    ]
+
+
+def test_extract_structured_requirements_filters_owasp_subsection_heading_only_items():
+    response = SimpleNamespace(
+        error=None,
+        model="mock-model",
+        provider="mock-provider",
+        usage=None,
+        content="""
+        {
+          "V2 Authentication": [
+            {
+              "requirement": "V2.1 Password Security",
+              "details": "Passwords (memorized secrets) must be used as single-factor authenticators.",
+              "verbatim_quote": "V2.1 Password Security",
+              "context_marker": "V2.1"
+            },
+            {
+              "requirement": "V2.1 - 2.1.1 Verify user set passwords are at least 12 characters in length",
+              "details": "Applications must enforce a minimum password length for user-chosen passwords.",
+              "verbatim_quote": "2.1.1 Verify user set passwords are at least 12 characters in length.",
+              "context_marker": "V2.1",
+              "asvs_level": 1
+            }
+          ]
+        }
+        """,
+    )
+
+    with patch("sdr.apps.ai.engine.extraction.api.chat_completion", return_value=response):
+        result = extract_structured_requirements("V2 authentication requirements")
+
+    assert [item["requirement"] for item in result["V2 Authentication"]] == [
+        "V2.1 - 2.1.1 Verify user set passwords are at least 12 characters in length"
+    ]
+
+
 def test_extract_asvs_level_definitions_from_document():
     source_doc = SimpleNamespace(id=1, name="OWASP ASVS.pdf", document="standards/asvs.pdf")
     response = SimpleNamespace(
@@ -159,6 +254,38 @@ def test_extract_asvs_level_definitions_from_document():
     assert [item["level"] for item in result] == [1, 2]
     assert result[0]["code"] == "L1"
     assert result[1]["classification_guidance"] == "Use L2 for applications with sensitive data."
+
+
+def test_extract_asvs_level_definitions_from_document_repairs_trailing_comma_json():
+    source_doc = SimpleNamespace(id=1, name="OWASP ASVS.pdf", document="standards/asvs.pdf")
+    response = SimpleNamespace(
+        error=None,
+        content="""
+        {
+          "levels": [
+            {
+              "level": "L1",
+              "name": "Opportunistic",
+              "description": "Baseline verification",
+              "classification_guidance": "Use L1 for ordinary applications.",
+            }
+          ]
+        }
+        """,
+    )
+
+    with (
+        patch("sdr.apps.ai.engine.extraction.api.get_local_file_path", return_value=nullcontext("/tmp/asvs.pdf")),
+        patch(
+            "sdr.apps.ai.engine.extraction.api.get_document_content",
+            return_value={"text": "ASVS Level 1 definitions"},
+        ),
+        patch("sdr.apps.ai.engine.extraction.api.chat_completion", return_value=response),
+    ):
+        result = extract_asvs_level_definitions_from_document(source_doc, start_page=8, end_page=10)
+
+    assert [item["level"] for item in result] == [1]
+    assert result[0]["classification_guidance"] == "Use L1 for ordinary applications."
 
 
 def test_category_parameter_child_schema_includes_details():
@@ -230,6 +357,43 @@ def test_canonicalize_diagram_requirements_drops_exact_duplicates():
 
     assert len(result) == 1
     assert result[0]["stable_key"] == "job9-D-V1.4"
+
+
+def test_canonicalize_diagram_requirements_avoids_collision_with_pre_suffixed_keys():
+    items = [
+        {
+            "stable_key": "job17-D-V3.2",
+            "source_requirement_key": "child-1",
+            "requirement_text": "Show control A",
+            "verification_hint": "A visible",
+            "asvs_level": 3,
+            "parent_section": "V3 Session Management",
+        },
+        {
+            "stable_key": "job17-D-V3.2-2",
+            "source_requirement_key": "child-2",
+            "requirement_text": "Show control B",
+            "verification_hint": "B visible",
+            "asvs_level": 3,
+            "parent_section": "V3 Session Management",
+        },
+        {
+            "stable_key": "job17-D-V3.2",
+            "source_requirement_key": "child-3",
+            "requirement_text": "Show control C",
+            "verification_hint": "C visible",
+            "asvs_level": 3,
+            "parent_section": "V3 Session Management",
+        },
+    ]
+
+    result = _canonicalize_diagram_requirements(items)
+
+    assert [item["stable_key"] for item in result] == [
+        "job17-D-V3.2",
+        "job17-D-V3.2-2",
+        "job17-D-V3.2-3",
+    ]
 
 
 def test_extract_diagram_requirements_canonicalizes_duplicate_llm_keys():

@@ -5,6 +5,7 @@ Import all models here for backwards compatibility.
 
 from .choices import (
     ReviewStatus,
+    ReviewAnalysisMode,
     FindingStatus,
     MetStatus,
     Severity,
@@ -22,6 +23,7 @@ __all__ = [
     "CitationAnchor",
     # Choices
     "ReviewStatus",
+    "ReviewAnalysisMode",
     "FindingStatus",
     "MetStatus",
     "Severity",

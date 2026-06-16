@@ -7,6 +7,7 @@ from typing import Any, List
 from sdr.apps.ai.agents.vision import DiagramInput
 
 from sdr.apps.ai.engine.config import AnalysisPipelineConfig
+from sdr.apps.ai.engine.debate.diagram_requirement_selector import DiagramRequirementSelector
 
 
 class DiagramAnalysisCoordinator:
@@ -17,11 +18,16 @@ class DiagramAnalysisCoordinator:
         workflow_repository,
         diagram_debate_service,
         persistence_service,
+        requirement_selector=None,
     ) -> None:
         self.config = config
         self.workflow_repository = workflow_repository
         self.diagram_debate_service = diagram_debate_service
         self.persistence = persistence_service
+        self.requirement_selector = requirement_selector or DiagramRequirementSelector(
+            config=config,
+            workflow_repository=workflow_repository,
+        )
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     def run(
@@ -100,7 +106,6 @@ class DiagramAnalysisCoordinator:
                 effective_asvs_level,
             )
             return
-        diagram_reqs = diagram_reqs[: self.config.vision_diagram_requirements_max_items]
         tsd_context = tsd_document.full_text[:3000] if hasattr(tsd_document, "full_text") else ""
 
         diagram_outputs = []
@@ -112,7 +117,13 @@ class DiagramAnalysisCoordinator:
                 executor.submit(
                     self.diagram_debate_service.run_diagram_debate,
                     diagram=diagram,
-                    requirements=list(diagram_reqs),
+                    requirements=self.requirement_selector.select_for_diagram(
+                        diagram=diagram,
+                        tsd_document=tsd_document,
+                        category=category,
+                        ingestion_job=ingestion_job,
+                        effective_asvs_level=effective_asvs_level,
+                    ),
                     tsd_context=tsd_context,
                     cancel_check=cancel_check,
                 ): diagram

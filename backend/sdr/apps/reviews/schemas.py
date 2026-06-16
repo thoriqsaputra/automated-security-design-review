@@ -1,7 +1,9 @@
 from datetime import datetime
 from typing import Optional, List, Dict, Any, TypeVar, Generic
 
-from pydantic import BaseModel, ConfigDict, Field, EmailStr, computed_field
+from pydantic import BaseModel, ConfigDict, Field, computed_field
+
+from .models.choices import ReviewAnalysisMode
 
 T = TypeVar('T')
 
@@ -114,6 +116,11 @@ class ReviewCreateSchema(BaseModel):
     design_id: int
     category_id: int
     asvs_level_override: Optional[int] = Field(default=None, ge=1, le=3)
+    analysis_mode: ReviewAnalysisMode = Field(default=ReviewAnalysisMode.DEFAULT)
+
+
+class ReviewTriggerSchema(BaseModel):
+    analysis_mode: Optional[ReviewAnalysisMode] = None
 
 
 class ReviewProgressSchema(BaseModel):
@@ -146,6 +153,7 @@ class ReviewSchema(BaseModel):
     retrieval_snapshot_json: Optional[Dict[str, Any]] = None
     overview: Optional[str] = None
     asvs_level_override: Optional[int] = None
+    analysis_mode: str = ReviewAnalysisMode.DEFAULT.value
     
     finding_counts: Dict[str, int] = Field(default_factory=dict)
     parent_rollups: List[Any] = Field(default_factory=list)

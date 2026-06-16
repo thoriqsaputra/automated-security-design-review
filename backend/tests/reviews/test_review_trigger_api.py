@@ -5,9 +5,13 @@ from types import SimpleNamespace
 
 import pytest
 from fastapi import HTTPException
+from pydantic import ValidationError
+
+import sdr.apps.designs.models  # noqa: F401
 
 from sdr.apps.reviews.models import Review
 from sdr.apps.reviews.routers import reviews as reviews_router_module
+from sdr.apps.reviews.schemas import ReviewCreateSchema, ReviewTriggerSchema
 
 
 def _build_review(*, review_id: int = 7, status: str = Review.STATUS_PENDING):
@@ -24,6 +28,7 @@ def _build_review(*, review_id: int = 7, status: str = Review.STATUS_PENDING):
         retrieval_snapshot_json={"status": "ready"},
         overview=None,
         asvs_level_override=None,
+        analysis_mode=Review.ANALYSIS_MODE_DEFAULT,
         created_at=now,
         updated_at=now,
     )
@@ -90,6 +95,37 @@ def test_trigger_review_persists_task_id(monkeypatch):
     assert review.retrieval_snapshot_json is None
     assert fake_db.committed is True
     assert fake_db.refreshed == [review]
+
+
+def test_trigger_review_updates_analysis_mode_when_provided(monkeypatch):
+    review = _build_review()
+    fake_db = _FakeSession(review=review)
+    monkeypatch.setattr(
+        reviews_router_module,
+        "dispatch_review_analysis",
+        lambda review_id: {"mode": "async", "task_id": f"task-{review_id}"},
+    )
+
+    result = reviews_router_module.trigger_review(
+        review.id,
+        payload=ReviewTriggerSchema(analysis_mode="diagram_only"),
+        db=fake_db,
+    )
+
+    assert result is review
+    assert review.analysis_mode == Review.ANALYSIS_MODE_DIAGRAM_ONLY
+    assert fake_db.committed is True
+
+
+def test_review_create_schema_defaults_analysis_mode():
+    payload = ReviewCreateSchema(design_id=1, category_id=2)
+
+    assert payload.analysis_mode.value == Review.ANALYSIS_MODE_DEFAULT
+
+
+def test_review_trigger_schema_rejects_invalid_mode():
+    with pytest.raises(ValidationError):
+        ReviewTriggerSchema(analysis_mode="bad_mode")
 
 
 def test_trigger_review_returns_500_when_dispatch_fails(monkeypatch):

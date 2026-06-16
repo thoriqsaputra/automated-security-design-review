@@ -131,12 +131,14 @@ class RetrievalService:
             contract_then = (query_details.get("contract_then") or "").strip()
             not_sufficient = query_details.get("contract_not_sufficient") or []
             domain_keywords = query_details.get("domain_keywords") or []
+            family_scope_terms = query_details.get("family_scope_terms") or []
             parts = [
                 parent_title,
                 parent_description,
                 child_requirement,
                 contract_then,
                 " ".join([x for x in not_sufficient[:2] if isinstance(x, str)]),
+                " ".join([x for x in family_scope_terms[:8] if isinstance(x, str)]),
                 " ".join([x for x in domain_keywords if isinstance(x, str)]),
             ]
             override_query_text = "\n".join([p for p in parts if p]).strip() or None

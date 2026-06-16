@@ -24,22 +24,27 @@ def _diagram_bytes(size=600):
 
 def test_agents_vision_exports_and_runs_mocked_debate(monkeypatch):
     from sdr.apps.ai.agents.base import BaseAgent
-    from sdr.apps.ai.agents.vision import DiagramDebateOutput, DiagramDebateService, DiagramInput
+    from sdr.apps.ai.agents.vision import (
+        DiagramDebateOutput,
+        DiagramDebateService,
+        DiagramInput,
+        _apply_diagram_evidence_policy,
+    )
 
     responses = iter(
         [
             AIResponse(
-                content='{"overall_verdict":"not_met","confidence":0.61,"reasoning":"No MFA step is visible.","requirement_assessments":[{"requirement_id":"D-1","verdict":"not_met"}],"visual_elements_cited":["login form"]}',
+                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"The image shows an authentication flow between system components.","overall_verdict":"not_met","confidence":0.61,"reasoning":"No MFA step is visible.","requirement_assessments":[{"requirement_id":"D-1","verdict":"not_met"}],"visual_elements_cited":["login form"]}',
                 model="test",
                 provider=AIProvider.LOCAL,
             ),
             AIResponse(
-                content='{"outcome":"uphold","validated_requirements":[{"requirement_id":"D-1","verdict":"not_met"}],"hallucinated_claims":[]}',
+                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"The image depicts an authentication flow between components.","outcome":"uphold","validated_requirements":[{"requirement_id":"D-1","verdict":"not_met"}],"hallucinated_claims":[]}',
                 model="test",
                 provider=AIProvider.LOCAL,
             ),
             AIResponse(
-                content='{"final_verdict":"not_met","confidence":0.62,"finding_description":"The authentication flow omits MFA.","reasoning":"No second factor is shown.","assessed_requirements":[{"requirement_id":"D-1","verdict":"not_met"}]}',
+                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"Both agents describe an authentication architecture flow.","final_verdict":"not_met","confidence":0.62,"finding_description":"The authentication flow omits MFA.","reasoning":"No second factor is shown.","assessed_requirements":[{"requirement_id":"D-1","verdict":"not_met"}]}',
                 model="test",
                 provider=AIProvider.LOCAL,
             ),
@@ -64,12 +69,98 @@ def test_agents_vision_exports_and_runs_mocked_debate(monkeypatch):
     assert output.error is None
     assert output.diagram.diagram_id == "p1_d1"
     assert output.mediator_result["final_verdict"] == "not_met"
+    assert output.mediator_result["diagram_scope_verdict"] == "architecture_relevant"
     assert output.mediator_result["confidence"] == 0.72
+
+    forced = _apply_diagram_evidence_policy(
+        {
+            "final_verdict": "not_met",
+            "assessed_requirements": [{"requirement_id": "D-1", "verdict": "not_met"}],
+        },
+        {
+            "diagram_scope_verdict": "non_architecture",
+            "diagram_scope_reasoning": "This is a screenshot, not a system diagram.",
+            "outcome": "overturn",
+        },
+        {
+            "diagram_scope_verdict": "architecture_relevant",
+            "requirement_assessments": [{"requirement_id": "D-1", "verdict": "not_met"}],
+        },
+    )
+    assert forced["final_verdict"] == "na"
+    assert forced["verdict_policy_source"] == "diagram_non_architecture_image"
+
+
+def test_diagram_evidence_policy_forces_na_when_all_requirements_are_na():
+    from sdr.apps.ai.agents.vision import _apply_diagram_evidence_policy
+
+    result = _apply_diagram_evidence_policy(
+        {
+            "final_verdict": "not_met",
+            "assessed_requirements": [{"requirement_id": "D-1", "verdict": "na"}],
+        },
+        {
+            "outcome": "uphold",
+            "validated_requirements": [],
+            "diagram_scope_verdict": "uncertain",
+        },
+        {
+            "diagram_scope_verdict": "uncertain",
+        },
+    )
+
+    assert result["final_verdict"] == "na"
+    assert result["verdict_policy_source"] == "diagram_all_requirements_not_applicable"
+
+
+def test_diagram_debate_service_forces_na_for_non_architecture_images(monkeypatch):
+    from sdr.apps.ai.agents.base import BaseAgent
+    from sdr.apps.ai.agents.vision import DiagramDebateService, DiagramInput
+
+    responses = iter(
+        [
+            AIResponse(
+                content='{"diagram_scope_verdict":"non_architecture","diagram_scope_reasoning":"The image is a product UI screenshot, not a system architecture diagram.","overall_verdict":"not_met","confidence":0.61,"reasoning":"No MFA control is visible.","requirement_assessments":[{"requirement_id":"D-1","verdict":"not_met","reasoning":"The screenshot does not show MFA."}],"visual_elements_cited":["login screen"]}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+            AIResponse(
+                content='{"diagram_scope_verdict":"non_architecture","diagram_scope_reasoning":"The image is a UI screenshot rather than an architecture diagram.","outcome":"overturn","invalidated_requirements":[{"requirement_id":"D-1","verdict":"na","reason":"The requirement is not applicable to a screenshot."}],"validated_requirements":[],"hallucinated_claims":[],"reasoning":"The image is outside architecture/security diagram scope."}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+            AIResponse(
+                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"The login page may represent an application flow.","final_verdict":"not_met","confidence":0.62,"finding_description":"The screenshot does not show MFA.","reasoning":"No second factor is shown.","assessed_requirements":[{"requirement_id":"D-1","verdict":"not_met","summary":"No MFA control is visible."}]}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+        ]
+    )
+
+    monkeypatch.setattr(BaseAgent, "_call_llm", lambda self, **kwargs: next(responses))
+
+    output = DiagramDebateService().run_diagram_debate(
+        diagram=DiagramInput(
+            diagram_id="p1_d2",
+            image_b64=_diagram_bytes(),
+            page_number=1,
+            caption="Login page screenshot",
+        ),
+        requirements=[_requirement()],
+        tsd_context="The TSD includes a login UI screenshot.",
+    )
+
+    assert output.error is None
+    assert output.mediator_result["final_verdict"] == "na"
+    assert output.mediator_result["diagram_scope_verdict"] == "non_architecture"
+    assert output.mediator_result["verdict_policy_source"] == "diagram_non_architecture_image"
+    assert output.mediator_result["assessed_requirements"][0]["verdict"] == "na"
+    assert output.mediator_result["confidence"] == 0.52
 
 
 def test_diagram_debate_service_shim_reexports_symbols():
     from sdr.apps.ai.agents import vision as vision_module
-    from sdr.apps.ai.engine import diagram_debate_service as shim_module
+    from sdr.apps.ai.engine.debate import diagram_debate_service as shim_module
 
     assert shim_module.DiagramInput is vision_module.DiagramInput
     assert shim_module.DiagramDebateOutput is vision_module.DiagramDebateOutput
@@ -94,6 +185,106 @@ class _FakeDiagramBlock:
 
     def is_valid(self):
         return True
+
+
+def test_diagram_requirement_selector_retrieves_per_diagram_and_respects_cap(monkeypatch):
+    from sdr.apps.ai.engine.debate.diagram_requirement_selector import DiagramRequirementSelector
+
+    class _Repo:
+        def __init__(self):
+            self.search_calls = []
+
+        def search_diagram_requirements(
+            self,
+            *,
+            category_id,
+            ingestion_job_id,
+            effective_asvs_level,
+            query_embedding,
+            top_k,
+        ):
+            self.search_calls.append((tuple(query_embedding), top_k))
+            if query_embedding == [1.0]:
+                return [_requirement(stable_key="D-auth-1"), _requirement(stable_key="D-auth-2")][:top_k]
+            return [_requirement(stable_key="D-net-1"), _requirement(stable_key="D-net-2")][:top_k]
+
+        def list_diagram_requirements(self, *, category_id, ingestion_job_id, effective_asvs_level):
+            return [_requirement(stable_key="D-fallback-1"), _requirement(stable_key="D-fallback-2")]
+
+    selector = DiagramRequirementSelector(
+        config=SimpleNamespace(vision_diagram_requirements_max_items=1),
+        workflow_repository=_Repo(),
+    )
+
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.debate.diagram_requirement_selector.get_embedding",
+        lambda *, text, dimensions: [1.0] if "Authentication" in text else [2.0],
+    )
+
+    auth_diagram = SimpleNamespace(
+        diagram_id="d-auth",
+        caption="Authentication flow",
+        surrounding_text="Authentication gateway validates MFA.",
+        page_number=1,
+    )
+    network_diagram = SimpleNamespace(
+        diagram_id="d-net",
+        caption="Network layout",
+        surrounding_text="Traffic enters through a DMZ gateway.",
+        page_number=1,
+    )
+    tsd_document = SimpleNamespace(pages=[])
+    category = SimpleNamespace(id=1)
+    ingestion_job = SimpleNamespace(id=2)
+
+    auth_requirements = selector.select_for_diagram(
+        diagram=auth_diagram,
+        tsd_document=tsd_document,
+        category=category,
+        ingestion_job=ingestion_job,
+        effective_asvs_level=2,
+    )
+    network_requirements = selector.select_for_diagram(
+        diagram=network_diagram,
+        tsd_document=tsd_document,
+        category=category,
+        ingestion_job=ingestion_job,
+        effective_asvs_level=2,
+    )
+
+    assert [item.stable_key for item in auth_requirements] == ["D-auth-1"]
+    assert [item.stable_key for item in network_requirements] == ["D-net-1"]
+
+
+def test_diagram_requirement_selector_falls_back_when_embedding_or_query_is_missing(monkeypatch):
+    from sdr.apps.ai.engine.debate.diagram_requirement_selector import DiagramRequirementSelector
+
+    class _Repo:
+        def search_diagram_requirements(self, **kwargs):
+            raise AssertionError("vector search should not run in fallback case")
+
+        def list_diagram_requirements(self, *, category_id, ingestion_job_id, effective_asvs_level):
+            return [_requirement(stable_key="D-fallback-1"), _requirement(stable_key="D-fallback-2")]
+
+    selector = DiagramRequirementSelector(
+        config=SimpleNamespace(vision_diagram_requirements_max_items=1),
+        workflow_repository=_Repo(),
+    )
+
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.debate.diagram_requirement_selector.get_embedding",
+        lambda **kwargs: [],
+    )
+
+    requirements = selector.select_for_diagram(
+        diagram=SimpleNamespace(diagram_id="d-empty", caption="", surrounding_text="", page_number=1),
+        tsd_document=SimpleNamespace(pages=[]),
+        category=SimpleNamespace(id=1),
+        ingestion_job=SimpleNamespace(id=2),
+        effective_asvs_level=2,
+    )
+
+    assert [item.stable_key for item in requirements] == ["D-fallback-1"]
 
 
 class _ScalarResult:
@@ -153,7 +344,7 @@ def test_pipeline_diagram_analysis_uses_diagram_input_and_debate_service(monkeyp
         persistence_service=_FakePersistence(),
     )
 
-    def _fake_run_diagram_debate(*, diagram, requirements, tsd_context):
+    def _fake_run_diagram_debate(*, diagram, requirements, tsd_context, cancel_check=None):
         captured["diagram_cls"] = diagram.__class__.__name__
         captured["diagram_module"] = diagram.__class__.__module__
         captured["requirements"] = requirements
@@ -169,6 +360,7 @@ def test_pipeline_diagram_analysis_uses_diagram_input_and_debate_service(monkeyp
         )
 
     pipeline.diagram_debate_service = SimpleNamespace(run_diagram_debate=_fake_run_diagram_debate)
+    pipeline.diagram_analysis.diagram_debate_service = pipeline.diagram_debate_service
 
     monkeypatch.setattr(
         "sdr.core.database.SessionLocal",
@@ -197,6 +389,85 @@ def test_pipeline_diagram_analysis_uses_diagram_input_and_debate_service(monkeyp
     assert captured["diagram_module"] == "sdr.apps.ai.agents.vision"
     assert len(captured["requirements"]) == 1
     assert persisted
+    assert summary.diagram_findings_count == 1
+
+
+def test_pipeline_diagram_analysis_persists_na_for_non_architecture_images(monkeypatch, settings_override):
+    from sdr.apps.ai.agents.base import BaseAgent
+
+    settings_override(
+        AI_VISION_DIAGRAM_ANALYSIS_ENABLED=True,
+        AI_VISION_ENABLED=True,
+        AI_VISION_MIN_DIAGRAM_BYTES=512,
+        AI_VISION_MAX_CONCURRENCY=1,
+        AI_VISION_DIAGRAM_REQUIREMENTS_MAX_ITEMS=15,
+    )
+
+    responses = iter(
+        [
+            AIResponse(
+                content='{"diagram_scope_verdict":"non_architecture","diagram_scope_reasoning":"The image is a screenshot of a product page, not a system diagram.","overall_verdict":"not_met","confidence":0.64,"reasoning":"No boundary or MFA control is visible.","requirement_assessments":[{"requirement_id":"D-1","verdict":"not_met","reasoning":"The screenshot does not show the required control."}],"visual_elements_cited":["browser window"]}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+            AIResponse(
+                content='{"diagram_scope_verdict":"non_architecture","diagram_scope_reasoning":"This is a screenshot, not architecture/security scope.","outcome":"overturn","invalidated_requirements":[{"requirement_id":"D-1","verdict":"na","reason":"A screenshot cannot establish the diagram requirement."}],"validated_requirements":[],"hallucinated_claims":[],"reasoning":"The image should be treated as non-architecture."}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+            AIResponse(
+                content='{"diagram_scope_verdict":"uncertain","diagram_scope_reasoning":"The screenshot might relate to the application.","final_verdict":"not_met","confidence":0.60,"finding_description":"The image does not show the required control.","reasoning":"The image lacks the control.","assessed_requirements":[{"requirement_id":"D-1","verdict":"not_met","summary":"The control is not visible."}]}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+        ]
+    )
+    monkeypatch.setattr(BaseAgent, "_call_llm", lambda self, **kwargs: next(responses))
+
+    persisted = []
+
+    class _FakePersistence:
+        def persist_diagram_debate_finding(self, review, category, diagram_debate_output, summary):
+            persisted.append(diagram_debate_output)
+            summary.diagram_findings_count += 1
+            if diagram_debate_output.mediator_result["final_verdict"] == "na":
+                summary.na_count += 1
+            return object()
+
+    pipeline = TSDAnalysisPipeline(
+        ingestion_service=SimpleNamespace(),
+        retrieval_service=SimpleNamespace(),
+        debate_service=SimpleNamespace(),
+        persistence_service=_FakePersistence(),
+    )
+
+    monkeypatch.setattr(
+        "sdr.core.database.SessionLocal",
+        lambda: _SessionContext(_Session([_requirement()])),
+    )
+
+    tsd_document = SimpleNamespace(
+        all_diagrams=[_FakeDiagramBlock()],
+        full_text="The document embeds a screenshot of the product login page.",
+    )
+    tsd_document.all_diagrams[0].caption = "Login screenshot"
+    review = SimpleNamespace(id=1)
+    category = SimpleNamespace(id=10, code="web_application")
+    ingestion_job = SimpleNamespace(id=11)
+    summary = AnalysisSummary()
+
+    pipeline._run_diagram_analysis(
+        review=review,
+        tsd_document=tsd_document,
+        category=category,
+        ingestion_job=ingestion_job,
+        effective_asvs_level=2,
+        summary=summary,
+    )
+
+    assert persisted
+    assert persisted[0].mediator_result["final_verdict"] == "na"
+    assert persisted[0].mediator_result["diagram_scope_verdict"] == "non_architecture"
     assert summary.diagram_findings_count == 1
 
 

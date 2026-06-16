@@ -6,7 +6,13 @@ from sqlalchemy import select
 from sdr.core.database import get_db
 from ..models import Review, Finding
 from ..models.choices import ReviewStatus
-from ..schemas import ReviewSchema, ReviewCreateSchema, FindingSchema, PaginatedResponse
+from ..schemas import (
+    ReviewSchema,
+    ReviewCreateSchema,
+    ReviewTriggerSchema,
+    FindingSchema,
+    PaginatedResponse,
+)
 from ..tasks import dispatch_review_analysis
 
 router = APIRouter()
@@ -52,6 +58,7 @@ def create_review(payload: ReviewCreateSchema, db: Session = Depends(get_db)):
         ingestion_job_id=job.id,
         status=Review.STATUS_PENDING,
         asvs_level_override=payload.asvs_level_override,
+        analysis_mode=payload.analysis_mode.value,
     )
     db.add(review)
     db.flush()
@@ -141,7 +148,11 @@ def get_review_findings(
 
 
 @router.post("/{review_id}/trigger", response_model=ReviewSchema)
-def trigger_review(review_id: int, db: Session = Depends(get_db)):
+def trigger_review(
+    review_id: int,
+    payload: Optional[ReviewTriggerSchema] = None,
+    db: Session = Depends(get_db),
+):
     from sqlalchemy import delete
     
     review = db.get(Review, review_id)
@@ -158,6 +169,8 @@ def trigger_review(review_id: int, db: Session = Depends(get_db)):
         review.completed_at = None
         review.summary_json = {}
         review.retrieval_snapshot_json = None
+        if payload and payload.analysis_mode is not None:
+            review.analysis_mode = payload.analysis_mode.value
 
         review.status = Review.STATUS_RUNNING
         dispatch_res = dispatch_review_analysis(review.id)

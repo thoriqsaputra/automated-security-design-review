@@ -22,6 +22,7 @@ Output strict JSON only.
 
 _VISION_MEDIATOR_EVIDENCE_CHECKLIST = """\
 EVIDENCE EVALUATION (apply before finalizing verdict):
+0. Diagram scope: Is the image architecture/security-relevant at all?
 1. Visual grounding: Does the Hunter cite specific visible elements \
 or vague/implied ones?
 2. Critic validation: Did the Critic confirm or invalidate the key claims?
@@ -69,6 +70,8 @@ Respond with a single JSON object:
 
 {{
 {_REASONING_SCHEMA},
+  "diagram_scope_verdict": "architecture_relevant" | "non_architecture" | "uncertain",
+  "diagram_scope_reasoning": "<why the image is or is not architecture/security-relevant>",
   "final_verdict": {_VERDICT_VALUES},
   "confidence": <float 0.0-1.0>,
   "finding_description": "<clear description of what was found, suitable for a security report>",
@@ -83,6 +86,9 @@ Respond with a single JSON object:
 }}
 
 Rules:
+- If the image is judged "non_architecture", the final_verdict MUST be "na" and \
+ALL assessed_requirements MUST have verdict "na".
+- If all applicable requirements are "na", the final_verdict MUST be "na".
 - The final_verdict is the worst-case of individual assessed_requirements: \
 not_met > na > met.
 - If the Critic overturned key claims and you agree, adjust those requirements \

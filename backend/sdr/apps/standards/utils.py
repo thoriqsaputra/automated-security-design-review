@@ -30,6 +30,17 @@ def build_parameter_analysis_text(parameter_or_text, details: Optional[str] = No
     return "\n\n".join(parts)
 
 
+def build_diagram_requirement_analysis_text(diagram_requirement, source_parameter=None) -> str:
+    parts = [
+        getattr(diagram_requirement, "parent_section", "") or "",
+        getattr(diagram_requirement, "requirement_text", "") or "",
+        getattr(diagram_requirement, "verification_hint", "") or "",
+    ]
+    if source_parameter is not None:
+        parts.append(build_parameter_analysis_text(source_parameter))
+    return "\n\n".join(part.strip() for part in parts if part and part.strip())
+
+
 def stable_key(value: str) -> str:
     normalized = normalize_requirement_text(value)
     return hashlib.sha256(normalized.encode('utf-8')).hexdigest()[:24]

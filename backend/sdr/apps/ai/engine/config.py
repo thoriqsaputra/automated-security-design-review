@@ -18,7 +18,7 @@ class AnalysisPipelineConfig:
     batch_debate_ungrounded_not_met_policy: str = "preserve_not_met"
     parent_applicability_enabled: bool = True
     parent_applicability_confidence_threshold: float = 0.7
-    parent_applicability_fallback_mode: str = "assume_applicable"
+    parent_applicability_fallback_mode: str = "skip"
     parent_applicability_max_child_texts: int = 8
     vision_diagram_analysis_enabled: bool = True
     vision_enabled: bool = True
@@ -55,7 +55,7 @@ class AnalysisPipelineConfig:
                 getattr(settings, "AI_PARENT_APPLICABILITY_CONFIDENCE_THRESHOLD", 0.7)
             ),
             parent_applicability_fallback_mode=str(
-                getattr(settings, "AI_PARENT_APPLICABILITY_FALLBACK_MODE", "assume_applicable") or ""
+                getattr(settings, "AI_PARENT_APPLICABILITY_FALLBACK_MODE", "skip") or ""
             ).strip().lower(),
             parent_applicability_max_child_texts=max(
                 1, int(getattr(settings, "AI_PARENT_APPLICABILITY_MAX_CHILD_TEXTS", 8))

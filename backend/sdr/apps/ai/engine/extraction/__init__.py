@@ -1,5 +1,6 @@
 from .api import (
     detect_asvs_page_ranges,
+    detect_asvs_requirement_levels,
     extract_asvs_level_definitions_from_document,
     extract_diagram_requirements,
     extract_requirements_from_document,
@@ -9,6 +10,7 @@ from .config import ExtractionConfig
 from .document_reader import StandardDocumentReader
 from .llm_client import ExtractionLLMClient
 from .normalizers import (
+    _backfill_requirement_levels,
     _canonicalize_diagram_requirements,
     _clean_asvs_level_definitions,
     _coerce_asvs_level,
@@ -23,6 +25,7 @@ from .normalizers import (
 )
 from .services import (
     ASVSLevelDefinitionExtractionService,
+    ASVSRequirementLevelDetectionService,
     DiagramRequirementExtractionService,
     RequirementDocumentExtractionService,
     ASVSPageRangeDetectionService,
@@ -34,11 +37,13 @@ __all__ = [
     "StandardDocumentReader",
     "ExtractionLLMClient",
     "detect_asvs_page_ranges",
+    "detect_asvs_requirement_levels",
     "extract_asvs_level_definitions_from_document",
     "extract_structured_requirements",
     "extract_requirements_from_document",
     "extract_diagram_requirements",
     "ASVSPageRangeDetectionService",
+    "ASVSRequirementLevelDetectionService",
     "ASVSLevelDefinitionExtractionService",
     "StructuredRequirementExtractionService",
     "RequirementDocumentExtractionService",
@@ -52,6 +57,7 @@ __all__ = [
     "_coerce_asvs_level",
     "_clean_asvs_level_definitions",
     "_get_item_length",
+    "_backfill_requirement_levels",
     "_canonicalize_diagram_requirements",
     "_merge_requirements",
 ]

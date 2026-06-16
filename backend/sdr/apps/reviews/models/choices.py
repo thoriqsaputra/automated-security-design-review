@@ -12,6 +12,12 @@ class ReviewStatus(str, enum.Enum):
     REJECTED = "rejected"
 
 
+class ReviewAnalysisMode(str, enum.Enum):
+    DEFAULT = "default"
+    TEXT_ONLY = "text_only"
+    DIAGRAM_ONLY = "diagram_only"
+
+
 class FindingStatus(str, enum.Enum):
     OPEN = "open"
     CLOSED = "closed"

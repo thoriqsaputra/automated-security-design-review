@@ -126,6 +126,9 @@ class DiagramDebateService:
         ).strip().lower()
         if hunter_verdict not in {VERDICT_MET, VERDICT_NOT_MET, VERDICT_NA}:
             hunter_result["overall_verdict"] = VERDICT_NA
+        hunter_result["diagram_scope_verdict"] = self._normalize_scope(
+            hunter_result.get("diagram_scope_verdict")
+        )
         output.hunter_result = hunter_result
 
         self.logger.info(
@@ -164,11 +167,16 @@ class DiagramDebateService:
             critic_result = {
                 "outcome": "uphold",
                 "reasoning": "Critic call failed; defaulting to uphold.",
+                "diagram_scope_verdict": hunter_result.get("diagram_scope_verdict", "uncertain"),
+                "diagram_scope_reasoning": "Critic call failed; preserving Hunter scope classification.",
             }
 
         critic_outcome = str(critic_result.get("outcome", "uphold")).strip().lower()
         if critic_outcome not in {"uphold", "overturn"}:
             critic_result["outcome"] = "uphold"
+        critic_result["diagram_scope_verdict"] = self._normalize_scope(
+            critic_result.get("diagram_scope_verdict")
+        )
         output.critic_result = critic_result
 
         self.logger.info(
@@ -206,6 +214,12 @@ class DiagramDebateService:
                 "finding_description": hunter_result.get("reasoning", ""),
                 "recommendation": None,
                 "assessed_requirements": hunter_result.get("requirement_assessments", []),
+                "diagram_scope_verdict": critic_result.get(
+                    "diagram_scope_verdict",
+                    hunter_result.get("diagram_scope_verdict", "uncertain"),
+                ),
+                "diagram_scope_reasoning": critic_result.get("diagram_scope_reasoning")
+                or hunter_result.get("diagram_scope_reasoning"),
             }
 
         final_verdict = str(
@@ -213,8 +227,15 @@ class DiagramDebateService:
         ).strip().lower()
         if final_verdict not in {VERDICT_MET, VERDICT_NOT_MET, VERDICT_NA}:
             mediator_result["final_verdict"] = VERDICT_NA
+        mediator_result["diagram_scope_verdict"] = self._normalize_scope(
+            mediator_result.get("diagram_scope_verdict")
+        )
 
-        mediator_result = _apply_diagram_evidence_policy(mediator_result, critic_result)
+        mediator_result = _apply_diagram_evidence_policy(
+            mediator_result,
+            critic_result,
+            hunter_result,
+        )
         mediator_result = _calibrate_diagram_confidence(
             mediator_result, hunter_result, critic_result
         )
@@ -227,6 +248,13 @@ class DiagramDebateService:
             mediator_result.get("confidence", 0.0),
         )
         return output
+
+    @staticmethod
+    def _normalize_scope(value: Any) -> str:
+        normalized = str(value or "uncertain").strip().lower()
+        if normalized in {"architecture_relevant", "non_architecture", "uncertain"}:
+            return normalized
+        return "uncertain"
 
 
 __all__ = ["DiagramDebateService"]

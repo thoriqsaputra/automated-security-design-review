@@ -10,6 +10,7 @@ from sqlalchemy.orm import joinedload
 from sdr.apps.reviews.models import Review
 from sdr.apps.standards.models import (
     ASVSLevelDefinition,
+    CategoryDiagramRequirementEmbedding,
     CategoryDiagramRequirement,
     CategoryParameterChild,
     CategoryParameterParent,
@@ -80,6 +81,18 @@ class ReviewWorkflowRepository(ABC):
         category_id: Any,
         ingestion_job_id: Any,
         effective_asvs_level: int,
+    ) -> List[Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def search_diagram_requirements(
+        self,
+        *,
+        category_id: Any,
+        ingestion_job_id: Any,
+        effective_asvs_level: int,
+        query_embedding: List[float],
+        top_k: int,
     ) -> List[Any]:
         raise NotImplementedError
 
@@ -205,3 +218,35 @@ class SqlAlchemyReviewWorkflowRepository(ReviewWorkflowRepository):
                 )
                 .order_by(CategoryDiagramRequirement.asvs_level, CategoryDiagramRequirement.ordinal)
             ).scalars().all()
+
+    def search_diagram_requirements(
+        self,
+        *,
+        category_id: Any,
+        ingestion_job_id: Any,
+        effective_asvs_level: int,
+        query_embedding: List[float],
+        top_k: int,
+    ) -> List[Any]:
+        with core_database.SessionLocal() as db:
+            distance_expr = (
+                CategoryDiagramRequirementEmbedding.embedding.cosine_distance(query_embedding)
+                .label("distance")
+            )
+            rows = db.execute(
+                select(CategoryDiagramRequirement, distance_expr)
+                .join(
+                    CategoryDiagramRequirementEmbedding,
+                    CategoryDiagramRequirementEmbedding.diagram_requirement_id
+                    == CategoryDiagramRequirement.id,
+                )
+                .where(
+                    CategoryDiagramRequirement.category_id == category_id,
+                    CategoryDiagramRequirement.ingestion_job_id == ingestion_job_id,
+                    CategoryDiagramRequirement.asvs_level <= effective_asvs_level,
+                    CategoryDiagramRequirementEmbedding.is_active == True,
+                )
+                .order_by("distance", CategoryDiagramRequirement.ordinal)
+                .limit(top_k)
+            ).all()
+            return [row[0] for row in rows]

@@ -32,6 +32,7 @@ EXCLUSIONS (CRITICAL - DO NOT EXTRACT THESE):
 - DO NOT extract generic descriptions or lists of security domains (e.g., "Security domains include ARCH, AUTH...").
 - DO NOT extract Compliance, Audit, Verification, or Testing processes (e.g., SAST, DAST, Manual Penetration Testing procedures).
 - DO NOT extract glossaries, definitions of basic terms, or administrative document metadata.
+- DO NOT extract explanatory notes, caution boxes, advisory "Note:" paragraphs, examples, or side commentary unless the note itself is explicitly written as a normative requirement.
 - DO NOT extract items marked as [DELETED], [BLANK], or [RESERVED]. Skip them entirely.
 - If you skip a deleted item, DO NOT duplicate the surrounding items to fill the gap. Maintain the original IDs (e.g. if 4.1.4 is deleted, the next item remains 4.1.5). DO NOT renumber subsequent items.
 
@@ -186,4 +187,3 @@ Respond with a single JSON object:
   ]
 }}
 """
-

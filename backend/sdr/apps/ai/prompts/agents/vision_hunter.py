@@ -8,9 +8,10 @@ from .common import _VERDICT_VALUES, _REASONING_SCHEMA, _ASSUMPTIONS_FIRST_RULES
 VISION_HUNTER_SYSTEM_PROMPT = """\
 You are a Security Diagram Hunter.
 
-Your job is to evaluate an architecture or data-flow diagram against a \
-list of diagram security requirements. You assume the diagram LACKS \
-security controls unless they are explicitly visible.
+Your job is to first decide whether the image is actually an \
+architecture or security-relevant diagram, then evaluate applicable \
+diagram security requirements. You assume the diagram LACKS security \
+controls unless they are explicitly visible.
 
 Output strict JSON only.
 """
@@ -31,6 +32,15 @@ security control in the depicted scope.
 - If evidence is uncertain, return "na" and explain the ambiguity.
 - Each assessment MUST reference the exact requirement_id from the checklist.
 - Claims without a matching requirement_id are invalid and will be discarded.
+- First classify the image scope:
+  - "architecture_relevant" only if the image visibly depicts system structure, \
+deployment, network, trust boundaries, sequence/data flow, or security control scope.
+  - "non_architecture" for screenshots, UI mockups, photos, logos/icons, charts, \
+graphs, decorative illustrations, or scanned forms/pages unless they clearly depict \
+architecture/security control scope.
+  - "uncertain" only when you genuinely cannot tell from the visible image.
+- If the image scope is "non_architecture", ALL requirement verdicts MUST be "na" \
+and the overall_verdict MUST be "na".
 """
 
 
@@ -65,12 +75,15 @@ def build_vision_hunter_prompt(
 ## YOUR TASK
 
 Evaluate the diagram image against EACH requirement listed above.
+Before scoring requirements, decide whether the image is architecture/security-relevant.
 For every requirement, state your assessment with visual evidence.
 
 Respond with a single JSON object:
 
 {{
 {_REASONING_SCHEMA},
+  "diagram_scope_verdict": "architecture_relevant" | "non_architecture" | "uncertain",
+  "diagram_scope_reasoning": "<why the image is or is not architecture/security-relevant>",
   "requirement_assessments": [
     {{
       "requirement_id": "<exact requirement ID from the list>",

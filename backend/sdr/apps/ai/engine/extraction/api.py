@@ -12,6 +12,7 @@ from .llm_client import ExtractionLLMClient
 from .services import (
     ASVSLevelDefinitionExtractionService,
     ASVSPageRangeDetectionService,
+    ASVSRequirementLevelDetectionService,
     DiagramRequirementExtractionService,
     RequirementDocumentExtractionService,
     StructuredRequirementExtractionService,
@@ -40,6 +41,23 @@ def detect_asvs_page_ranges(
         get_local_file_path=get_local_file_path,
     )
     return service.detect(source_doc).to_dict()
+
+
+def detect_asvs_requirement_levels(
+    source_doc: StandardSourceDocument,
+    *,
+    start_page: Optional[int] = None,
+    end_page: Optional[int] = None,
+) -> Dict[str, int]:
+    service = ASVSRequirementLevelDetectionService(
+        get_local_file_path=get_local_file_path,
+    )
+    result = service.detect(
+        source_doc,
+        start_page=start_page,
+        end_page=end_page,
+    )
+    return result.levels
 
 
 def extract_asvs_level_definitions_from_document(
@@ -73,6 +91,9 @@ def extract_requirements_from_document(
         document_reader=_build_document_reader(),
         structured_extractor=StructuredRequirementExtractionService(
             llm_client=_build_llm_client(),
+        ),
+        requirement_level_detector=ASVSRequirementLevelDetectionService(
+            get_local_file_path=get_local_file_path,
         ),
         config=_build_config(),
     )

@@ -57,6 +57,9 @@ class TextDebateCoordinator:
     def split_batches(self, parameters: List[Any], batch_size: int) -> List[List[Any]]:
         return [parameters[idx : idx + batch_size] for idx in range(0, len(parameters), batch_size)]
 
+    def _should_assume_applicable_on_low_confidence(self, fallback_mode: str) -> bool:
+        return (fallback_mode or "").strip().lower() == "assume_applicable"
+
     def run_single_analysis_for_category(
         self,
         *,
@@ -704,6 +707,19 @@ class TextDebateCoordinator:
             matched_domain_terms = classification.matched_terms
             classification_reason = classification.reason
         domain_keywords.extend(DOMAIN_KEYWORDS.get(primary_domain, DOMAIN_KEYWORDS["general"]))
+        family_scope_terms = []
+        raw_scope_parts = [
+            (getattr(parent, "title", "") or "").strip(),
+            (getattr(parent, "description", "") or "").strip(),
+            "\n".join(child_requirements[:4]),
+        ]
+        for part in raw_scope_parts:
+            family_scope_terms.extend(re.findall(r"[A-Za-z][A-Za-z0-9_-]{2,}", part))
+        family_scope_terms = [
+            term.lower()
+            for term in family_scope_terms
+            if term and term.lower() not in {"the", "and", "for", "with", "control", "controls", "security", "requirement", "requirements"}
+        ]
         return {
             "parent_title": (getattr(parent, "title", "") or "").strip(),
             "parent_description": (getattr(parent, "description", "") or "").strip(),
@@ -714,6 +730,7 @@ class TextDebateCoordinator:
             "domain_classification_reason": classification_reason,
             "matched_domain_terms": matched_domain_terms,
             "generated_domain_keywords": list(dict.fromkeys(domain_keywords)),
+            "family_scope_terms": list(dict.fromkeys(family_scope_terms))[:12],
             "retry_queries": [],
         }
 
@@ -763,6 +780,7 @@ class TextDebateCoordinator:
                 parent_description=(getattr(parent, "description", "") or "").strip(),
                 child_requirements=child_requirement_texts,
                 retrieved_context="\n\n".join(retrieval_result.context_chunks or []),
+                query_details=query_details,
             )
             parent_payload = {
                 "parent_id": getattr(parent, "id", None),
@@ -771,6 +789,7 @@ class TextDebateCoordinator:
                 "confidence": applicability.confidence,
                 "reasoning": applicability.reasoning,
                 "evidence": list(applicability.evidence or []),
+                "decision_mode": applicability.decision_mode,
                 "error": applicability.error,
                 "child_count": len(child_parameters),
             }
@@ -791,7 +810,23 @@ class TextDebateCoordinator:
                 continue
 
             if not applicability.applicable and applicability.confidence < confidence_threshold:
-                parent_payload["fallback_mode"] = fallback_mode or "assume_applicable"
+                parent_payload["fallback_mode"] = fallback_mode or "skip"
+                if self._should_assume_applicable_on_low_confidence(fallback_mode):
+                    summary.applicability["parents_applicable"] += 1
+                    applicable_parameters.extend(child_parameters)
+                    continue
+                summary.applicability["parents_not_applicable"] += 1
+                summary.applicability["children_marked_na_by_parent"] += len(child_parameters)
+                self.persist_parent_not_applicable_children(
+                    review=review,
+                    category=category,
+                    ingestion_job=ingestion_job,
+                    parameters=child_parameters,
+                    summary=summary,
+                    applicability_payload=parent_payload,
+                    retrieval_query_details=query_details,
+                )
+                continue
 
             summary.applicability["parents_applicable"] += 1
             applicable_parameters.extend(child_parameters)
