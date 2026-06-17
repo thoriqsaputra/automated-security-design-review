@@ -47,6 +47,7 @@ def build_hunter_prompt(
     context_chunks: List[str],
     persona_focus: Optional[str] = None,
     killed_assumptions: Optional[List[dict]] = None,
+    available_block_ids: Optional[List[str]] = None,
 ) -> str:
     chunks_text = "\n\n---\n\n".join(context_chunks)
     persona_block = f"\nPersona focus: {persona_focus}" if persona_focus else ""
@@ -61,6 +62,13 @@ def build_hunter_prompt(
                 lines.append(f"- {text}")
         if lines:
             killed_block = "\nDo not repeat these invalidated assumptions:\n" + "\n".join(lines)
+    block_ids_block = ""
+    if available_block_ids:
+        block_ids_block = (
+            "\nVALID CITATION BLOCK IDS (only cite block_ids from this list — "
+            "do not invent or guess IDs):\n"
+            + ", ".join(sorted(available_block_ids))
+        )
 
     return f"""\
 ## SECURITY PARAMETER TO EVALUATE
@@ -101,14 +109,15 @@ Reasoning -> assumptions: ["Only retrieved context may be used."]; logic_summary
 	- "met"     → TSD contains explicit evidence satisfying the requirement.
 	- "not_met" → The requirement is applicable, and the TSD lacks implementation evidence or explicitly contradicts the requirement.
 	- "na"      → The retrieved context does not establish the technology, data flow, control trigger, or document scope needed to assess this requirement.
-	- citations → List only block_ids from CONTEXT_CHUNK ids in the context above. Empty list if none.
+	- citations → Only use block_ids that appear literally in the CONTEXT_CHUNK headers above. Do not invent or guess block_ids.
 	- A "met" verdict must include at least one valid citation and an evidence quote.
+	- A "not_met" verdict where evidence_found=true must include citations to the block_ids you examined and found insufficient. If you cannot identify a relevant block_id, set evidence_found=false instead.
 	- First decide applicability, then implementation. A heading, graph node, requirement title, or baseline control text is not implementation evidence.
 	- For "not_met", checked_context and evidence_assessment must identify the applicability basis and the specific missing control evidence.
 	- Do not use generic phrases like "lacks explicit evidence" alone. Name the expected control, enforcement point, validation behavior, configuration, or component that is missing.
 	- confidence → Your certainty in the verdict (1.0 = certain, 0.0 = guessing).
 	- Use evidence-only reasoning; do not infer controls that are not explicitly stated.
-{killed_block}
+{killed_block}{block_ids_block}
 {_ASSUMPTIONS_FIRST_RULES}
 """
 
@@ -161,7 +170,8 @@ Return strict JSON with exactly one result object per child id:
 Rules:
 - Use child_id exactly as supplied.
 - A "met" verdict must include at least one valid citation and evidence quote.
+- A "not_met" verdict where evidence_found=true must include citations to the block_ids examined and found insufficient. If no relevant block_id exists, set evidence_found=false.
 - For "not_met", explain what explicit evidence is missing for that child.
-- Cite only block_ids from CONTEXT_CHUNK ids in SHARED TSD CONTEXT.
+- Only cite block_ids that appear literally in the CONTEXT_CHUNK headers in SHARED TSD CONTEXT. Do not invent or guess block_ids.
 """
 

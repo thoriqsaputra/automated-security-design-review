@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import type { Finding } from '../../../api/reviews';
+import type { CitationAnchor, Finding } from '../../../api/reviews';
 import {
   formatLabel,
   formatValue,
@@ -202,17 +202,18 @@ export function SeverityAnalysisSection({ analysis }: { analysis: Record<string,
   );
 }
 
-export function FindingDetails({ finding }: { finding: Finding }) {
+interface FindingDetailsProps {
+  finding: Finding;
+  activeCitationId?: number | null;
+  onCitationSelect?: (citation: CitationAnchor) => void;
+}
+
+export function FindingDetails({ finding, activeCitationId = null, onCitationSelect }: FindingDetailsProps) {
   const auditItems = [
     { label: 'Finding ID', value: finding.id },
     { label: 'Review ID', value: finding.review_id },
-    { label: 'Category ID', value: finding.category_id },
     { label: 'Parent Parameter ID', value: finding.parent_parameter_id },
     { label: 'Child Parameter ID', value: finding.child_parameter_id },
-    { label: 'Has Citations', value: finding.has_citations ? 'Yes' : 'No' },
-    { label: 'Citation Count', value: finding.citation_count },
-    { label: 'Created At', value: new Date(finding.created_at).toLocaleString() },
-    { label: 'Updated At', value: new Date(finding.updated_at).toLocaleString() },
   ];
 
   return (
@@ -228,7 +229,6 @@ export function FindingDetails({ finding }: { finding: Finding }) {
           },
           { label: 'Severity Score', value: finding.severity_score !== null ? finding.severity_score.toFixed(1) : null },
           { label: 'Finding Type', value: formatLabel(finding.finding_type) },
-          { label: 'Actionable', value: finding.is_actionable ? 'Yes' : 'No' },
         ]}
       />
 
@@ -236,10 +236,8 @@ export function FindingDetails({ finding }: { finding: Finding }) {
       <TextBlock title="Recommendation">{finding.recommendation}</TextBlock>
 
       <section className="space-y-3 rounded-xl border border-surface-border bg-surface-base/50 p-4">
-        <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Requirement Traceability</p>
         <FieldGrid
           items={[
-            { label: 'Reference', value: finding.requirement_reference },
             { label: 'Category', value: [finding.category_code, finding.category_name].filter(Boolean).join(' - ') },
             { label: 'Parent Parameter', value: finding.parent_parameter_title },
             { label: 'Child Stable Key', value: finding.child_parameter_stable_key },
@@ -321,31 +319,46 @@ export function FindingDetails({ finding }: { finding: Finding }) {
 
       {finding.citations && finding.citations.length > 0 && (
         <section className="space-y-2 rounded-xl border border-surface-border bg-surface-base/50 p-4">
-          <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Evidence Citations</p>
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Evidence Citations</p>
+            <p className="text-[11px] text-text-muted">Click a citation to jump the PDF viewer.</p>
+          </div>
           <div className="space-y-2">
-            {finding.citations.map((citation) => (
-              <div key={citation.id} className="bg-surface-base border border-surface-border rounded p-3">
-                <p className="text-[10px] font-mono text-text-muted mb-1 flex flex-wrap items-center gap-2">
-                  <span className="bg-midnight px-1.5 py-0.5 rounded">Page {citation.page_number}</span>
-                  <span className="bg-midnight px-1.5 py-0.5 rounded">{citation.anchor_type}</span>
-                  <span className="opacity-70 break-all">{citation.block_id}</span>
-                </p>
-                {citation.quoted_text && (
-                  <p className="text-sm text-text-secondary italic border-l-2 border-flame/50 pl-3 py-0.5">
-                    "{citation.quoted_text}"
+            {finding.citations.map((citation) => {
+              const isActive = activeCitationId === citation.id;
+              return (
+                <button
+                  key={citation.id}
+                  type="button"
+                  onClick={() => onCitationSelect?.(citation)}
+                  className={`w-full rounded p-3 text-left transition-colors ${
+                    isActive
+                      ? 'border border-flame bg-flame/10 shadow-[0_0_0_1px_rgba(240,89,65,0.25)]'
+                      : 'border border-surface-border bg-surface-base hover:border-flame/40 hover:bg-flame/5'
+                  }`}
+                >
+                  <p className="text-[10px] font-mono text-text-muted mb-1 flex flex-wrap items-center gap-2">
+                    <span className="bg-midnight px-1.5 py-0.5 rounded">Page {citation.page_number}</span>
+                    <span className="bg-midnight px-1.5 py-0.5 rounded">{citation.anchor_type}</span>
+                    <span className="opacity-70 break-all">{citation.block_id}</span>
                   </p>
-                )}
-                <FieldGrid
-                  items={[
-                    { label: 'X0', value: citation.bbox_x0 },
-                    { label: 'Y0', value: citation.bbox_y0 },
-                    { label: 'X1', value: citation.bbox_x1 },
-                    { label: 'Y1', value: citation.bbox_y1 },
-                    { label: 'Created At', value: new Date(citation.created_at).toLocaleString() },
-                  ]}
-                />
-              </div>
-            ))}
+                  {citation.quoted_text && (
+                    <p className="text-sm text-text-secondary italic border-l-2 border-flame/50 pl-3 py-0.5">
+                      "{citation.quoted_text}"
+                    </p>
+                  )}
+                  <FieldGrid
+                    items={[
+                      { label: 'X0', value: typeof citation.bbox_x0 === 'number' ? citation.bbox_x0.toFixed(2) : citation.bbox_x0 },
+                      { label: 'Y0', value: typeof citation.bbox_y0 === 'number' ? citation.bbox_y0.toFixed(2) : citation.bbox_y0 },
+                      { label: 'X1', value: typeof citation.bbox_x1 === 'number' ? citation.bbox_x1.toFixed(2) : citation.bbox_x1 },
+                      { label: 'Y1', value: typeof citation.bbox_y1 === 'number' ? citation.bbox_y1.toFixed(2) : citation.bbox_y1 },
+                      { label: 'Created At', value: new Date(citation.created_at).toLocaleString() },
+                    ]}
+                  />
+                </button>
+              );
+            })}
           </div>
         </section>
       )}

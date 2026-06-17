@@ -1,6 +1,6 @@
 from typing import List, Dict, Any
 from fastapi import APIRouter, Depends, HTTPException, Query, status
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import select, delete, func
 
 from sdr.core.database import get_db
@@ -100,11 +100,15 @@ def get_category_parameters(
 
     parents = db.execute(
         select(CategoryParameterParent)
+        .options(
+            selectinload(CategoryParameterParent.children),
+            selectinload(CategoryParameterParent.control_summary_requirements)
+        )
         .where(
             CategoryParameterParent.category_id == category.id,
             CategoryParameterParent.ingestion_job_id == job.id
         )
-    ).scalars().all()
+    ).scalars().unique().all()
 
     diagram_reqs = db.execute(
         select(CategoryDiagramRequirement)

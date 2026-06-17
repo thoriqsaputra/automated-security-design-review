@@ -113,6 +113,7 @@ class CategoryParameterParentSchema(BaseModel):
     title_normalized: str
     description: Optional[str] = None
     children: List[CategoryParameterChildSchema] = Field(default_factory=list)
+    control_summary_requirements: List["CategoryControlSummaryRequirementSchema"] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -125,6 +126,18 @@ class CategoryDiagramRequirementSchema(BaseModel):
     verification_hint: str
     parent_section: str
     asvs_level: Optional[int] = None
+    ordinal: int = 0
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class CategoryControlSummaryRequirementSchema(BaseModel):
+    id: int
+    stable_key: str
+    requirement_text: str
+    analysis_hint: str
+    asvs_level: Optional[int] = None
+    covered_child_keys: List[str] = Field(default_factory=list)
     ordinal: int = 0
 
     model_config = ConfigDict(from_attributes=True)

@@ -7,6 +7,7 @@ from .parameters import (
 )
 from .analysis import CategoryParameterEmbedding, CategoryDiagramRequirementEmbedding
 from .diagram_requirement import CategoryDiagramRequirement
+from .control_summary_requirement import CategoryControlSummaryRequirement
 
 __all__ = [
     "StandardsBigIntBase",
@@ -19,4 +20,5 @@ __all__ = [
     "CategoryParameterEmbedding",
     "CategoryDiagramRequirementEmbedding",
     "CategoryDiagramRequirement",
+    "CategoryControlSummaryRequirement",
 ]

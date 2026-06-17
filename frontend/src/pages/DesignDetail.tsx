@@ -1,8 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { FileText, Play, ArrowLeft } from 'lucide-react';
-import Card from '../components/ui/Card';
-import StatusBadge from '../components/ui/StatusBadge';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { getDesign, type DesignDetail } from '../api/designs';
 import { listCategories, type StandardCategory } from '../api/standards';
@@ -77,7 +75,7 @@ export default function DesignDetailPage() {
           </div>
           <div>
             <h1 className="text-2xl font-bold text-text-primary">{design.name}</h1>
-            <p className="text-sm text-text-muted">{design.original_filename}</p>
+            <p className="text-sm text-text-muted">{new Date(design.created_at).toLocaleDateString()} • {reviews.length} reviews</p>
           </div>
         </div>
         <button
@@ -86,20 +84,6 @@ export default function DesignDetailPage() {
         >
           <Play size={16} /> New Review
         </button>
-      </div>
-
-      {/* Info Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
-        {[
-          { label: 'Status', value: <StatusBadge status={design.status} /> },
-          { label: 'Created', value: new Date(design.created_at).toLocaleDateString() },
-          { label: 'Reviews', value: reviews.length },
-        ].map(item => (
-          <Card key={item.label}>
-            <p className="text-xs text-text-muted mb-1">{item.label}</p>
-            <div className="text-sm font-medium text-text-primary">{item.value}</div>
-          </Card>
-        ))}
       </div>
 
       {/* Reviews */}

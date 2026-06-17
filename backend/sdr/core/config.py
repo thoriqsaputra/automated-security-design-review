@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     AI_MODEL_DIAGRAM_REQUIREMENT_EXTRACTION: str = Field(default="meta/llama-3.1-8b-instruct")
     AI_STANDARD_EXTRACTION_MAX_WORKERS: int = Field(default=3)
     AI_DIAGRAM_REQUIREMENT_EXTRACTION_MAX_CONCURRENCY: int = Field(default=3)
+    AI_CFSR_EXTRACTION_MAX_CONCURRENCY: int = Field(default=3)
     AI_MODEL_TSD_INGESTION: str = Field(default="meta/llama-3.1-8b-instruct")
     AI_MODEL_ORCHESTRATOR: str = Field(default="meta/llama-3.1-70b-instruct")
     AI_MODEL_CONTRACT_SYNTHESIZER: str = Field(default="meta/llama-3.1-70b-instruct")
@@ -75,6 +76,7 @@ class Settings(BaseSettings):
     AI_NVIDIA_RPM_LIMIT: int = Field(default=4)
     AI_NVIDIA_429_COOLDOWN_SECONDS: float = Field(default=5.0)
     AI_OPENROUTER_RPM_LIMIT: int = Field(default=12)
+    AI_CFSR_MAX_PER_PARENT: int = Field(default=5)
 
     AI_DEBATE_SCOPE_STRATIFIED_HUNTING_ENABLED: bool = Field(default=False)
     AI_DEBATE_SCOPE_CHUNK_THRESHOLD: int = Field(default=15)

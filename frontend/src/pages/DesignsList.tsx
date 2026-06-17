@@ -2,7 +2,6 @@ import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Plus, FileText, Trash2 } from 'lucide-react';
 import Card from '../components/ui/Card';
-import StatusBadge from '../components/ui/StatusBadge';
 import EmptyState from '../components/ui/EmptyState';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import { listDesigns, createDesign, deleteDesign, type Design } from '../api/designs';
@@ -54,7 +53,7 @@ export default function DesignsList() {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-text-primary">Designs</h1>
-          <p className="text-sm text-text-muted mt-1">Technical Security Design documents</p>
+          <p className="text-sm text-text-muted mt-1">Technical Specification documents</p>
         </div>
         <button
           onClick={() => setShowModal(true)}
@@ -93,7 +92,6 @@ export default function DesignsList() {
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
-                  <StatusBadge status={d.status} />
                   <button
                     onClick={(e) => handleDelete(e, d.id)}
                     className="p-2 rounded-lg hover:bg-crimson/15 text-text-muted hover:text-crimson transition-colors"

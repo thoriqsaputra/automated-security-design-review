@@ -30,6 +30,7 @@ from sdr.apps.ai.utils.embedding import (
 )
 from .models import (
     ASVSLevelDefinition,
+    CategoryControlSummaryRequirement,
     CategoryParameterChild,
     CategoryParameterParent,
     CategoryDiagramRequirement,
@@ -135,6 +136,10 @@ def _natural_keys(text: str):
     return [_atoi(c) for c in re.split(r'(\d+)', text)]
 
 
+# Matches bare section IDs like "11.1.8", "V2.1.3", "REQ-01" with no description text
+_BARE_SECTION_ID_RE = re.compile(r"^\s*[A-Za-z\-]*\d+(\.\d+){1,4}\s*$")
+
+
 def _coerce_requirement_text(requirement_item: Any) -> str:
     """
     Backward-compatible requirement text extraction.
@@ -224,6 +229,7 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
         extract_asvs_level_definitions_from_document,
         extract_requirements_from_document,
         extract_diagram_requirements,
+        extract_control_family_summary_requirements,
     )
     
     with SessionLocal() as db:
@@ -256,6 +262,9 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
             'diagram_requirements': 0,
             'diagram_extraction_status': 'pending',
             'diagram_extraction_error': None,
+            'cfsr_requirements': 0,
+            'cfsr_extraction_status': 'pending',
+            'cfsr_extraction_error': None,
             'mode': mode,
             'resolved_categories': {job.category.code if job.category else "unknown": 0},
             'version_no': getattr(job, 'version_no', 1),
@@ -308,6 +317,10 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
         db.execute(
             delete(CategoryDiagramRequirement)
             .where(CategoryDiagramRequirement.ingestion_job_id == job.id)
+        )
+        db.execute(
+            delete(CategoryControlSummaryRequirement)
+            .where(CategoryControlSummaryRequirement.ingestion_job_id == job.id)
         )
         db.execute(
             delete(ASVSLevelDefinition)
@@ -492,6 +505,11 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                         for req in sorted_requirements:
                             raw_text = _coerce_requirement_text(req)
                             details = _coerce_requirement_details(req)
+                            # If LLM put only a bare section ID in requirement and the real
+                            # control text ended up in details, promote details to primary field.
+                            if _BARE_SECTION_ID_RE.match(raw_text) and len(details) > 15:
+                                raw_text = details
+                                details = ""
                             asvs_level = _coerce_asvs_level(req)
                             analysis_text = build_parameter_analysis_text(raw_text, details)
                             normalized = normalize_requirement_text(analysis_text)
@@ -552,35 +570,81 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                     logger.error("Error generating embeddings: %s", exc)
                     summary['embeddings_failed'] = len(items_to_embed)
 
-            # Step 3.5 — Diagram requirement extraction
-            logger.info("Extracting diagram requirements for job %s", job.id)
-            try:
-                summary['detailed_progress'] = {'label': 'Extracting diagram requirements', 'percentage': 95}
-                job.summary_json = summary
-                from sqlalchemy.orm.attributes import flag_modified
-                flag_modified(job, "summary_json")
-                db.commit()
+            # Steps 3.5 + 3.7 — Diagram requirement and CFSR extraction (parallel)
+            # Both phases need the same child params from Phase 1 and are independent of each other.
+            # Pre-fetch both DB queries sequentially (fast), then run LLM extraction in parallel.
+            logger.info("Pre-fetching parameters for parallel diagram + CFSR extraction, job %s", job.id)
+            from sqlalchemy.orm.attributes import flag_modified
+            from sqlalchemy.orm import joinedload as _joinedload_cfsr
 
-                diagram_req_params = db.execute(
-                    select(CategoryParameterChild)
-                    .join(CategoryParameterParent, CategoryParameterChild.parent_id == CategoryParameterParent.id)
-                    .where(CategoryParameterParent.category_id == job.category_id)
-                    .where(CategoryParameterParent.ingestion_job_id == job.id)
-                    .order_by(CategoryParameterChild.id)
-                ).scalars().all()
+            summary['detailed_progress'] = {'label': 'Extracting diagram requirements and control family summaries', 'percentage': 95}
+            job.summary_json = summary
+            flag_modified(job, "summary_json")
+            db.commit()
 
+            diagram_req_params = db.execute(
+                select(CategoryParameterChild)
+                .join(CategoryParameterParent, CategoryParameterChild.parent_id == CategoryParameterParent.id)
+                .where(CategoryParameterParent.category_id == job.category_id)
+                .where(CategoryParameterParent.ingestion_job_id == job.id)
+                .order_by(CategoryParameterChild.id)
+            ).scalars().all()
+
+            cfsr_params = db.execute(
+                select(CategoryParameterChild)
+                .options(_joinedload_cfsr(CategoryParameterChild.parent))
+                .join(CategoryParameterParent, CategoryParameterChild.parent_id == CategoryParameterParent.id)
+                .where(CategoryParameterParent.category_id == job.category_id)
+                .where(CategoryParameterParent.ingestion_job_id == job.id)
+                .order_by(CategoryParameterChild.parent_id, CategoryParameterChild.ordinal)
+            ).scalars().all()
+
+            # Run both LLM extraction calls in parallel (they don't touch the DB)
+            diagram_reqs: list = []
+            cfsrs: list = []
+            diagram_exc: Optional[Exception] = None
+            cfsr_exc: Optional[Exception] = None
+
+            parallel_futures: Dict[str, Any] = {}
+            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="ParallelExtract") as _pool:
                 if diagram_req_params:
-                    diagram_reqs = extract_diagram_requirements(
+                    parallel_futures["diagram"] = _pool.submit(
+                        extract_diagram_requirements,
                         parameters=list(diagram_req_params),
                         category_id=job.category_id,
                         ingestion_job_id=job.id,
                     )
+                if cfsr_params:
+                    parallel_futures["cfsr"] = _pool.submit(
+                        extract_control_family_summary_requirements,
+                        parameters=list(cfsr_params),
+                        category_id=job.category_id,
+                        ingestion_job_id=job.id,
+                    )
+
+            if "diagram" in parallel_futures:
+                try:
+                    diagram_reqs = parallel_futures["diagram"].result()
+                except Exception as exc:
+                    diagram_exc = exc
+            if "cfsr" in parallel_futures:
+                try:
+                    cfsrs = parallel_futures["cfsr"].result()
+                except Exception as exc:
+                    cfsr_exc = exc
+
+            # Persist diagram requirements
+            logger.info("Persisting diagram requirements for job %s", job.id)
+            try:
+                if diagram_exc:
+                    raise diagram_exc
+
+                if diagram_req_params:
                     source_params_by_key = {
                         param.stable_key: param
                         for param in diagram_req_params
                     }
 
-                    # Clear previous diagram requirements for this job
                     db.execute(
                         delete(CategoryDiagramRequirement)
                         .where(CategoryDiagramRequirement.ingestion_job_id == job.id)
@@ -653,6 +717,51 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                 summary['diagram_extraction_status'] = 'failed'
                 summary['diagram_extraction_error'] = str(exc)
                 summary['errors'] += 1
+
+            # Persist CFSR results (non-fatal: failure falls back to raw children at review time)
+            logger.info("Persisting CFSR results for job %s", job.id)
+            try:
+                if cfsr_exc:
+                    raise cfsr_exc
+
+                if cfsr_params:
+                    db.execute(
+                        delete(CategoryControlSummaryRequirement)
+                        .where(CategoryControlSummaryRequirement.ingestion_job_id == job.id)
+                    )
+                    for cfsr in cfsrs:
+                        db.add(CategoryControlSummaryRequirement(
+                            category_id=cfsr["category_id"],
+                            ingestion_job_id=cfsr["ingestion_job_id"],
+                            parent_id=cfsr["parent_id"],
+                            asvs_level=cfsr["asvs_level"],
+                            stable_key=cfsr["stable_key"],
+                            requirement_text=cfsr["requirement_text"],
+                            analysis_hint=cfsr["analysis_hint"],
+                            covered_child_keys=cfsr["covered_child_keys"],
+                            ordinal=cfsr["ordinal"],
+                        ))
+                    db.commit()
+                    summary['cfsr_requirements'] = len(cfsrs)
+                    summary['cfsr_extraction_status'] = 'completed'
+                    summary['cfsr_extraction_error'] = None
+                    logger.info(
+                        "run_standard_ingestion_job_sync: extracted %d CFSRs from %d parameters",
+                        len(cfsrs),
+                        len(cfsr_params),
+                    )
+                else:
+                    summary['cfsr_requirements'] = 0
+                    summary['cfsr_extraction_status'] = 'completed'
+                    summary['cfsr_extraction_error'] = None
+            except Exception as exc:
+                db.rollback()
+                logger.exception("Error extracting CFSRs (non-fatal): %s", exc)
+                summary['cfsr_requirements'] = 0
+                summary['cfsr_extraction_status'] = 'failed'
+                summary['cfsr_extraction_error'] = str(exc)
+                # Deliberately NOT incrementing summary['errors'] — CFSR failure is non-fatal.
+                # The review pipeline falls back to raw children if CFSRs are absent.
 
         # Step 3 — Finalise the job row only after diagram extraction has completed
         job_status_new = (

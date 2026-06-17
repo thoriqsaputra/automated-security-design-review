@@ -14,7 +14,7 @@ from sdr.apps.reviews.models import Finding, Review, CitationAnchor
 from sdr.apps.reviews.models.choices import FindingType, AnchorType
 from sdr.apps.workspace.services.storage import storage_service
 from sdr.apps.ai.agents.base import Citation
-from sdr.apps.standards.models import CategoryParameterChild
+from sdr.apps.standards.models import CategoryControlSummaryRequirement, CategoryParameterChild
 from sdr.apps.standards.utils import build_parameter_analysis_text
 from sdr.apps.ai.engine.dto import PersistenceInput, AnalysisSummary
 from sdr.apps.ai.engine.classification.severity import calculate_deterministic_severity
@@ -62,18 +62,17 @@ class PersistenceService:
         )
 
         try:
-            source_map = self._build_citation_source_map(
+            anchorable_citations, citation_resolution_mode = self._resolve_citations_for_anchoring(
                 mediator.final_citations or [],
                 debate_output.analysis_trace or {},
             )
-            anchorable_citations = self._resolve_citations_for_anchoring(
-                mediator.final_citations or [],
+            source_map = self._build_citation_source_map(
+                anchorable_citations or (mediator.final_citations or []),
                 debate_output.analysis_trace or {},
-                require_quote_match=persisted_met_status == "met",
             )
             if persisted_met_status == "met" and not anchorable_citations:
                 persisted_met_status = "na"
-                raw_final_verdict = "met_without_quote_matched_citation"
+                raw_final_verdict = "met_without_grounded_citations"
             sanitized_description = self._strip_null_bytes(
                 self._sanitize_user_facing_text(mediator.finding_description or mediator.reasoning or "", source_map)
             )
@@ -101,6 +100,7 @@ class PersistenceService:
                     "analysis_trace": {
                         **(debate_output.analysis_trace or {}),
                         "raw_final_verdict": raw_final_verdict,
+                        "citation_resolution_mode": citation_resolution_mode,
                     },
                     "structured_citations": self._build_structured_citation_metadata(
                         anchorable_citations,
@@ -130,13 +130,16 @@ class PersistenceService:
             
             with SessionLocal() as db:
                 try:
+                    # CFSRs are not CategoryParameterChild rows — use None for the FK
+                    # so the nullable column is set correctly and no FK violation occurs.
+                    is_cfsr = isinstance(parameter, CategoryControlSummaryRequirement)
                     finding = Finding(
                         review_id=review.id,
                         category_id=(
                             parameter.parent.category_id if parameter.parent else None
                         ),
                         parent_parameter_id=parameter.parent.id if parameter.parent else None,
-                        child_parameter_id=parameter.id,
+                        child_parameter_id=None if is_cfsr else parameter.id,
                         finding_type=FindingType.REQUIREMENT.value if hasattr(FindingType, 'value') else FindingType.REQUIREMENT,
                         title=finding_title,
                         description=sanitized_description,
@@ -400,7 +403,10 @@ class PersistenceService:
         retrieval_query_details = trace.get("retrieval_query_details") or {}
         retrieval_metadata = retrieval_query_details.get("retrieval_evidence_metadata") or {}
         outcome_source = "debate"
-        if evidence_gate_outcome in {
+        synth_mode = (trace.get("contract") or {}).get("synth_mode", "")
+        if synth_mode == "cfsr_cascade":
+            outcome_source = "cfsr_cascade"
+        elif evidence_gate_outcome in {
             "downgraded_to_na_missing_citations",
             "downgraded_to_na_applicability_not_established",
             "downgraded_to_na_no_applicability_signal",
@@ -573,32 +579,32 @@ class PersistenceService:
         self,
         citations: List[Citation],
         analysis_trace: Optional[dict],
-        *,
-        require_quote_match: bool = False,
-    ) -> List[Citation]:
+    ) -> tuple[List[Citation], str]:
         chunk_map = (analysis_trace or {}).get("context_chunk_map") or {}
-        resolved: List[Citation] = []
+        quote_matched: List[Citation] = []
+        fallback: List[Citation] = []
+        seen: set[str] = set()
+
         for citation in citations:
-            if not citation.block_id:
+            if not citation.block_id or citation.block_id in seen:
                 continue
-            if not self._is_citation_grade_payload(chunk_map.get(citation.block_id) or {}, citation.block_id):
-                if require_quote_match:
-                    continue
-            quote = (citation.quoted_text or "").strip()
-            if quote:
-                matched = self._find_quote_matched_citation(citation, chunk_map)
-                if matched:
-                    resolved.append(matched)
-                elif not require_quote_match:
-                    self.logger.warning(
-                        "PersistenceService._resolve_citations_for_anchoring: quote mismatch block_id=%s",
-                        citation.block_id,
-                    )
+
+            payload = chunk_map.get(citation.block_id) or {}
+            if not self._is_citation_grade_payload(payload, citation.block_id):
                 continue
-            if require_quote_match:
-                continue
-            resolved.append(citation)
-        return resolved
+
+            seen.add(citation.block_id)
+            hydrated = self._hydrate_citation_location(citation, chunk_map)
+            fallback.append(hydrated)
+            matched = self._find_quote_matched_citation(hydrated, chunk_map)
+            if matched:
+                quote_matched.append(matched)
+
+        if quote_matched:
+            return quote_matched, "quote_matched"
+        if fallback:
+            return fallback, "validated_block_fallback"
+        return [], "none"
 
     def _find_quote_matched_citation(self, citation: Citation, chunk_map: dict) -> Optional[Citation]:
         quote = self._normalize_quote_text(citation.quoted_text)
@@ -674,7 +680,7 @@ class PersistenceService:
         return Citation(
             block_id=citation.block_id,
             page_number=page_number,
-            quoted_text=citation.quoted_text,
+            quoted_text=(citation.quoted_text or str(payload.get("quoted_text") or payload.get("text") or "")).strip(),
             bbox_x0=self._safe_float(bbox_x0),
             bbox_y0=self._safe_float(bbox_y0),
             bbox_x1=self._safe_float(bbox_x1),

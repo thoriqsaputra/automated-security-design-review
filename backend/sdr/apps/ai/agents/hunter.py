@@ -32,6 +32,7 @@ class HunterAgent(BaseAgent):
         context_chunks: List[str],
         persona_focus: Optional[str] = None,
         killed_assumptions: Optional[List[dict]] = None,
+        available_block_ids: Optional[List[str]] = None,
     ) -> str:
         """
         Delegates to build_hunter_prompt() from agent_prompts.py.
@@ -44,6 +45,7 @@ class HunterAgent(BaseAgent):
             context_chunks=context_chunks,
             persona_focus=persona_focus,
             killed_assumptions=killed_assumptions,
+            available_block_ids=available_block_ids,
         )
 
     def run(
@@ -54,6 +56,7 @@ class HunterAgent(BaseAgent):
         context_chunks: List[str],
         persona_focus: Optional[str] = None,
         killed_assumptions: Optional[List[dict]] = None,
+        available_block_ids: Optional[List[str]] = None,
     ) -> HunterResult:
         # ------------------------------------------------------------------
         # 1. Input validation
@@ -102,6 +105,7 @@ class HunterAgent(BaseAgent):
             context_chunks=context_chunks,
             persona_focus=persona_focus,
             killed_assumptions=killed_assumptions,
+            available_block_ids=available_block_ids,
         )
 
         self.logger.info(

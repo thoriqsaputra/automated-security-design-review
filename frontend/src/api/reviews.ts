@@ -148,6 +148,7 @@ export interface Review {
   overview: string | null;
   asvs_level_override: number | null;
   analysis_mode: ReviewAnalysisMode;
+  document_url?: string | null;
   finding_counts: Record<string, number>;
   progress: ReviewProgress | null;
   created_at: string;

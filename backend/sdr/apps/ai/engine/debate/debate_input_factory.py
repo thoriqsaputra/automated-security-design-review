@@ -126,12 +126,6 @@ class DebateInputFactory:
             ),
         )
 
-    def extract_chunk_id(self, chunk_text: str, fallback_idx: int) -> str:
-        match = re.search(r"\b(p\d+_[bd]\d+)\b", chunk_text or "")
-        if match:
-            return match.group(1)
-        return f"chunk_{fallback_idx}"
-
     def build_context_chunk_map(
         self,
         context_chunks: list,
@@ -142,19 +136,15 @@ class DebateInputFactory:
         chunk_map = {}
         evidence_quality = (retrieval_metadata or {}).get("evidence_quality") or {}
         for idx, chunk in enumerate(context_chunks, start=1):
-            chunk_id = self.extract_chunk_id(chunk, idx)
             evidence_kind = self.classify_context_chunk_text(chunk)
-            if evidence_kind == "graph_summary" and chunk_id.startswith("chunk_"):
-                chunk_id = f"graph_summary_{idx}"
-            elif chunk_id.startswith("chunk_") and source_block_ids and idx <= len(source_block_ids):
-                chunk_id = source_block_ids[idx - 1]
+            chunk_id = f"graph_summary_{idx}" if evidence_kind == "graph_summary" else f"chunk_{idx}"
             source_location = self.resolve_chunk_source_location(chunk_id, tsd_document)
             chunk_map[chunk_id] = {
                 "source": "retrieval_context",
                 "section": source_location.get("section") or "unknown",
                 "text": chunk,
                 "evidence_kind": evidence_kind,
-                "citation_grade": evidence_kind != "graph_summary" and not chunk_id.startswith("graph_summary_"),
+                "citation_grade": False,
                 "evidence_quality": evidence_quality,
                 **source_location,
             }

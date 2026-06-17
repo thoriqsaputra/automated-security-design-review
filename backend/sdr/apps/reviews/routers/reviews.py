@@ -1,9 +1,10 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from sdr.core.database import get_db
+from sdr.apps.workspace.services.storage import storage_service
 from ..models import Review, Finding
 from ..models.choices import ReviewStatus
 from ..schemas import (
@@ -76,6 +77,34 @@ def get_review(review_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review not found")
     return review
 
+
+
+@router.get("/{review_id}/document")
+def get_review_document(review_id: int, db: Session = Depends(get_db)):
+    review = db.get(Review, review_id)
+    if not review:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review not found")
+
+    design = getattr(review, "design", None)
+    object_name = getattr(design, "document", None)
+    if not object_name:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review document not found")
+
+    try:
+        content = storage_service.download_bytes(str(object_name))
+    except Exception:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review document not found")
+
+    filename = getattr(design, "original_filename", None) or f"review-{review.id}.pdf"
+    return Response(
+        content=content,
+        media_type="application/pdf",
+        headers={
+            "Cache-Control": "private, max-age=3600",
+            "Content-Disposition": f'inline; filename="{filename}"',
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
 
 @router.get("/{review_id}/retrieval-visualization")
 def get_review_retrieval_visualization(review_id: int, db: Session = Depends(get_db)):

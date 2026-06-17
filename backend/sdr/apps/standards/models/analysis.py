@@ -2,8 +2,7 @@ from typing import Optional
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import String, Integer, ForeignKey, Boolean, Index
-from sqlalchemy.orm import Mapped, mapped_column, relationship
-
+from sqlalchemy.orm import Mapped, mapped_column, relationship, backref
 from sdr.core.database import Base
 from .base import StandardsBigIntBase
 
@@ -29,8 +28,8 @@ class CategoryParameterEmbedding(Base, StandardsBigIntBase):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
     # Relationships
-    parent = relationship("CategoryParameterParent", backref="embeddings")
-    child = relationship("CategoryParameterChild", backref="embeddings")
+    parent = relationship("CategoryParameterParent", backref=backref("embeddings", passive_deletes=True))
+    child = relationship("CategoryParameterChild", backref=backref("embeddings", passive_deletes=True))
 
     __table_args__ = (
         Index("idx_categoryparameterembedding_type_active", "parameter_type", "is_active"),
@@ -63,7 +62,7 @@ class CategoryDiagramRequirementEmbedding(Base, StandardsBigIntBase):
 
     diagram_requirement = relationship(
         "CategoryDiagramRequirement",
-        backref="embeddings",
+        backref=backref("embeddings", passive_deletes=True),
     )
 
     __table_args__ = (

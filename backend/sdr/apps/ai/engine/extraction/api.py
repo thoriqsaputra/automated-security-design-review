@@ -13,6 +13,7 @@ from .services import (
     ASVSLevelDefinitionExtractionService,
     ASVSPageRangeDetectionService,
     ASVSRequirementLevelDetectionService,
+    ControlFamilySummaryExtractionService,
     DiagramRequirementExtractionService,
     RequirementDocumentExtractionService,
     StructuredRequirementExtractionService,
@@ -111,6 +112,22 @@ def extract_diagram_requirements(
     ingestion_job_id: int,
 ) -> list:
     service = DiagramRequirementExtractionService(
+        llm_client=_build_llm_client(),
+        config=_build_config(),
+    )
+    return service.extract(
+        parameters=parameters,
+        category_id=category_id,
+        ingestion_job_id=ingestion_job_id,
+    )
+
+
+def extract_control_family_summary_requirements(
+    parameters: list,
+    category_id: int,
+    ingestion_job_id: int,
+) -> list:
+    service = ControlFamilySummaryExtractionService(
         llm_client=_build_llm_client(),
         config=_build_config(),
     )

@@ -85,3 +85,9 @@ button {
 .react-flow__attribution {
   display: none !important;
 }
+
+select, select option {
+  background-color: var(--color-surface);
+  color: white !important;
+  cursor: pointer;
+}

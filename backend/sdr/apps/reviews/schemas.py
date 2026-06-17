@@ -136,12 +136,20 @@ class ReviewProgressSchema(BaseModel):
     preparation: Optional[Dict[str, Any]] = None
 
 
+class ReviewCategorySchema(BaseModel):
+    id: int
+    name: str
+    code: str
+
+    model_config = ConfigDict(from_attributes=True)
+
+
 class ReviewSchema(BaseModel):
     id: int
     design_id: int
     design_name: Optional[str] = None
     
-    category: Optional[Dict[str, Any]] = None
+    category: Optional[ReviewCategorySchema] = None
     
     status: str
     celery_task_id: Optional[str] = None
@@ -162,6 +170,11 @@ class ReviewSchema(BaseModel):
     queue_position: Optional[int] = None
     queue_size: Optional[int] = None
     queue_state: str = "none"
+
+    @computed_field
+    @property
+    def document_url(self) -> Optional[str]:
+        return f"/api/v1/reviews/{self.id}/document"
     
     created_at: datetime
     updated_at: datetime

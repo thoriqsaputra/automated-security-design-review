@@ -7,11 +7,13 @@ import networkx as nx
 import pytest
 
 from sdr.apps.ai.agents.base import Citation, CriticResult, HunterResult, MediatorResult
+from sdr.apps.ai.agents.hunter import HunterAgent
 from sdr.apps.ai.retrieval.core import RetrievalResult
 from sdr.apps.ai.engine.debate.debate_service import DebateService
 from sdr.apps.ai.engine.debate.category_analysis_coordinator import CategoryAnalysisCoordinator
 from sdr.apps.ai.engine.dto import AnalysisSummary, DebateOutput
 from sdr.apps.ai.engine.classification.parent_applicability import ParentApplicabilityResult
+from sdr.apps.ai.engine.persistence.persistence_service import PersistenceService
 from sdr.apps.ai.engine.persistence.review_run_state_service import AnalysisCancelledError
 from sdr.apps.ai.engine.pipeline import TSDAnalysisPipeline
 
@@ -162,6 +164,23 @@ def test_citation_validator_rejects_unknown_ids():
     assert [c.block_id for c in rejected] == ["x999"]
 
 
+def test_hunter_citation_parser_accepts_aliases():
+    agent = HunterAgent()
+    citations = agent._extract_citations(
+        [
+            {"id": "p1_b1", "page_number": 2, "quoted_text": "alpha"},
+            "p1_b2",
+            {"chunk_id": "p1_b3", "page": 4, "quote": "beta"},
+        ],
+        field_name="citations",
+    )
+
+    assert [citation.block_id for citation in citations] == ["p1_b1", "p1_b2", "p1_b3"]
+    assert [citation.page_number for citation in citations] == [2, 0, 4]
+    assert citations[0].quoted_text == "alpha"
+    assert citations[2].quoted_text == "beta"
+
+
 def test_cold_start_payload_contains_only_cited_blocks():
     debate = DebateService()
     payload = debate._build_cold_start_cited_blocks(
@@ -180,6 +199,49 @@ def test_cold_start_payload_contains_only_cited_blocks():
             "text": "mTLS is enabled",
         }
     ]
+
+
+def test_stabilize_hunter_grounding_downgrades_met_without_valid_citations():
+    debate = DebateService()
+    hunter_result = HunterResult(
+        verdict="met",
+        confidence=0.91,
+        reasoning="All good.",
+        logic_summary="All good.",
+        evidence_found=True,
+        citations=[],
+        evidence_assessment="All good.",
+    )
+
+    stabilized = debate._stabilize_hunter_grounding(hunter_result, rejected_citations=[Citation(block_id="x999", page_number=1)])
+
+    assert stabilized.verdict == "not_met"
+    assert stabilized.evidence_found is False
+    assert stabilized.confidence <= 0.45
+    assert "Rejected citation ids: x999" in stabilized.logic_summary
+
+
+def test_resolve_citations_for_anchoring_falls_back_to_validated_block_ids():
+    service = PersistenceService()
+    citations = [Citation(block_id="p1_b1", page_number=3, quoted_text="wrong quote")]
+    analysis_trace = {
+        "context_chunk_map": {
+            "p1_b1": {
+                "citation_grade": True,
+                "text": "The system requires MFA for privileged access.",
+                "section": "Authentication",
+                "page_number": 3,
+                "bbox": {"x0": 10.0, "y0": 20.0, "x1": 30.0, "y1": 40.0},
+            }
+        }
+    }
+
+    resolved, mode = service._resolve_citations_for_anchoring(citations, analysis_trace)
+
+    assert mode == "validated_block_fallback"
+    assert [citation.block_id for citation in resolved] == ["p1_b1"]
+    assert resolved[0].quoted_text == "wrong quote"
+    assert resolved[0].page_number == 3
 
 
 def test_mediator_evidence_policy_adjusts_verdicts():
@@ -816,6 +878,7 @@ def test_category_analysis_coordinator_skips_diagrams_in_text_only_mode(monkeypa
 
     coordinator.workflow_repository.get_latest_active_ingestion_job = lambda _category_id: SimpleNamespace(id=11)
     coordinator.workflow_repository.list_category_parameters = lambda **_kwargs: [parameter]
+    coordinator.workflow_repository.list_control_summary_requirements = lambda **_kwargs: []
     coordinator.progress_service.prepare_category_stats = lambda **_kwargs: None
     coordinator.progress_service.initialize_category_progress = lambda **_kwargs: None
     coordinator.progress_service.sync_analysis_aliases = lambda **_kwargs: None
@@ -852,6 +915,7 @@ def test_category_analysis_coordinator_skips_text_path_in_diagram_only_mode(monk
 
     coordinator.workflow_repository.get_latest_active_ingestion_job = lambda _category_id: SimpleNamespace(id=11)
     coordinator.workflow_repository.list_category_parameters = lambda **_kwargs: [parameter]
+    coordinator.workflow_repository.list_control_summary_requirements = lambda **_kwargs: []
     coordinator.progress_service.prepare_category_stats = lambda **_kwargs: None
     coordinator.progress_service.initialize_category_progress = lambda **_kwargs: None
     coordinator.progress_service.sync_analysis_aliases = lambda **_kwargs: None

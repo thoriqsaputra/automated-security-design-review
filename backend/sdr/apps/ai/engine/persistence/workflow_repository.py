@@ -10,6 +10,7 @@ from sqlalchemy.orm import joinedload
 from sdr.apps.reviews.models import Review
 from sdr.apps.standards.models import (
     ASVSLevelDefinition,
+    CategoryControlSummaryRequirement,
     CategoryDiagramRequirementEmbedding,
     CategoryDiagramRequirement,
     CategoryParameterChild,
@@ -93,6 +94,16 @@ class ReviewWorkflowRepository(ABC):
         effective_asvs_level: int,
         query_embedding: List[float],
         top_k: int,
+    ) -> List[Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_control_summary_requirements(
+        self,
+        *,
+        category_id: Any,
+        ingestion_job_id: Any,
+        effective_asvs_level: int,
     ) -> List[Any]:
         raise NotImplementedError
 
@@ -217,6 +228,33 @@ class SqlAlchemyReviewWorkflowRepository(ReviewWorkflowRepository):
                     CategoryDiagramRequirement.asvs_level <= effective_asvs_level,
                 )
                 .order_by(CategoryDiagramRequirement.asvs_level, CategoryDiagramRequirement.ordinal)
+            ).scalars().all()
+
+    def list_control_summary_requirements(
+        self,
+        *,
+        category_id: Any,
+        ingestion_job_id: Any,
+        effective_asvs_level: int,
+    ) -> List[Any]:
+        with core_database.SessionLocal() as db:
+            return db.execute(
+                select(CategoryControlSummaryRequirement)
+                .options(
+                    joinedload(CategoryControlSummaryRequirement.parent).joinedload(
+                        CategoryParameterParent.category
+                    )
+                )
+                .where(
+                    CategoryControlSummaryRequirement.category_id == category_id,
+                    CategoryControlSummaryRequirement.ingestion_job_id == ingestion_job_id,
+                    CategoryControlSummaryRequirement.asvs_level <= effective_asvs_level,
+                )
+                .order_by(
+                    CategoryControlSummaryRequirement.parent_id,
+                    CategoryControlSummaryRequirement.asvs_level,
+                    CategoryControlSummaryRequirement.ordinal,
+                )
             ).scalars().all()
 
     def search_diagram_requirements(

@@ -21,7 +21,7 @@ _TOC_ENTRY_DOTTED_RE = re.compile(r"\.{2,}\s*\d{1,4}\s*$")
 _TOC_ENTRY_SPACED_RE = re.compile(r".{6,}\s{2,}\d{1,4}\s*$")
 _TOC_LABEL_RE = re.compile(r"^\s*(halaman|page|pages?)\s*$", re.IGNORECASE)
 _NON_REQUIREMENT_NOTE_RE = re.compile(r"^\s*note\s*[:\-]\s*", re.IGNORECASE)
-_OWASP_SUBSECTION_HEADING_ONLY_RE = re.compile(r"^\s*V\d+\.\d+\s+[A-Z].*$", re.IGNORECASE)
+_OWASP_SUBSECTION_HEADING_ONLY_RE = re.compile(r"^\s*V\d+\.\d+(?:\s+|\s*-\s*)\S", re.IGNORECASE)
 
 
 def _count_tokens(text: str) -> int:
@@ -201,7 +201,7 @@ def _is_heading_only_requirement(requirement: str) -> bool:
     text = str(requirement or "").strip()
     if not text:
         return False
-    if _OWASP_SUBSECTION_HEADING_ONLY_RE.match(text) and " - " not in text:
+    if _OWASP_SUBSECTION_HEADING_ONLY_RE.match(text):
         if re.search(r"\b\d+\.\d+\.\d+\b", text):
             return False
         return True

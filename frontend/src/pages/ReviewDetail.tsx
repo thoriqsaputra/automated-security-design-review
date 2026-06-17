@@ -117,8 +117,9 @@ export default function ReviewDetail() {
           </div>
         </div>
       </div>
-
-      <ReviewPipeline reviewStatus={review.status} currentStage={currentStage} />
+      {!['completed_clean', 'completed_with_findings', 'approved', 'rejected'].includes(review.status) && (
+        <ReviewPipeline reviewStatus={review.status} currentStage={currentStage} />
+      )}
 
       <div className="border-b border-surface-border mb-6 flex gap-6 px-2 overflow-x-auto no-scrollbar">
         {REVIEW_TABS.map((tab) => (

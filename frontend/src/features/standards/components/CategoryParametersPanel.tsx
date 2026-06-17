@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { CheckCircle2, ChevronDown, ChevronRight, Filter, Search, Trash2, X } from 'lucide-react';
 import type { DiagramRequirement, ParameterParent } from '../../../api/standards';
 import Card from '../../../components/ui/Card';
@@ -103,6 +104,17 @@ export default function CategoryParametersPanel(props: CategoryParametersPanelPr
     totalDiagramParamsPages,
     onDiagramParamsPageChange,
   } = props;
+
+  const [expandedCfsrs, setExpandedCfsrs] = useState<Set<number>>(new Set());
+
+  const toggleCfsr = (cfsrId: number) => {
+    setExpandedCfsrs((prev) => {
+      const next = new Set(prev);
+      if (next.has(cfsrId)) next.delete(cfsrId);
+      else next.add(cfsrId);
+      return next;
+    });
+  };
 
   return (
     <>
@@ -223,31 +235,134 @@ export default function CategoryParametersPanel(props: CategoryParametersPanelPr
                       </button>
                     </div>
 
-                    {expandedParent === parent.id && parent.children.length > 0 && (
-                      <div className="mt-3 ml-6 space-y-2 border-l-2 border-surface-border pl-4">
-                        {parent.children.map((child) => (
-                          <div key={child.id} className="flex items-start justify-between gap-4 group">
-                            <div className="flex items-start gap-2">
-                              <CheckCircle2 size={14} className="text-burgundy mt-0.5 shrink-0" />
-                              <div>
-                                <div className="flex flex-wrap items-center gap-2">
-                                  <p className="text-sm text-text-primary">{child.requirement_text}</p>
-                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${asvsLevelClass(child.asvs_level)}`}>
-                                    {asvsLevelLabel(child.asvs_level)}
-                                  </span>
+                    {expandedParent === parent.id && (parent.children.length > 0 || (parent.control_summary_requirements && parent.control_summary_requirements.length > 0)) && (
+                      <div className="mt-3 ml-6 space-y-4 border-l-2 border-surface-border pl-4">
+                        {parent.control_summary_requirements?.map((cfsr) => {
+                          const isExpanded = expandedCfsrs.has(cfsr.id);
+                          const coveredChildren = parent.children.filter(c => cfsr.covered_child_keys.includes(c.stable_key));
+                          
+                          return (
+                            <div key={cfsr.id} className="border border-surface-border rounded-lg overflow-hidden">
+                              <button
+                                onClick={() => toggleCfsr(cfsr.id)}
+                                className="w-full flex items-center justify-between p-3 bg-surface-base hover:bg-surface-hover transition-colors text-left"
+                              >
+                                <div className="flex items-start gap-2">
+                                  {isExpanded ? (
+                                    <ChevronDown size={16} className="text-flame mt-0.5 shrink-0" />
+                                  ) : (
+                                    <ChevronRight size={16} className="text-text-muted mt-0.5 shrink-0" />
+                                  )}
+                                  <div>
+                                    <div className="flex flex-wrap items-center gap-2">
+                                      <p className="text-sm font-medium text-text-primary">{cfsr.requirement_text}</p>
+                                      {cfsr.asvs_level && (
+                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${asvsLevelClass(cfsr.asvs_level)}`}>
+                                          {asvsLevelLabel(cfsr.asvs_level)}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <p className="text-xs text-text-muted mt-1">{cfsr.analysis_hint}</p>
+                                    <p className="text-[10px] text-text-muted font-mono mt-1">{cfsr.stable_key}</p>
+                                  </div>
                                 </div>
-                                {child.details && <p className="text-xs text-text-muted mt-0.5">{child.details}</p>}
-                              </div>
+                                <span className="text-xs font-medium bg-surface-hover px-2 py-1 rounded-md ml-3 shrink-0">
+                                  {coveredChildren.length} params
+                                </span>
+                              </button>
+                              
+                              {isExpanded && coveredChildren.length > 0 && (
+                                <div className="p-3 bg-midnight border-t border-surface-border space-y-3">
+                                  {coveredChildren.map((child) => (
+                                    <div key={child.id} className="flex items-start justify-between gap-4 group">
+                                      <div className="flex items-start gap-2">
+                                        <CheckCircle2 size={14} className="text-burgundy mt-0.5 shrink-0" />
+                                        <div>
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            <p className="text-sm text-text-primary">{child.requirement_text}</p>
+                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${asvsLevelClass(child.asvs_level)}`}>
+                                              {asvsLevelLabel(child.asvs_level)}
+                                            </span>
+                                          </div>
+                                          {child.details && <p className="text-xs text-text-muted mt-0.5">{child.details}</p>}
+                                        </div>
+                                      </div>
+                                      <button
+                                        onClick={() => onDeleteChild(child.id)}
+                                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-flame/10 text-text-muted hover:text-flame transition-all shrink-0"
+                                        title="Delete Requirement"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
                             </div>
-                            <button
-                              onClick={() => onDeleteChild(child.id)}
-                              className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-flame/10 text-text-muted hover:text-flame transition-all shrink-0"
-                              title="Delete Requirement"
-                            >
-                              <Trash2 size={14} />
-                            </button>
-                          </div>
-                        ))}
+                          );
+                        })}
+
+                        {/* Uncategorized children */}
+                        {(() => {
+                          const allCoveredKeys = new Set((parent.control_summary_requirements || []).flatMap(c => c.covered_child_keys));
+                          const uncategorizedChildren = parent.children.filter(c => !allCoveredKeys.has(c.stable_key));
+                          
+                          if (uncategorizedChildren.length === 0) return null;
+                          
+                          const isExpanded = expandedCfsrs.has(-parent.id); // Use negative parent ID for uncategorized section
+                          
+                          return (
+                            <div className="border border-surface-border rounded-lg overflow-hidden mt-4">
+                              <button
+                                onClick={() => toggleCfsr(-parent.id)}
+                                className="w-full flex items-center justify-between p-3 bg-surface-base hover:bg-surface-hover transition-colors text-left"
+                              >
+                                <div className="flex items-start gap-2">
+                                  {isExpanded ? (
+                                    <ChevronDown size={16} className="text-flame mt-0.5 shrink-0" />
+                                  ) : (
+                                    <ChevronRight size={16} className="text-text-muted mt-0.5 shrink-0" />
+                                  )}
+                                  <div>
+                                    <p className="text-sm font-medium text-text-primary">Uncategorized Requirements</p>
+                                    <p className="text-xs text-text-muted mt-1">Parameters not mapped to any CFSR</p>
+                                  </div>
+                                </div>
+                                <span className="text-xs font-medium bg-surface-hover px-2 py-1 rounded-md ml-3 shrink-0">
+                                  {uncategorizedChildren.length} params
+                                </span>
+                              </button>
+                              
+                              {isExpanded && (
+                                <div className="p-3 bg-midnight border-t border-surface-border space-y-3">
+                                  {uncategorizedChildren.map((child) => (
+                                    <div key={child.id} className="flex items-start justify-between gap-4 group">
+                                      <div className="flex items-start gap-2">
+                                        <CheckCircle2 size={14} className="text-burgundy mt-0.5 shrink-0" />
+                                        <div>
+                                          <div className="flex flex-wrap items-center gap-2">
+                                            <p className="text-sm text-text-primary">{child.requirement_text}</p>
+                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${asvsLevelClass(child.asvs_level)}`}>
+                                              {asvsLevelLabel(child.asvs_level)}
+                                            </span>
+                                          </div>
+                                          {child.details && <p className="text-xs text-text-muted mt-0.5">{child.details}</p>}
+                                        </div>
+                                      </div>
+                                      <button
+                                        onClick={() => onDeleteChild(child.id)}
+                                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-flame/10 text-text-muted hover:text-flame transition-all shrink-0"
+                                        title="Delete Requirement"
+                                      >
+                                        <Trash2 size={14} />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </div>
                     )}
                   </Card>

@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import logging
-import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -51,16 +50,6 @@ class DebateService:
         self.hunter = hunter or HunterAgent()
         self.critic = critic or CriticAgent()
         self.mediator = mediator or MediatorAgent()
-        self.scope_stratified_enabled = bool(
-            getattr(settings, "AI_DEBATE_SCOPE_STRATIFIED_HUNTING_ENABLED", False)
-        )
-        self.scope_chunk_threshold = int(
-            getattr(settings, "AI_DEBATE_SCOPE_CHUNK_THRESHOLD", 15)
-        )
-        self.scope_token_threshold = int(
-            getattr(settings, "AI_DEBATE_SCOPE_TOKEN_THRESHOLD", 7000)
-        )
-        self.scope_max_groups = int(getattr(settings, "AI_DEBATE_SCOPE_MAX_GROUPS", 4))
         self.max_hunter_calls_per_parameter = int(
             getattr(settings, "AI_DEBATE_MAX_HUNTER_CALLS_PER_PARAMETER", 8)
         )
@@ -92,18 +81,6 @@ class DebateService:
         start_ts = time.monotonic()
         timing: Dict[str, Any] = {}
         hunter_call_count = 0
-
-        scope_meta = self._build_scope_groups(
-            context_chunks=context_chunks,
-            context_chunk_map=context_chunk_map,
-            contract=contract,
-        )
-        scope_groups = scope_meta["groups"]
-        if not scope_meta.get("triggered"):
-            self.logger.info(
-                "DebateService.run_debate: scope-stratified hunting skipped reason=%s",
-                scope_meta.get("reason", "disabled"),
-            )
 
         current_context_chunks = list(context_chunks)
         hunter_result: HunterResult = HunterResult()
@@ -140,8 +117,8 @@ class DebateService:
                 current_context_chunks=current_context_chunks,
                 killed_assumptions=killed_assumptions,
                 hunter_plan=hunter_plan,
-                scope_groups=scope_groups,
                 hunter_call_count=hunter_call_count,
+                available_block_ids=list(retrieved_chunk_ids),
             )
             timing[f"hunter_round_{round_number}_seconds"] = round(
                 time.monotonic() - hunter_started, 4
@@ -152,6 +129,27 @@ class DebateService:
                 retrieved_chunk_ids,
                 "hunter",
             )
+            hunter_result = self._stabilize_hunter_grounding(
+                hunter_result,
+                rejected_citations=hunter_rejected,
+            )
+            if (
+                hunter_result.verdict in (VERDICT_MET, VERDICT_NOT_MET)
+                and hunter_result.evidence_found
+                and not hunter_result.citations
+                and hunter_call_count < self.max_hunter_calls_per_parameter
+            ):
+                hunter_result, hunter_call_count = self._retry_hunter_for_citations(
+                    parameter_text=parameter_text,
+                    parameter_section=parameter_section,
+                    contract=contract,
+                    current_context_chunks=current_context_chunks,
+                    killed_assumptions=killed_assumptions,
+                    prior_verdict=hunter_result.verdict,
+                    rejected_ids=[c.block_id for c in hunter_rejected],
+                    hunter_call_count=hunter_call_count,
+                    retrieved_chunk_ids=retrieved_chunk_ids,
+                )
             sanitized_hunter = self._sanitize_hunter_for_handoff(hunter_result)
 
             self.logger.info(
@@ -258,12 +256,6 @@ class DebateService:
                 "retrieval_query_details": debate_input.retrieval_query_details or {},
                 "context_chunk_map": context_chunk_map,
                 "model_routing": model_routing,
-                "scope_stratified": {
-                    "triggered": bool(scope_meta.get("triggered")),
-                    "reason": scope_meta.get("reason"),
-                    "group_count": len(scope_groups),
-                    "group_keys": [group.get("key") for group in scope_groups],
-                },
                 "timing": timing,
                 "hunter_claim": {
                     "verdict": hunter_result.verdict,
@@ -362,6 +354,10 @@ class DebateService:
                 hunter_result.citations,
                 retrieved_chunk_ids,
                 "hunter_batch",
+            )
+            hunter_result = self._stabilize_hunter_grounding(
+                hunter_result,
+                rejected_citations=rejected,
             )
             hunter_results[child_id] = hunter_result
             hunter_rejected_by_child[child_id] = rejected
@@ -520,8 +516,8 @@ class DebateService:
         current_context_chunks: List[str],
         killed_assumptions: List[Dict[str, Any]],
         hunter_plan: Dict[str, Any],
-        scope_groups: List[Dict[str, Any]],
         hunter_call_count: int,
+        available_block_ids: Optional[List[str]] = None,
     ) -> tuple[HunterResult, Dict[str, Any], Dict[str, Any], Dict[str, Any], int]:
         if hunter_call_count >= self.max_hunter_calls_per_parameter:
             self.logger.warning(
@@ -537,13 +533,6 @@ class DebateService:
             )
             return fallback, {}, {"deduped_ids": [], "provenance": {}}, {"mode": "guardrail", "personas": []}, hunter_call_count
 
-        if not scope_groups:
-            scope_groups = [{"key": "all_context", "chunks": list(current_context_chunks)}]
-
-        all_results: Dict[str, HunterResult] = {}
-        merged_citations: Dict[str, Any] = {}
-        persona_payload: Dict[str, Any] = {}
-        winner: Optional[HunterResult] = None
         persona_plan = self._build_hunter_plan(
             contract=contract,
             parameter_text=parameter_text,
@@ -551,59 +540,33 @@ class DebateService:
             incoming_plan=hunter_plan,
         )
         personas = list(persona_plan.get("personas") or [contract.get("domain") or "general"])
+        persona = personas[0]
 
-        for group in scope_groups:
-            self._raise_if_cancelled(cancel_check, phase="run_debate.hunter.before_group")
-            group_chunks = list(group.get("chunks") or [])
-            if not group_chunks:
-                continue
-            group_key = str(group.get("key") or "group")
-            available_budget = self.max_hunter_calls_per_parameter - hunter_call_count
-            group_personas = personas[: max(0, available_budget)]
-            if not group_personas:
-                break
+        self._raise_if_cancelled(cancel_check, phase="run_debate.hunter.before_llm")
+        result = self.hunter.run(
+            parameter_text=parameter_text,
+            parameter_section=parameter_section,
+            contract=contract,
+            context_chunks=list(current_context_chunks),
+            persona_focus=persona,
+            killed_assumptions=killed_assumptions,
+            available_block_ids=available_block_ids,
+        )
+        hunter_call_count += 1
+        result = self._normalize_reasoning_payload(result)
 
-            def _run_single(persona_value: str):
-                self._raise_if_cancelled(cancel_check, phase="run_debate.hunter.before_llm")
-                return persona_value, self.hunter.run(
-                    parameter_text=parameter_text,
-                    parameter_section=parameter_section,
-                    contract=contract,
-                    context_chunks=group_chunks,
-                    persona_focus=persona_value,
-                    killed_assumptions=killed_assumptions,
-                )
-
-            persona = group_personas[0]
-            results = [_run_single(persona)]
-
-            hunter_call_count += len(results)
-            for persona, result in results:
-                result = self._normalize_reasoning_payload(result)
-                result_key = f"{persona}@{group_key}" if len(scope_groups) > 1 else persona
-                all_results[result_key] = result
-                persona_payload[result_key] = {
-                    "verdict": result.verdict,
-                    "confidence": result.confidence,
-                    "reasoning": result.logic_summary or result.reasoning,
-                    "citation_ids": [c.block_id for c in result.citations],
-                }
-                for citation in result.citations:
-                    if citation.block_id not in merged_citations:
-                        merged_citations[citation.block_id] = {"citation": citation, "personas": set()}
-                    merged_citations[citation.block_id]["personas"].add(result_key)
-                if winner is None or result.confidence > winner.confidence:
-                    winner = result
-
-        if winner is None:
-            winner = HunterResult(
-                verdict=VERDICT_NOT_MET,
-                confidence=0.2,
-                reasoning="No hunter evidence produced in current round.",
-                evidence_found=False,
-                citations=[],
-            )
-        winner.citations = [entry["citation"] for entry in merged_citations.values()]
+        merged_citations = {
+            c.block_id: {"citation": c, "personas": {persona}}
+            for c in result.citations
+        }
+        persona_payload = {
+            persona: {
+                "verdict": result.verdict,
+                "confidence": result.confidence,
+                "reasoning": result.logic_summary or result.reasoning,
+                "citation_ids": [c.block_id for c in result.citations],
+            }
+        }
         merged_evidence = {
             "deduped_ids": list(merged_citations.keys()),
             "provenance": {
@@ -611,52 +574,7 @@ class DebateService:
                 for block_id, entry in merged_citations.items()
             },
         }
-        if len(scope_groups) > 1:
-            persona_plan["scope_stratified"] = True
-        return winner, persona_payload, merged_evidence, persona_plan, hunter_call_count
-
-    def _build_scope_groups(
-        self,
-        context_chunks: List[str],
-        context_chunk_map: Dict[str, Dict[str, Any]],
-        contract: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        try:
-            if not self.scope_stratified_enabled:
-                return {"triggered": False, "reason": "disabled", "groups": [{"key": "all_context", "chunks": list(context_chunks)}]}
-            token_estimate = sum(max(1, len(chunk) // 4) for chunk in context_chunks)
-            sections = set((payload.get("section") or "unknown") for payload in context_chunk_map.values())
-            should_trigger = (
-                len(context_chunks) > self.scope_chunk_threshold
-                or token_estimate > self.scope_token_threshold
-                or len(sections) > 3
-            )
-            if not should_trigger:
-                return {"triggered": False, "reason": "below_threshold", "groups": [{"key": "all_context", "chunks": list(context_chunks)}]}
-
-            groups: Dict[str, List[str]] = {}
-            domain = (contract.get("domain") or "general").strip()
-            for block_id, payload in context_chunk_map.items():
-                section = (payload.get("section") or "unknown").strip()
-                source = (payload.get("source") or "retrieval_context").strip()
-                page_match = re.match(r"p(\d+)_", block_id or "")
-                page = f"p{page_match.group(1)}" if page_match else "p?"
-                key = f"{domain}|{section}|{source}|{page}"
-                groups.setdefault(key, []).append(payload.get("text") or "")
-
-            compact_groups = []
-            for key, chunks in groups.items():
-                if chunks:
-                    compact_groups.append({"key": key, "chunks": chunks})
-            compact_groups.sort(key=lambda g: len(g["chunks"]), reverse=True)
-            compact_groups = compact_groups[: self.scope_max_groups] or [{"key": "all_context", "chunks": list(context_chunks)}]
-            return {"triggered": True, "reason": "threshold_exceeded", "groups": compact_groups}
-        except Exception as exc:
-            self.logger.warning(
-                "DebateService._build_scope_groups: fallback to normal flow due to error: %s",
-                exc,
-            )
-            return {"triggered": False, "reason": "grouping_failed", "groups": [{"key": "all_context", "chunks": list(context_chunks)}]}
+        return result, persona_payload, merged_evidence, persona_plan, hunter_call_count
 
     def _resolve_model_routing(self) -> Dict[str, str]:
         return {
@@ -695,13 +613,13 @@ class DebateService:
         persona_plan: Dict[str, Any],
     ) -> tuple[HunterResult, Dict[str, Any], Dict[str, Any]]:
         winner, payload, merged, _, _ = self._run_hunter_round(
+            cancel_check=None,
             parameter_text=parameter_text,
             parameter_section=parameter_section,
             contract=contract,
             current_context_chunks=context_chunks,
             killed_assumptions=killed_assumptions,
             hunter_plan=persona_plan,
-            scope_groups=[{"key": "all_context", "chunks": list(context_chunks)}],
             hunter_call_count=0,
         )
         return winner, payload, merged
@@ -720,6 +638,82 @@ class DebateService:
             cot_trace = cot_trace[:_MAX_AGENT_COT_TRACE_CHARS].rstrip()
         result.cot_trace = cot_trace or None
         return result
+
+    def _stabilize_hunter_grounding(
+        self,
+        result: HunterResult,
+        *,
+        rejected_citations: Optional[List[Any]] = None,
+    ) -> HunterResult:
+        if result.verdict != VERDICT_MET or result.citations:
+            return result
+
+        rejected_ids = [getattr(citation, "block_id", None) for citation in (rejected_citations or []) if getattr(citation, "block_id", None)]
+        reason = "Hunter returned met without validated citations; downgraded to not_met."
+        if rejected_ids:
+            reason = f"{reason} Rejected citation ids: {', '.join(rejected_ids)}."
+
+        result.verdict = VERDICT_NOT_MET
+        result.evidence_found = False
+        result.confidence = min(float(result.confidence or 0.0), 0.45)
+        result.reasoning = reason
+        result.logic_summary = reason
+        result.evidence_assessment = reason
+        return result
+
+    def _retry_hunter_for_citations(
+        self,
+        *,
+        parameter_text: str,
+        parameter_section: str,
+        contract: Dict[str, Any],
+        current_context_chunks: List[str],
+        killed_assumptions: List[Dict[str, Any]],
+        prior_verdict: str,
+        rejected_ids: List[str],
+        hunter_call_count: int,
+        retrieved_chunk_ids: set,
+    ) -> tuple[HunterResult, int]:
+        valid_ids_str = ", ".join(sorted(retrieved_chunk_ids)) or "none"
+        if rejected_ids:
+            citation_note = (
+                f"Your cited block_ids {rejected_ids} do not exist in the provided context. "
+                f"Valid block_ids are: {valid_ids_str}."
+            )
+        else:
+            citation_note = (
+                f"Your response included no citations. "
+                f"Valid block_ids available are: {valid_ids_str}."
+            )
+        retry_header = (
+            f"--- CITATION RETRY ---\n"
+            f"Your previous verdict='{prior_verdict}' with evidence_found=true requires citations. "
+            f"{citation_note} "
+            f"Re-examine the context and cite the block_ids you relied on. "
+            f"If no relevant block_id exists, change verdict to 'na' and set evidence_found=false."
+        )
+        retry_chunks = [retry_header] + list(current_context_chunks)
+        retry_result = self.hunter.run(
+            parameter_text=parameter_text,
+            parameter_section=parameter_section,
+            contract=contract,
+            context_chunks=retry_chunks,
+            killed_assumptions=killed_assumptions,
+            available_block_ids=list(retrieved_chunk_ids),
+        )
+        hunter_call_count += 1
+        retry_result = self._normalize_reasoning_payload(retry_result)
+        retry_result.citations, _ = self._validate_citations(
+            retry_result.citations, retrieved_chunk_ids, "hunter_citation_retry"
+        )
+        retry_result = self._stabilize_hunter_grounding(retry_result)
+        self.logger.info(
+            "DebateService._retry_hunter_for_citations: prior_verdict=%s retry_verdict=%s citations=%d",
+            prior_verdict,
+            retry_result.verdict,
+            len(retry_result.citations),
+        )
+        return retry_result, hunter_call_count
 
     def _sanitize_hunter_for_handoff(self, result: HunterResult) -> HunterResult:
         return HunterResult(

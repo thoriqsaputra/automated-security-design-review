@@ -5,7 +5,8 @@ from types import SimpleNamespace
 
 import sdr.apps.designs.models  # noqa: F401
 
-from sdr.apps.ai.engine.dto import AnalysisSummary
+from sdr.apps.ai.agents.base import Citation, CriticResult, HunterResult, MediatorResult
+from sdr.apps.ai.engine.dto import AnalysisSummary, PersistenceInput
 from sdr.apps.ai.engine.persistence.persistence_service import PersistenceService
 
 
@@ -23,6 +24,8 @@ class _ScalarResult:
 class _Session:
     def __init__(self):
         self.finding = None
+        self.findings = []
+        self.added = []
         self.commits = 0
 
     def execute(self, _statement):
@@ -30,6 +33,15 @@ class _Session:
 
     def add(self, obj):
         self.finding = obj
+        self.added.append(obj)
+
+    def add_all(self, objs):
+        objs = list(objs)
+        self.added.extend(objs)
+        self.findings.extend(objs)
+
+    def flush(self):
+        return None
 
     def commit(self):
         self.commits += 1
@@ -200,6 +212,85 @@ def test_persist_diagram_debate_finding_caps_requirement_reference_to_db_limit(m
     assert finding is not None
     assert finding.requirement_reference is not None
     assert len(finding.requirement_reference) <= 128
+
+
+def test_persist_finding_keeps_met_when_citation_quotes_are_missing(monkeypatch):
+    service = PersistenceService()
+    session = _Session()
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.persistence.persistence_service.SessionLocal",
+        lambda: _SessionContext(session),
+    )
+
+    review = SimpleNamespace(id=99)
+    category = SimpleNamespace(id=8, code="web_application")
+    parent = SimpleNamespace(id=17, title="Authentication", category_id=8)
+    parameter = SimpleNamespace(
+        id=23,
+        parent=parent,
+        stable_key="AUTH-1.2.3",
+        ordinal=1,
+        requirement_text="Use MFA for privileged access.",
+    )
+    citation = Citation(block_id="p1_b1", page_number=3, quoted_text="")
+    debate_output = SimpleNamespace(
+        hunter_result=HunterResult(
+            verdict="met",
+            confidence=0.91,
+            reasoning="The context names the control.",
+            logic_summary="The context names the control.",
+            evidence_found=True,
+            citations=[citation],
+        ),
+        critic_result=CriticResult(
+            revised_verdict="met",
+            revised_confidence=0.9,
+            reasoning="The control is grounded in the retrieved block.",
+            logic_summary="The control is grounded in the retrieved block.",
+            valid_citations=[citation],
+        ),
+        mediator_result=MediatorResult(
+            final_verdict="met",
+            confidence=0.92,
+            reasoning="The control is shown in the TSD.",
+            logic_summary="The control is shown in the TSD.",
+            final_citations=[citation],
+            finding_description="MFA is present for privileged access.",
+            recommendation=None,
+        ),
+        analysis_trace={
+            "context_chunk_map": {
+                "p1_b1": {
+                    "citation_grade": True,
+                    "text": "The system requires MFA for privileged access.",
+                    "section": "Authentication",
+                    "page_number": 3,
+                    "bbox": {"x0": 10.0, "y0": 20.0, "x1": 30.0, "y1": 40.0},
+                }
+            }
+        },
+    )
+    summary = AnalysisSummary()
+
+    finding = service.persist_finding(
+        review,
+        PersistenceInput.model_construct(
+            parameter=parameter,
+            category=category,
+            ingestion_job=None,
+            debate_output=debate_output,
+        ),
+        summary,
+    )
+
+    assert finding is session.finding
+    assert finding.met_status == "met"
+    assert finding.requirement_metadata["analysis_trace"]["citation_resolution_mode"] == "quote_matched"
+    assert finding.requirement_metadata["structured_citations"][0]["chunk_id"] == "p1_b1"
+    assert finding.requirement_metadata["structured_citations"][0]["page"] == 3
+    assert session.findings and session.findings[0].quoted_text == "The system requires MFA for privileged access."
+    assert summary.met_count == 1
+    assert summary.citation_count == 1
 
 
 def test_persist_diagram_debate_finding_preserves_non_architecture_scope(monkeypatch):

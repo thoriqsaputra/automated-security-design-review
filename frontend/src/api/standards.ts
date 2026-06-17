@@ -39,6 +39,16 @@ export interface ASVSLevelDefinition extends ASVSLevel {
   updated_at: string;
 }
 
+export interface ControlSummaryRequirement {
+  id: number;
+  stable_key: string;
+  requirement_text: string;
+  analysis_hint: string;
+  asvs_level: number | null;
+  covered_child_keys: string[];
+  ordinal: number;
+}
+
 export interface ParameterParent {
   id: number;
   stable_key: string;
@@ -46,6 +56,7 @@ export interface ParameterParent {
   title_normalized: string;
   description: string | null;
   children: ParameterChild[];
+  control_summary_requirements: ControlSummaryRequirement[];
 }
 
 export interface SourceDocument {

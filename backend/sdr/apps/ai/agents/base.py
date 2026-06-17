@@ -353,6 +353,21 @@ class BaseAgent:
             "cot_trace": cot_trace or None,
         }
 
+    def _extract_citation_block_id(self, item: object) -> str:
+        if isinstance(item, str):
+            return item.strip()
+        if not isinstance(item, dict):
+            return ""
+
+        for key in ("block_id", "id", "citation_id", "chunk_id"):
+            value = item.get(key)
+            if value is None:
+                continue
+            block_id = str(value).strip()
+            if block_id:
+                return block_id
+        return ""
+
     def _extract_citations(
         self,
         raw: object,
@@ -365,15 +380,13 @@ class BaseAgent:
         citations: List[Citation] = []
         seen = set()
         for item in raw:
-            if not isinstance(item, dict):
-                continue
-            block_id = str(item.get("block_id") or "").strip()
+            block_id = self._extract_citation_block_id(item)
             if not block_id or block_id in seen:
                 continue
 
-            bbox = item.get("bbox") or {}
+            bbox = item.get("bbox") if isinstance(item, dict) else {}
             try:
-                page_number = int(item.get("page_number") or 0)
+                page_number = int(item.get("page_number") or item.get("page") or 0) if isinstance(item, dict) else 0
             except (TypeError, ValueError):
                 page_number = 0
 
@@ -381,11 +394,11 @@ class BaseAgent:
                 Citation(
                     block_id=block_id,
                     page_number=page_number,
-                    quoted_text=str(item.get("quoted_text") or "").strip(),
-                    bbox_x0=self._safe_float(bbox.get("x0")),
-                    bbox_y0=self._safe_float(bbox.get("y0")),
-                    bbox_x1=self._safe_float(bbox.get("x1")),
-                    bbox_y1=self._safe_float(bbox.get("y1")),
+                    quoted_text=str(item.get("quoted_text") or item.get("quote") or "").strip() if isinstance(item, dict) else "",
+                    bbox_x0=self._safe_float(bbox.get("x0")) if isinstance(bbox, dict) else None,
+                    bbox_y0=self._safe_float(bbox.get("y0")) if isinstance(bbox, dict) else None,
+                    bbox_x1=self._safe_float(bbox.get("x1")) if isinstance(bbox, dict) else None,
+                    bbox_y1=self._safe_float(bbox.get("y1")) if isinstance(bbox, dict) else None,
                 )
             )
             seen.add(block_id)

@@ -29,7 +29,7 @@ export default function DesignReviewsSection({
         </Card>
       ) : (
         <div className="space-y-4">
-          <div className="space-y-2">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {reviews.map((review) => (
               <Card key={review.id} hover onClick={() => onNavigate(`/designs/${designId}/reviews/${review.id}`)}>
                 <div className="flex items-center justify-between">

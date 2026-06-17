@@ -89,7 +89,11 @@ export default function CategoryJobsSection({
                         )}
                         {!job.is_active && (
                           <button
-                            onClick={() => onDelete(job.id)}
+                            onClick={() => {
+                              if (window.confirm('Are you sure you want to delete this ingestion job?')) {
+                                onDelete(job.id);
+                              }
+                            }}
                             className="flex items-center justify-center p-1.5 rounded-lg text-text-muted hover:text-flame hover:bg-flame/10 transition-colors"
                             title="Delete Job"
                           >

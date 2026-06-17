@@ -190,7 +190,7 @@ export default function RaptorTreeView({ snapshot }: Props) {
         <Card className="space-y-3">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.24em] text-text-muted">Node Detail</p>
-            <p className="mt-1 text-sm font-semibold text-text-primary">
+            <p className="mt-1 text-sm font-semibold text-text-primary line-clamp-1">
               {selectedNode?.section_heading || selectedNode?.id || 'No node selected'}
             </p>
           </div>
