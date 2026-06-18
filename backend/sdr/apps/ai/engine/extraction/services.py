@@ -15,7 +15,7 @@ from sdr.apps.ai.prompts.extraction import (
     build_diagram_req_extraction_prompt,
     build_hierarchical_extraction_prompt,
 )
-from sdr.apps.ai.utils.chunking import chunk_text_with_context
+from sdr.apps.ai.utils.chunking import chunk_text_semantically
 from sdr.apps.ai.utils.concurrency import ConcurrencyProbe
 from sdr.apps.standards.models import StandardSourceDocument
 
@@ -29,7 +29,6 @@ from .normalizers import (
     _clean_asvs_level_definitions,
     _coerce_asvs_level,
     _count_tokens,
-    _merge_requirements,
     _remove_table_of_contents,
     clean_structured_requirements,
     parse_json_response,
@@ -38,6 +37,172 @@ from .normalizers import (
 
 logger = logging.getLogger(__name__)
 _AI_RESPONSE_PREVIEW_LIMIT = 800
+
+
+def _extract_document_requirements(
+    *,
+    document_reader: StandardDocumentReader,
+    structured_extractor: "StructuredRequirementExtractionService",
+    requirement_level_detector: Optional[ASVSRequirementLevelDetectionService],
+    config: ExtractionConfig,
+    source_doc: StandardSourceDocument,
+    start_page: Optional[int] = None,
+    end_page: Optional[int] = None,
+    progress_callback=None,
+) -> Dict[str, List[Any]]:
+    if progress_callback:
+        progress_callback("Reading Document", 5)
+    try:
+        content = document_reader.read_source_document(
+            source_doc,
+            start_page=start_page,
+            end_page=end_page,
+        )
+        source_doc_text = (content or {}).get("text") or ""
+        logger.info(
+            "extract_requirements_from_document: conversion_method=%s for standard '%s'.",
+            (content or {}).get("conversion_method", "unknown"),
+            source_doc.name,
+        )
+    except Exception as exc:
+        logger.error(
+            "extract_requirements_from_document: ✗ [INGEST] failed to access standard file '%s': %s (type=%s)",
+            source_doc.name,
+            exc,
+            type(exc).__name__,
+        )
+        return {}
+
+    if not source_doc_text.strip():
+        logger.warning(
+            "extract_requirements_from_document: ✗ [INGEST] document '%s' yielded no extractable text (text length=%d); skipping AI call.",
+            source_doc.name,
+            len(source_doc_text),
+        )
+        return {}
+
+    source_doc_text = _remove_table_of_contents(source_doc_text)
+    if not source_doc_text.strip():
+        logger.warning(
+            "extract_requirements_from_document: ✗ [PREPROCESS] document '%s' had no extractable body text after table-of-contents removal.",
+            source_doc.name,
+        )
+        return {}
+
+    if progress_callback:
+        progress_callback("Chunking Document", 15)
+    chunks = chunk_text_semantically(
+        source_doc_text,
+        chunk_size=config.standard_extraction_chunk_token_target,
+    )
+    if not chunks:
+        logger.warning(
+            "extract_requirements_from_document: ✗ [CHUNK] chunker returned no chunks for standard '%s' (text length was %d chars). Aborting.",
+            source_doc.name,
+            len(source_doc_text),
+        )
+        return {}
+
+    total_chunks = len(chunks)
+    merged: Dict[str, List[Any]] = {}
+    successful_chunks = 0
+    failed_chunks = 0
+    total_sections_seen = 0
+    total_reqs_seen = 0
+    total_tokens_seen = 0
+
+    def _process_chunk(idx: int, text: str):
+        thread_name = threading.current_thread().name
+        token_count = _count_tokens(text)
+        logger.info(
+            "extract_requirements_from_document: [MAP %d/%d] STARTING on thread %s (~%d tokens)",
+            idx,
+            total_chunks,
+            thread_name,
+            token_count,
+        )
+        try:
+            result = structured_extractor.extract(text, source_name=source_doc.name)
+        except TypeError:
+            result = structured_extractor.extract(text)
+        logger.info(
+            "extract_requirements_from_document: [MAP %d/%d] FINISHED on thread %s",
+            idx,
+            total_chunks,
+            thread_name,
+        )
+        return result, token_count
+
+    executor = concurrent.futures.ThreadPoolExecutor(
+        max_workers=config.standard_extraction_max_workers,
+        thread_name_prefix="ExtractWorker",
+    )
+    try:
+        future_to_chunk = {
+            executor.submit(_process_chunk, idx, chunk_dict["text"]): (idx, chunk_dict)
+            for idx, chunk_dict in enumerate(chunks, start=1)
+        }
+        completed_count = 0
+        for future in concurrent.futures.as_completed(future_to_chunk):
+            idx, _chunk_dict = future_to_chunk[future]
+            completed_count += 1
+            if progress_callback:
+                progress_callback(
+                    f"Extracting chunk {completed_count} of {total_chunks}",
+                    15 + int((completed_count / max(total_chunks, 1)) * 80),
+                )
+            try:
+                chunk_result, chunk_tokens = future.result()
+            except Exception as exc:
+                logger.error(
+                    "extract_requirements_from_document: [MAP %d/%d] ✗ chunk failed with exception %s for standard '%s'",
+                    idx,
+                    total_chunks,
+                    exc,
+                    source_doc.name,
+                )
+                chunk_result, chunk_tokens = {}, 0
+            total_tokens_seen += chunk_tokens
+            if not chunk_result:
+                failed_chunks += 1
+                continue
+            total_sections_seen += len(chunk_result)
+            total_reqs_seen += sum(len(v) for v in chunk_result.values())
+            for section, reqs in chunk_result.items():
+                if section not in merged:
+                    merged[section] = []
+                merged[section].extend(reqs)
+            successful_chunks += 1
+    finally:
+        executor.shutdown(wait=False, cancel_futures=True)
+
+    logger.info(
+        "extract_requirements_from_document: ✓ [MAP-REDUCE] complete for standard '%s'. Chunks: %d succeeded, %d failed. Total sections seen=%d, total reqs seen=%d, total tokens=%d. Final merged: %d section(s), %d total requirement(s).",
+        source_doc.name,
+        successful_chunks,
+        failed_chunks,
+        total_sections_seen,
+        total_reqs_seen,
+        total_tokens_seen,
+        len(merged),
+        sum(len(v) for v in merged.values()),
+    )
+
+    if requirement_level_detector and merged:
+        detected = requirement_level_detector.detect(
+            source_doc,
+            start_page=start_page,
+            end_page=end_page,
+        )
+        backfilled = _backfill_requirement_levels(merged, detected.levels)
+        logger.info(
+            "extract_requirements_from_document: backfilled %d ASVS level(s) from deterministic PDF parsing. indexed_rows=%d matched_pages=%d source=%s",
+            backfilled,
+            len(detected.levels),
+            detected.matched_pages,
+            detected.source,
+        )
+    return merged
 
 
 class ASVSLevelDefinitionExtractionService:
@@ -113,7 +278,7 @@ class StructuredRequirementExtractionService:
         self.llm_client = llm_client
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
-    def extract(self, source_doc_text: str) -> Dict[str, List[Any]]:
+    def extract(self, source_doc_text: str, *, source_name: str = "") -> Dict[str, List[Any]]:
         self.logger.debug(
             "extract_structured_requirements: starting extraction. Text length=%d chars, %d lines.",
             len(source_doc_text),
@@ -126,9 +291,7 @@ class StructuredRequirementExtractionService:
                     "You are an expert security analyst. "
                     "Extract ONLY actionable, technical security requirements from the real "
                     "standard body content and output strictly valid JSON. "
-                    "If source text is not English, translate section names and "
-                    "parameter text/details to English while preserving exact source-language "
-                    "verbatim_quote values. Ignore table-of-contents, document scopes, "
+                    "Ignore table-of-contents, document scopes, "
                     "introductions, generic domains, and compliance/verification processes. "
                     "Do not output analysis, reasoning, or <thinking> tags."
                 ),
@@ -174,7 +337,7 @@ class RequirementDocumentExtractionService:
         structured_extractor: StructuredRequirementExtractionService,
         requirement_level_detector: Optional[ASVSRequirementLevelDetectionService] = None,
         config: ExtractionConfig,
-    ) -> None:
+        ) -> None:
         self.document_reader = document_reader
         self.structured_extractor = structured_extractor
         self.requirement_level_detector = requirement_level_detector
@@ -195,149 +358,17 @@ class RequirementDocumentExtractionService:
             source_doc.name,
             source_doc.document if source_doc.document else "None",
         )
-        if progress_callback:
-            progress_callback("Reading Document", 5)
-        try:
-            content = self.document_reader.read_source_document(
-                source_doc,
-                start_page=start_page,
-                end_page=end_page,
-            )
-            source_doc_text = (content or {}).get("text") or ""
-            self.logger.info(
-                "extract_requirements_from_document: conversion_method=%s for standard '%s'.",
-                (content or {}).get("conversion_method", "unknown"),
-                source_doc.name,
-            )
-        except Exception as exc:
-            self.logger.error(
-                "extract_requirements_from_document: ✗ [INGEST] failed to access standard file '%s': %s (type=%s)",
-                source_doc.name,
-                exc,
-                type(exc).__name__,
-            )
-            return {}
-
-        if not source_doc_text.strip():
-            self.logger.warning(
-                "extract_requirements_from_document: ✗ [INGEST] document '%s' yielded no extractable text (text length=%d); skipping AI call.",
-                source_doc.name,
-                len(source_doc_text),
-            )
-            return {}
-
-        source_doc_text = _remove_table_of_contents(source_doc_text)
-        if not source_doc_text.strip():
-            self.logger.warning(
-                "extract_requirements_from_document: ✗ [PREPROCESS] document '%s' had no extractable body text after table-of-contents removal.",
-                source_doc.name,
-            )
-            return {}
-
-        if progress_callback:
-            progress_callback("Chunking Document", 15)
-        chunks = chunk_text_with_context(source_doc_text)
-        if not chunks:
-            self.logger.warning(
-                "extract_requirements_from_document: ✗ [CHUNK] chunker returned no chunks for standard '%s' (text length was %d chars). Aborting.",
-                source_doc.name,
-                len(source_doc_text),
-            )
-            return {}
-
-        total_chunks = len(chunks)
-        merged: Dict[str, List[Any]] = {}
-        successful_chunks = 0
-        failed_chunks = 0
-        total_sections_seen = 0
-        total_reqs_seen = 0
-        total_tokens_seen = 0
-
-        def _process_chunk(idx: int, text: str):
-            thread_name = threading.current_thread().name
-            token_count = _count_tokens(text)
-            self.logger.info(
-                "extract_requirements_from_document: [MAP %d/%d] STARTING on thread %s (~%d tokens)",
-                idx,
-                total_chunks,
-                thread_name,
-                token_count,
-            )
-            result = self.structured_extractor.extract(text)
-            self.logger.info(
-                "extract_requirements_from_document: [MAP %d/%d] FINISHED on thread %s",
-                idx,
-                total_chunks,
-                thread_name,
-            )
-            return result, token_count
-
-        executor = concurrent.futures.ThreadPoolExecutor(
-            max_workers=self.config.standard_extraction_max_workers,
-            thread_name_prefix="ExtractWorker",
+        return _extract_document_requirements(
+            document_reader=self.document_reader,
+            structured_extractor=self.structured_extractor,
+            requirement_level_detector=self.requirement_level_detector,
+            config=self.config,
+            source_doc=source_doc,
+            start_page=start_page,
+            end_page=end_page,
+            progress_callback=progress_callback,
         )
-        try:
-            future_to_chunk = {
-                executor.submit(_process_chunk, idx, chunk_dict["text"]): (idx, chunk_dict)
-                for idx, chunk_dict in enumerate(chunks, start=1)
-            }
-            completed_count = 0
-            for future in concurrent.futures.as_completed(future_to_chunk):
-                idx, _chunk_dict = future_to_chunk[future]
-                completed_count += 1
-                if progress_callback:
-                    progress_callback(
-                        f"Extracting chunk {completed_count} of {total_chunks}",
-                        15 + int((completed_count / max(total_chunks, 1)) * 80),
-                    )
-                try:
-                    chunk_result, chunk_tokens = future.result()
-                except Exception as exc:
-                    self.logger.error(
-                        "extract_requirements_from_document: [MAP %d/%d] ✗ chunk failed with exception %s for standard '%s'",
-                        idx,
-                        total_chunks,
-                        exc,
-                        source_doc.name,
-                    )
-                    chunk_result, chunk_tokens = {}, 0
-                total_tokens_seen += chunk_tokens
-                if not chunk_result:
-                    failed_chunks += 1
-                    continue
-                total_sections_seen += len(chunk_result)
-                total_reqs_seen += sum(len(v) for v in chunk_result.values())
-                _merge_requirements(merged, chunk_result)
-                successful_chunks += 1
-        finally:
-            executor.shutdown(wait=False, cancel_futures=True)
 
-        self.logger.info(
-            "extract_requirements_from_document: ✓ [MAP-REDUCE] complete for standard '%s'. Chunks: %d succeeded, %d failed. Total sections seen=%d, total reqs seen=%d, total tokens=%d. Final merged: %d section(s), %d total requirement(s).",
-            source_doc.name,
-            successful_chunks,
-            failed_chunks,
-            total_sections_seen,
-            total_reqs_seen,
-            total_tokens_seen,
-            len(merged),
-            sum(len(v) for v in merged.values()),
-        )
-        if self.requirement_level_detector and merged:
-            detected = self.requirement_level_detector.detect(
-                source_doc,
-                start_page=start_page,
-                end_page=end_page,
-            )
-            backfilled = _backfill_requirement_levels(merged, detected.levels)
-            self.logger.info(
-                "extract_requirements_from_document: backfilled %d ASVS level(s) from deterministic PDF parsing. indexed_rows=%d matched_pages=%d source=%s",
-                backfilled,
-                len(detected.levels),
-                detected.matched_pages,
-                detected.source,
-            )
-        return merged
 
 
 class DiagramRequirementExtractionService:
@@ -619,6 +650,14 @@ class ControlFamilySummaryExtractionService:
                         covered.append(resolved)
                     elif ck_str in child_id_to_stable_key.values():
                         covered.append(ck_str)
+                    else:
+                        self.logger.debug(
+                            "ControlFamilySummaryExtractionService: group %d parent='%s' "
+                            "covered_child_keys entry '%s' did not resolve to any known child id",
+                            group_index,
+                            parent_section,
+                            ck_str,
+                        )
                 results.append({
                     "category_id": category_id,
                     "ingestion_job_id": ingestion_job_id,
@@ -631,18 +670,10 @@ class ControlFamilySummaryExtractionService:
                     "ordinal": ordinal_counters.get(level, 1),
                 })
 
-            cap = getattr(self.config, "cfsr_max_per_parent", 5)
-            if len(results) > cap:
-                self.logger.warning(
-                    "ControlFamilySummaryExtractionService: group %d parent='%s' produced %d CFSRs, capping to %d",
-                    group_index,
-                    parent_section,
-                    len(results),
-                    cap,
-                )
-                results = results[:cap]
-
             # Pass A: merge near-duplicate CFSRs (same security concept, different wording)
+            # Runs BEFORE the cfsr_max_per_parent cap so two near-duplicates that
+            # straddle the cutoff get folded into one (combining their
+            # covered_child_keys) instead of one being truncated away unmerged.
             _DEDUP_THRESHOLD = 0.65
             merged: list = []
             for r in results:
@@ -670,6 +701,18 @@ class ControlFamilySummaryExtractionService:
                 if not matched:
                     merged.append(r)
             results = merged
+
+            cap = getattr(self.config, "cfsr_max_per_parent", 5)
+            if len(results) > cap:
+                self.logger.warning(
+                    "ControlFamilySummaryExtractionService: group %d parent='%s' produced %d CFSRs "
+                    "after dedup, capping to %d",
+                    group_index,
+                    parent_section,
+                    len(results),
+                    cap,
+                )
+                results = results[:cap]
 
             # Pass B: enforce covered_child_keys exclusivity (each child in exactly one CFSR)
             _seen_child_keys: set = set()
@@ -718,6 +761,20 @@ class ControlFamilySummaryExtractionService:
                         group_index,
                         len(orphan_real_keys),
                     )
+
+            # Drop any CFSR that still covers nothing after orphan reassignment had
+            # its chance to backfill coverage — these are pure LLM hallucinations.
+            zero_coverage = [r for r in results if not r["covered_child_keys"]]
+            if zero_coverage:
+                self.logger.warning(
+                    "ControlFamilySummaryExtractionService: group %d parent='%s' dropping %d CFSR(s) "
+                    "with zero covered children: %s",
+                    group_index,
+                    parent_section,
+                    len(zero_coverage),
+                    [r.get("stable_key") for r in zero_coverage],
+                )
+                results = [r for r in results if r["covered_child_keys"]]
 
             self.logger.info(
                 "ControlFamilySummaryExtractionService: [GROUP %d/%d] FINISH thread=%s generated=%d",

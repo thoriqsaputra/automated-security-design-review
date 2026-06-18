@@ -85,5 +85,63 @@ def chunk_text_with_context(
 
     return [
         {"text": f"--- DOCUMENT CHUNK {idx} OF {total} ---\n\n{chunk}"}
-        for idx, chunk in enumerate[str](raw_chunks, start=1)
+        for idx, chunk in enumerate(raw_chunks, start=1)
     ]
+
+
+def chunk_text_semantically(
+    text: str,
+    chunk_size: int = 6000,
+    encoding_name: str = "cl100k_base",
+) -> List[Dict[str, str]]:
+    """
+    Splits a document strictly at paragraph boundaries with zero overlap.
+    This guarantees no duplicate LLM extraction artifacts while ensuring
+    we don't slice individual requirements in half.
+    """
+    if not text or not text.strip():
+        logger.warning("chunk_text_semantically: received empty text; returning empty list.")
+        return []
+
+    try:
+        encoding = tiktoken.get_encoding(encoding_name)
+    except Exception as exc:
+        logger.error(
+            "chunk_text_semantically: failed to load tiktoken encoding '%s': %s. "
+            "Falling back to character-based splitting.",
+            encoding_name,
+            exc,
+        )
+        encoding = None
+
+    def _token_len(s: str) -> int:
+        if encoding is not None:
+            return len(encoding.encode(s))
+        return len(s) // 4
+
+    splitter = RecursiveCharacterTextSplitter(
+        separators=["\n\n\n\n", "\n\n\n", "\n\n", "\n", " "],
+        chunk_size=chunk_size,
+        chunk_overlap=0,
+        length_function=_token_len,
+        is_separator_regex=False,
+    )
+
+    raw_chunks: List[str] = splitter.split_text(text)
+    total = len(raw_chunks)
+
+    if total == 0:
+        logger.warning("chunk_text_semantically: splitter produced 0 chunks.")
+        return []
+
+    logger.info(
+        "chunk_text_semantically: split document into %d chunk(s) "
+        "(chunk_size=%d tokens, zero overlap).",
+        total,
+        chunk_size,
+    )
+
+    return [
+        {"text": f"--- DOCUMENT CHUNK {idx} OF {total} ---\n\n{chunk}"}
+        for idx, chunk in enumerate(raw_chunks, start=1)
+    ]

@@ -8,7 +8,7 @@ from celery import shared_task
 
 from sdr.core.database import SessionLocal
 from .models import Design
-from sdr.apps.workspace.document_processing import get_document_content  # Assume this works independently or has been refactored
+from sdr.apps.workspace.document_processing import get_document_content
 
 logger = logging.getLogger(__name__)
 

@@ -23,6 +23,7 @@ _CONTENTS_RE = re.compile(r"\b(?:contents|table of contents)\b", re.IGNORECASE)
 _REQ_TABLE_RE = re.compile(r"^\d+\.\d+\.\d+$")
 _OPTIONAL_MARK_RE = re.compile(r"^o$", re.IGNORECASE)
 _NUMERIC_LEVEL_RE = re.compile(r"^[123]$")
+_MIN_PLAUSIBLE_REQUIREMENT_RANGE_PAGES = 10
 
 
 @dataclass(frozen=True)
@@ -131,6 +132,12 @@ class ASVSPageRangeDetectionService:
             pages=pages,
             toc_entries=toc_entries,
         )
+        req_anchors, req_source = self._flag_low_confidence_requirement_range(
+            req_start=req_start,
+            req_end=req_end,
+            req_anchors=req_anchors,
+            req_source=req_source,
+        )
         source = "toc" if defs_source == "toc" or req_source == "toc" else "heuristic"
         return ASVSPageDetectionResult(
             start_page=req_start,
@@ -144,6 +151,37 @@ class ASVSPageRangeDetectionService:
                 "toc_entries_used": [entry.title for entry in toc_entries[:20]],
             },
         )
+
+    def _flag_low_confidence_requirement_range(
+        self,
+        *,
+        req_start: Optional[int],
+        req_end: Optional[int],
+        req_anchors: Dict[str, Any],
+        req_source: str,
+    ) -> Tuple[Dict[str, Any], str]:
+        if (
+            req_start is None
+            or req_end is None
+            or (req_end - req_start) >= _MIN_PLAUSIBLE_REQUIREMENT_RANGE_PAGES
+        ):
+            return req_anchors, req_source
+
+        req_anchors = dict(req_anchors)
+        req_anchors["warning"] = (
+            f"detected requirement range spans only {req_end - req_start} page(s), "
+            f"below the {_MIN_PLAUSIBLE_REQUIREMENT_RANGE_PAGES}-page plausibility threshold "
+            "for an ASVS-style standard; the range is still used as-is but may be clipping "
+            "real requirement content."
+        )
+        logger.warning(
+            "ASVSPageRangeDetectionService: low-confidence requirement range "
+            "start_page=%s end_page=%s span=%d page(s)",
+            req_start,
+            req_end,
+            req_end - req_start,
+        )
+        return req_anchors, "heuristic_low_confidence"
 
     def _read_toc(self, doc: fitz.Document) -> List[TOCEntry]:
         entries: List[TOCEntry] = []
@@ -339,7 +377,16 @@ class ASVSPageRangeDetectionService:
     def _end_page_from_appendix(self, start_page: int, appendix_page: Optional[int]) -> Optional[int]:
         if appendix_page is None:
             return None
-        return max(start_page, appendix_page - 2)
+        end_page = max(start_page, appendix_page - 2)
+        logger.info(
+            "ASVSPageRangeDetectionService._end_page_from_appendix: start_page=%d "
+            "appendix_page=%d end_page=%d span=%d page(s)",
+            start_page,
+            appendix_page,
+            end_page,
+            end_page - start_page,
+        )
+        return end_page
 
     def _is_contents_page(self, page: PageInfo) -> bool:
         leading_text = "\n".join(page.leading_lines).lower()

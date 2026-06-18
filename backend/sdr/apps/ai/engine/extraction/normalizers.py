@@ -20,8 +20,6 @@ _TOC_HEADING_RE = re.compile(
 _TOC_ENTRY_DOTTED_RE = re.compile(r"\.{2,}\s*\d{1,4}\s*$")
 _TOC_ENTRY_SPACED_RE = re.compile(r".{6,}\s{2,}\d{1,4}\s*$")
 _TOC_LABEL_RE = re.compile(r"^\s*(halaman|page|pages?)\s*$", re.IGNORECASE)
-_NON_REQUIREMENT_NOTE_RE = re.compile(r"^\s*note\s*[:\-]\s*", re.IGNORECASE)
-_OWASP_SUBSECTION_HEADING_ONLY_RE = re.compile(r"^\s*V\d+\.\d+(?:\s+|\s*-\s*)\S", re.IGNORECASE)
 
 
 def _count_tokens(text: str) -> int:
@@ -122,12 +120,6 @@ def parse_json_with_repair(raw_text: str, *, llm_client, max_tokens: int) -> Any
         return json.loads(_extract_json_payload(repair_resp.content or "{}"))
 
 
-def _identity(item: Any) -> str:
-    if isinstance(item, dict):
-        return str(item.get("requirement", "")).strip()
-    return str(item).strip()
-
-
 def _extract_logical_id(text: str) -> str:
     match = re.match(r"^(?:v?\d+(?:\.\d+)*\s*-\s*)?v?(\d+(?:\.\d+)*)\b", text, re.IGNORECASE)
     if match:
@@ -181,31 +173,12 @@ def _clean_asvs_level_definitions(parsed: Any) -> List[Dict[str, Any]]:
                 "name": name,
                 "description": description or guidance,
                 "classification_guidance": guidance,
-                "source_quote": str(item.get("source_quote") or item.get("verbatim_quote") or "").strip(),
+                "source_quote": str(item.get("source_quote") or "").strip(),
                 "context_marker": str(item.get("context_marker") or "").strip(),
             }
         )
         seen.add(level)
     return sorted(cleaned, key=lambda item: item["level"])
-
-
-def _is_non_requirement_note(*values: str) -> bool:
-    for value in values:
-        text = str(value or "").strip()
-        if text and _NON_REQUIREMENT_NOTE_RE.match(text):
-            return True
-    return False
-
-
-def _is_heading_only_requirement(requirement: str) -> bool:
-    text = str(requirement or "").strip()
-    if not text:
-        return False
-    if _OWASP_SUBSECTION_HEADING_ONLY_RE.match(text):
-        if re.search(r"\b\d+\.\d+\.\d+\b", text):
-            return False
-        return True
-    return False
 
 
 def clean_structured_requirements(parsed: Any) -> Dict[str, List[Any]]:
@@ -220,49 +193,32 @@ def clean_structured_requirements(parsed: Any) -> Dict[str, List[Any]]:
             if isinstance(item, dict):
                 req = str(item.get("requirement", "")).strip()
                 details = str(item.get("details", "")).strip()
-                verbatim_quote = str(item.get("verbatim_quote", "")).strip()
                 context_marker = str(item.get("context_marker", "")).strip()
-                if len(req) < 8 and len(details) < 8:
-                    continue
-                if _is_non_requirement_note(req, details, verbatim_quote):
-                    continue
-                if _is_heading_only_requirement(req):
+                if not req and not details:
                     continue
                 cleaned_reqs.append(
                     {
                         "requirement": req,
                         "details": details,
-                        "verbatim_quote": verbatim_quote,
                         "context_marker": context_marker,
                         "asvs_level": _coerce_asvs_level(item.get("asvs_level")),
                     }
                 )
                 continue
             if isinstance(item, str):
-                text = item.strip()
-                if len(text) >= 8 and not _is_non_requirement_note(text):
-                    cleaned_reqs.append(text)
+                text = str(item).strip()
+                if text:
+                    cleaned_reqs.append(
+                        {
+                            "requirement": text,
+                            "details": "",
+                            "context_marker": "",
+                            "asvs_level": None,
+                        }
+                    )
         if cleaned_reqs:
-            cleaned_dict[section] = cleaned_reqs
+            cleaned_dict[str(section).strip()] = cleaned_reqs
     return cleaned_dict
-
-
-def _get_item_length(item: Any) -> int:
-    if isinstance(item, dict):
-        return len(str(item.get("requirement", ""))) + len(str(item.get("details", "")))
-    return len(str(item))
-
-
-def _merge_requirement_metadata(primary: Any, secondary: Any) -> Any:
-    if not isinstance(primary, dict) or not isinstance(secondary, dict):
-        return primary
-    merged = dict(primary)
-    if merged.get("asvs_level") is None and secondary.get("asvs_level") is not None:
-        merged["asvs_level"] = secondary.get("asvs_level")
-    for field_name in ("verbatim_quote", "context_marker"):
-        if not str(merged.get(field_name, "")).strip() and str(secondary.get(field_name, "")).strip():
-            merged[field_name] = secondary.get(field_name)
-    return merged
 
 
 def _backfill_requirement_levels(
@@ -317,54 +273,3 @@ def _canonicalize_diagram_requirements(items: List[Dict[str, Any]]) -> List[Dict
         used_stable_keys.add(candidate_key)
         canonical_items.append(normalized_item)
     return canonical_items
-
-
-def _merge_requirements(
-    base: Dict[str, List[Any]],
-    incoming: Dict[str, List[Any]],
-) -> Dict[str, List[Any]]:
-    for section, new_reqs in incoming.items():
-        if not new_reqs:
-            continue
-        if section not in base:
-            base[section] = list(new_reqs)
-            continue
-        existing_items = base[section]
-        existing_by_identity = {_identity(item): i for i, item in enumerate(existing_items)}
-        existing_by_logical_id = {}
-        for i, item in enumerate(existing_items):
-            ident = _identity(item)
-            log_id = _extract_logical_id(ident)
-            if log_id != ident:
-                existing_by_logical_id[log_id] = i
-        for req in new_reqs:
-            req_identity = _identity(req)
-            if not req_identity:
-                continue
-            req_log_id = _extract_logical_id(req_identity)
-            if req_identity in existing_by_identity:
-                existing_idx = existing_by_identity[req_identity]
-                existing_item = existing_items[existing_idx]
-                if _get_item_length(req) > _get_item_length(existing_item):
-                    existing_items[existing_idx] = _merge_requirement_metadata(req, existing_item)
-                else:
-                    existing_items[existing_idx] = _merge_requirement_metadata(existing_item, req)
-                continue
-            if req_log_id != req_identity and req_log_id in existing_by_logical_id:
-                existing_idx = existing_by_logical_id[req_log_id]
-                existing_item = existing_items[existing_idx]
-                if _get_item_length(req) > _get_item_length(existing_item):
-                    existing_items[existing_idx] = _merge_requirement_metadata(req, existing_item)
-                    existing_by_identity[req_identity] = existing_idx
-                    old_ident = _identity(existing_item)
-                    if old_ident in existing_by_identity and old_ident != req_identity:
-                        del existing_by_identity[old_ident]
-                else:
-                    existing_items[existing_idx] = _merge_requirement_metadata(existing_item, req)
-                continue
-            existing_items.append(req)
-            new_idx = len(existing_items) - 1
-            existing_by_identity[req_identity] = new_idx
-            if req_log_id != req_identity:
-                existing_by_logical_id[req_log_id] = new_idx
-    return base

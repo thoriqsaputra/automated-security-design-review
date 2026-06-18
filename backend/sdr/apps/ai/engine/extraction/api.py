@@ -77,9 +77,9 @@ def extract_asvs_level_definitions_from_document(
     )
 
 
-def extract_structured_requirements(source_doc_text: str) -> Dict[str, List[Any]]:
+def extract_structured_requirements(source_doc_text: str, source_name: str = "") -> Dict[str, List[Any]]:
     service = StructuredRequirementExtractionService(llm_client=_build_llm_client())
-    return service.extract(source_doc_text)
+    return service.extract(source_doc_text, source_name=source_name)
 
 
 def extract_requirements_from_document(
@@ -104,6 +104,7 @@ def extract_requirements_from_document(
         end_page=end_page,
         progress_callback=progress_callback,
     )
+
 
 
 def extract_diagram_requirements(
