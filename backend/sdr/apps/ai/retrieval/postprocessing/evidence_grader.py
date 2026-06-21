@@ -32,6 +32,64 @@ _IMPLEMENTATION_TERMS = {
     "jwks",
     "mfa",
     "rbac",
+    # Logging / monitoring
+    "log",
+    "logging",
+    "logged",
+    "audit",
+    "audited",
+    "monitor",
+    "monitored",
+    "monitoring",
+    "alert",
+    "alerting",
+    # Input validation
+    "sanitiz",
+    "validat",
+    "escape",
+    "escaped",
+    "whitelist",
+    "allowlist",
+    "denylist",
+    "blacklist",
+    "schema",
+    # Rate limiting / abuse prevention
+    "rate limit",
+    "rate-limit",
+    "throttle",
+    "throttled",
+    "throttling",
+    "quota",
+    "backoff",
+    "lockout",
+    # Session management
+    "session",
+    "cookie",
+    "timeout",
+    "expir",
+    # Error handling
+    "exception",
+    "fail-safe",
+    "fail-secure",
+    "error handling",
+    # Access control (non-AuthN)
+    "access control",
+    "least privilege",
+    "deny by default",
+    "policy",
+    # Data protection
+    "mask",
+    "masked",
+    "redact",
+    "redacted",
+    "anonymiz",
+    "pseudonymiz",
+    "pii",
+    # Network / infra isolation
+    "firewall",
+    "segmentation",
+    "isolat",
+    "sandbox",
 }
 
 _WEAK_CHUNK_PREFIXES = (
@@ -105,12 +163,16 @@ class EvidenceGrader:
 
         implementation = [c for c in graded if c.metadata.get("evidence_kind") == "implementation_evidence"]
         fallback = [c for c in graded if c.metadata.get("evidence_kind") != "implementation_evidence"]
+        implementation.sort(key=lambda c: c.score, reverse=True)
+        fallback.sort(key=lambda c: c.score, reverse=True)
         selected = implementation + fallback
 
         if not selected and candidates:
-            selected = [c for c in candidates if c.metadata.get("evidence_kind") not in {"baseline_requirement", "empty"}][
-                : self.max_context_chunks
-            ]
+            selected = sorted(
+                (c for c in candidates if c.metadata.get("evidence_kind") not in {"baseline_requirement", "empty"}),
+                key=lambda c: c.score,
+                reverse=True,
+            )
 
         metadata = {
             "evidence_quality": {

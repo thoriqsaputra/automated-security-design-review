@@ -16,7 +16,7 @@ import {
   type ReviewTab,
 } from '../utils/reviewPresentation';
 
-interface UseReviewDetailResult {
+export interface UseReviewDetailResult {
   review: Review | null;
   findings: Finding[];
   retrievalVisualization: RetrievalVisualization | null;
@@ -55,7 +55,7 @@ interface UseReviewDetailResult {
   persistenceProcessed: number | null;
   persistenceRemaining: number | null;
   skippedByParentApplicability: number | null;
-  reload: () => Promise<void>;
+  reload: (isBackground?: boolean) => Promise<void>;
   handleTrigger: () => Promise<void>;
   handleCancel: () => Promise<void>;
 }
@@ -81,12 +81,36 @@ export function useReviewDetail(reviewId?: string): UseReviewDetailResult {
   const [totalFindings, setTotalFindings] = useState(0);
   const [totalPages, setTotalPages] = useState(1);
 
-  const loadFindings = useCallback(async () => {
+  useEffect(() => {
+    setReview(null);
+    setFindings([]);
+    setRetrievalVisualization(null);
+    setLoading(Boolean(reviewId));
+    setLoadingFindings(false);
+    setTriggering(false);
+    setCancelling(false);
+    setSelectedAnalysisMode('default');
+    setExpandedFinding(null);
+    setActiveTab('overview');
+    setSearch('');
+    setSearchInput('');
+    setFilterMetStatus('all');
+    setFilterSeverity('all');
+    setFilterFindingType('all');
+    setCurrentPage(1);
+    setPageSize(10);
+    setTotalFindings(0);
+    setTotalPages(1);
+  }, [reviewId]);
+
+  const loadFindings = useCallback(async (isBackground = false) => {
     if (!reviewId) {
       return;
     }
 
-    setLoadingFindings(true);
+    if (!isBackground) {
+      setLoadingFindings(true);
+    }
     try {
       const response = await getFindings(
         Number(reviewId),
@@ -113,12 +137,14 @@ export function useReviewDetail(reviewId?: string): UseReviewDetailResult {
     });
   }, [loadFindings]);
 
-  const reload = useCallback(async () => {
+  const reload = useCallback(async (isBackground = false) => {
     if (!reviewId) {
       return;
     }
 
-    setLoading(true);
+    if (!isBackground) {
+      setLoading(true);
+    }
     try {
       const [reviewResponse, retrievalResponse] = await Promise.all([
         getReview(Number(reviewId)),
@@ -146,8 +172,8 @@ export function useReviewDetail(reviewId?: string): UseReviewDetailResult {
     }
 
     const timer = setInterval(() => {
-      void reload();
-      void loadFindings();
+      void reload(true);
+      void loadFindings(true);
     }, 8000);
 
     return () => clearInterval(timer);
@@ -176,7 +202,7 @@ export function useReviewDetail(reviewId?: string): UseReviewDetailResult {
     try {
       await triggerReview(Number(reviewId), selectedAnalysisMode);
     } finally {
-      await reload();
+      await reload(true);
       setTriggering(false);
     }
   }, [reload, reviewId, selectedAnalysisMode, triggering]);
@@ -190,7 +216,7 @@ export function useReviewDetail(reviewId?: string): UseReviewDetailResult {
     try {
       await cancelReview(Number(reviewId));
     } finally {
-      await reload();
+      await reload(true);
       setCancelling(false);
     }
   }, [cancelling, reload, reviewId]);

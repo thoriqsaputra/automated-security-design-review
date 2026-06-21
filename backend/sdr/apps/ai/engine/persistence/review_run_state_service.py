@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from sdr.apps.ai.engine.dto import AnalysisSummary
 from sdr.apps.reviews.models import Review
 from sdr.apps.reviews.models.choices import ReviewStatus
+from sdr.apps.reviews.services import review_debate_event_store
 
 
 class AnalysisCancelledError(RuntimeError):
@@ -18,8 +19,9 @@ class ReviewRunStateService:
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     def mark_running(self, review: Review) -> None:
-        new_status = ReviewStatus.RUNNING.value if hasattr(ReviewStatus, "value") else ReviewStatus.RUNNING
+        new_status = ReviewStatus.RUNNING.value
         now = datetime.now(timezone.utc)
+        review_debate_event_store.reset_review(review.id)
         self.workflow_repository.mark_review_running(
             review.id,
             status=new_status,
@@ -27,6 +29,7 @@ class ReviewRunStateService:
         )
         review.status = new_status
         review.started_at = now
+        review_debate_event_store.publish_review_status(review.id, review_status=new_status)
 
     def save_overview(self, review: Review, overview: str) -> None:
         self.workflow_repository.save_review_overview(review.id, overview=overview)
@@ -71,6 +74,7 @@ class ReviewRunStateService:
             review.status = new_status
             review.completed_at = now
             review.summary_json = summary_dict
+            review_debate_event_store.publish_review_status(review.id, review_status=new_status)
         except Exception as exc:
             self.logger.exception(
                 "ReviewRunStateService.complete_review: failed for review_id=%s: %s",
@@ -86,7 +90,7 @@ class ReviewRunStateService:
                     review.id,
                 )
                 return
-            new_status = ReviewStatus.FAILED.value if hasattr(ReviewStatus, "value") else ReviewStatus.FAILED
+            new_status = ReviewStatus.FAILED.value
             now = datetime.now(timezone.utc)
             self.workflow_repository.mark_review_failed(
                 review.id,
@@ -97,6 +101,11 @@ class ReviewRunStateService:
             review.status = new_status
             review.completed_at = now
             review.error_message = error_message
+            review_debate_event_store.publish_review_status(
+                review.id,
+                review_status=new_status,
+                error_message=error_message,
+            )
         except Exception as exc:
             self.logger.exception(
                 "ReviewRunStateService.fail_review: could not mark review failed id=%s: %s",
@@ -111,7 +120,7 @@ class ReviewRunStateService:
         if latest.status == ReviewStatus.CANCELLED.value:
             return True
         return (
-            latest.status == (ReviewStatus.FAILED.value if hasattr(ReviewStatus, "value") else ReviewStatus.FAILED)
+            latest.status == ReviewStatus.FAILED.value
             and (latest.error_message or "").strip().lower().startswith("analysis was cancelled")
         )
 

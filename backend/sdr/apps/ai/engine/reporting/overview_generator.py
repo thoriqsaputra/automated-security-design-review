@@ -19,15 +19,13 @@ class OverviewGenerator:
     def generate(self, review, summary) -> Optional[str]:
         try:
             category_name = "Unknown"
-            selected_categories = list(review.selected_categories)
-
-            if selected_categories:
-                category_name = selected_categories[0].name
+            if getattr(review, "category", None):
+                category_name = review.category.name
             elif review.ingestion_job and review.ingestion_job.category:
                 category_name = review.ingestion_job.category.name
 
             prompt = build_overview_prompt(
-                design_name=review.design.name,
+                design_name=getattr(getattr(review, "design", None), "name", "Unknown Design"),
                 category_name=category_name,
                 total_parameters=summary.total_parameters,
                 met_count=summary.met_count,

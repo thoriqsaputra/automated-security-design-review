@@ -16,7 +16,7 @@ def test_mediator_returns_degraded_result_when_llm_response_is_truncated(monkeyp
         logic_summary="Critic saw missing evidence.",
     )
 
-    def fake_call_llm(_user_prompt):
+    def fake_call_llm(user_prompt, **_kwargs):
         return AIResponse(
             content='{"final_verdict":"not_met","confidence":0.3',
             model="test-model",

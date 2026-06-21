@@ -88,7 +88,7 @@ export default function DesignsList() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-text-primary">{d.name}</p>
-                    <p className="text-xs text-text-muted">{d.original_filename} · {new Date(d.created_at).toLocaleDateString()}</p>
+                    <p className="text-xs text-text-muted">{new Date(d.created_at).toLocaleDateString()}</p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3">

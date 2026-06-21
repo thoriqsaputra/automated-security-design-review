@@ -1,10 +1,15 @@
+import asyncio
+import json
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query, Response
+
+from fastapi import APIRouter, Depends, HTTPException, Request, status, Query, Response
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 
 from sdr.core.database import get_db
 from sdr.apps.workspace.services.storage import storage_service
+from sdr.apps.reviews.services import review_debate_event_store
 from ..models import Review, Finding
 from ..models.choices import ReviewStatus
 from ..schemas import (
@@ -17,6 +22,15 @@ from ..schemas import (
 from ..tasks import dispatch_review_analysis
 
 router = APIRouter()
+
+_TERMINAL_REVIEW_STATES = {
+    ReviewStatus.COMPLETED_CLEAN.value,
+    ReviewStatus.COMPLETED_WITH_FINDINGS.value,
+    ReviewStatus.APPROVED.value,
+    ReviewStatus.REJECTED.value,
+    ReviewStatus.CANCELLED.value,
+    ReviewStatus.FAILED.value,
+}
 
 
 @router.get("/", response_model=List[ReviewSchema])
@@ -76,6 +90,67 @@ def get_review(review_id: int, db: Session = Depends(get_db)):
     if not review:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review not found")
     return review
+
+
+@router.get("/{review_id}/debates/stream")
+async def stream_review_debates(
+    review_id: int,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    review = db.get(Review, review_id)
+    if not review:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review not found")
+
+    snapshot = review_debate_event_store.load_snapshot(review_id)
+    if snapshot is None and review.status in _TERMINAL_REVIEW_STATES:
+        findings = db.execute(
+            select(Finding)
+            .where(Finding.review_id == review_id)
+            .order_by(Finding.created_at.asc(), Finding.id.asc())
+        ).scalars().all()
+        snapshot = review_debate_event_store.build_completed_snapshot(
+            review_id=review_id,
+            review_status=review.status,
+            findings=findings,
+            error_message=review.error_message,
+        )
+        review_debate_event_store.save_snapshot(review_id, snapshot)
+    elif snapshot is None:
+        snapshot = {
+            "review_id": review_id,
+            "review_status": review.status,
+            "error_message": review.error_message,
+            "updated_at": None,
+            "last_event_id": None,
+            "debates": [],
+        }
+
+    async def event_generator():
+        yield _format_sse_event("snapshot", snapshot)
+        last_event_id = request.headers.get("last-event-id") or snapshot.get("last_event_id") or "0-0"
+
+        while True:
+            if await request.is_disconnected():
+                break
+            events = await asyncio.to_thread(
+                review_debate_event_store.read_events,
+                review_id,
+                last_event_id=last_event_id,
+                block_ms=15000,
+            )
+            if not events:
+                yield ": keepalive\n\n"
+                continue
+            for event_id, payload in events:
+                last_event_id = event_id
+                yield _format_sse_event(
+                    str(payload.get("type") or "message"),
+                    payload,
+                    event_id=event_id,
+                )
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
 
 
 
@@ -197,6 +272,7 @@ def trigger_review(
         review.completed_at = None
         review.summary_json = {}
         review.retrieval_snapshot_json = None
+        review_debate_event_store.reset_review(review.id)
         if payload and payload.analysis_mode is not None:
             review.analysis_mode = payload.analysis_mode.value
 
@@ -222,14 +298,7 @@ def cancel_review(review_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review not found")
         
     # Prevent cancelling already finished reviews
-    terminal_states = [
-        ReviewStatus.COMPLETED_CLEAN.value, 
-        ReviewStatus.COMPLETED_WITH_FINDINGS.value, 
-        ReviewStatus.APPROVED.value, 
-        ReviewStatus.REJECTED.value,
-        ReviewStatus.CANCELLED.value,
-        ReviewStatus.FAILED.value
-    ]
+    terminal_states = list(_TERMINAL_REVIEW_STATES)
     if review.status in terminal_states:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot cancel a review that is already completed or terminated")
         
@@ -242,4 +311,18 @@ def cancel_review(review_id: int, db: Session = Depends(get_db)):
     review.error_message = "Analysis was cancelled by user."
     db.commit()
     db.refresh(review)
+    review_debate_event_store.mark_debates_cancelled(review.id, error_message=review.error_message)
     return review
+
+
+def _format_sse_event(event_type: str, payload: dict, *, event_id: Optional[str] = None) -> str:
+    parts = []
+    if event_id:
+        parts.append(f"id: {event_id}")
+    parts.append(f"event: {event_type}")
+    encoded = json.dumps(payload, default=str)
+    for line in encoded.splitlines():
+        parts.append(f"data: {line}")
+    parts.append("")
+    parts.append("")
+    return "\n".join(parts)

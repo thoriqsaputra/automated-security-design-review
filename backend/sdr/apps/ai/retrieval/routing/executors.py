@@ -1,18 +1,32 @@
 from __future__ import annotations
 
+import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Set
 
 from sdr.apps.ai.retrieval.core import RetrievalCandidate, RetrievalResult, RetrievalStrategy, dedupe_candidates, merge_candidates
 from sdr.apps.ai.retrieval.searchers.graph import GraphSearchResponse, GraphTraversalConfig, _extract_keywords
-from sdr.apps.ai.retrieval.searchers.raptor import RAPTOR_LEVEL_HIGH, RAPTOR_LEVEL_LOW, RAPTOR_LEVEL_MID
+from sdr.apps.ai.retrieval.searchers.raptor import RAPTOR_LEVEL_HIGH, RAPTOR_LEVEL_LOW, RAPTOR_LEVEL_MID, RAPTORSearchResponse
+from sdr.apps.ai.retrieval.searchers.vector import VectorSearchResponse
 from sdr.apps.ai.tsd_processing.graph_builder import TSDGraph
 from sdr.apps.ai.tsd_processing.raptor import RAPTORTree
 from sdr.apps.standards.models import StandardCategory, StandardIngestionJob
 
+logger = logging.getLogger(__name__)
 
-def _safe_execute(func, *args, **kwargs):
-    return func(*args, **kwargs)
+
+def _safe_execute(func, *args, on_error=None, **kwargs):
+    try:
+        return func(*args, **kwargs)
+    except Exception as exc:
+        logger.exception("Retrieval branch failed in thread pool: %s", exc)
+        if on_error is not None:
+            return on_error(exc)
+        raise
+
+
+def _bounded_pool_size(configured_max: int, branch_count: int) -> int:
+    return max(1, min(max(1, int(configured_max)), max(1, int(branch_count))))
 
 
 class RetrievalRouteExecutor:
@@ -152,7 +166,9 @@ class RetrievalRouteExecutor:
         keywords: List[str],
         inferred_relations: set,
     ) -> RetrievalResult:
-        with ThreadPoolExecutor(max_workers=3, thread_name_prefix="ThreadPoolExecutor-3") as executor:
+        branch_count = 2 + int(bool(raptor_tree and not raptor_tree.is_empty()))
+        max_workers = _bounded_pool_size(router.advanced_config.hybrid_max_workers, branch_count)
+        with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="ThreadPoolExecutor-3") as executor:
             fut_vec = executor.submit(
                 _safe_execute,
                 router._vector_searcher.search,
@@ -161,6 +177,7 @@ class RetrievalRouteExecutor:
                 top_k=router.vector_top_k,
                 ingestion_job=ingestion_job,
                 precomputed_embedding=query_embedding or None,
+                on_error=lambda exc: VectorSearchResponse(error=str(exc)),
             )
             if raptor_tree and not raptor_tree.is_empty():
                 fut_rap = executor.submit(
@@ -172,6 +189,7 @@ class RetrievalRouteExecutor:
                     max_tokens=4000,
                     allowed_levels=[RAPTOR_LEVEL_LOW, RAPTOR_LEVEL_MID, RAPTOR_LEVEL_HIGH],
                     precomputed_embedding=query_embedding or None,
+                    on_error=lambda exc: RAPTORSearchResponse(error=str(exc)),
                 )
             else:
                 fut_rap = None
@@ -182,6 +200,7 @@ class RetrievalRouteExecutor:
                 tree=raptor_tree,
                 top_k=max(router.vector_top_k, router.raptor_top_k, 20),
                 allowed_levels=[RAPTOR_LEVEL_LOW, RAPTOR_LEVEL_MID, RAPTOR_LEVEL_HIGH],
+                on_error=lambda exc: [],
             )
             vector_response = fut_vec.result()
             raptor_response = fut_rap.result() if fut_rap else None
@@ -234,7 +253,8 @@ class RetrievalRouteExecutor:
                 keywords=keywords,
                 inferred_relations=set(),
             )
-        with ThreadPoolExecutor(max_workers=3, thread_name_prefix="ThreadPoolExecutor-4") as executor:
+        max_workers = _bounded_pool_size(router.advanced_config.graph_local_max_workers, 3)
+        with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="ThreadPoolExecutor-4") as executor:
             fut_graph = executor.submit(
                 _safe_execute,
                 router._graph_searcher.search_local,
@@ -242,6 +262,7 @@ class RetrievalRouteExecutor:
                 graph=graph,
                 query_embedding=query_embedding,
                 traversal_config=GraphTraversalConfig(),
+                on_error=lambda exc: GraphSearchResponse(error=str(exc)),
             )
             fut_vec = executor.submit(
                 _safe_execute,
@@ -251,6 +272,7 @@ class RetrievalRouteExecutor:
                 top_k=router.vector_top_k,
                 ingestion_job=ingestion_job,
                 precomputed_embedding=query_embedding or None,
+                on_error=lambda exc: VectorSearchResponse(error=str(exc)),
             )
             fut_bm25 = executor.submit(
                 _safe_execute,
@@ -259,6 +281,7 @@ class RetrievalRouteExecutor:
                 tree=raptor_tree,
                 top_k=max(router.vector_top_k, router.raptor_top_k, 20),
                 allowed_levels=[RAPTOR_LEVEL_LOW, RAPTOR_LEVEL_MID, RAPTOR_LEVEL_HIGH],
+                on_error=lambda exc: [],
             )
             graph_response = fut_graph.result()
             if graph_response.error:
@@ -306,194 +329,5 @@ class RetrievalRouteExecutor:
                 "graph_embedding_stats": getattr(graph, "embedding_stats", {}),
             },
         )
-
-    def execute_graph_global(
-        self,
-        router,
-        *,
-        query_text: str,
-        category: StandardCategory,
-        ingestion_job: Optional[StandardIngestionJob],
-        raptor_tree: Optional[RAPTORTree],
-        graph: Optional[TSDGraph],
-        query_embedding: List[float],
-        keywords: List[str],
-        query_entities: List[str],
-    ) -> RetrievalResult:
-        if not router.advanced_config.enable_graph_global or graph is None or graph.is_empty():
-            return router._execute_hybrid(
-                query_text=query_text,
-                category=category,
-                ingestion_job=ingestion_job,
-                raptor_tree=raptor_tree,
-                graph=graph,
-                query_embedding=query_embedding,
-                keywords=keywords,
-                inferred_relations=set(),
-            )
-        with ThreadPoolExecutor(max_workers=3, thread_name_prefix="ThreadPoolExecutor-5") as executor:
-            def _get_community_cands():
-                communities = router._community_service.detect_communities(graph)
-                if not communities:
-                    return None
-                summaries = router._community_service.summarize_communities(graph, communities)
-                return router._community_summaries_to_candidates(
-                    graph=graph,
-                    summaries=summaries,
-                    keywords=keywords,
-                    query_embedding=query_embedding or None,
-                )
-
-            fut_comm = executor.submit(_safe_execute, _get_community_cands)
-            fut_graph = None
-            if query_entities:
-                fut_graph = executor.submit(
-                    _safe_execute,
-                    router._graph_searcher.search_local,
-                    query_entities=query_entities,
-                    graph=graph,
-                    query_embedding=query_embedding,
-                    traversal_config=GraphTraversalConfig(),
-                )
-            fut_vec = executor.submit(
-                _safe_execute,
-                router._vector_searcher.search,
-                query_text=query_text,
-                category=category,
-                top_k=router.vector_top_k,
-                ingestion_job=ingestion_job,
-                precomputed_embedding=query_embedding or None,
-            )
-            community_candidates = fut_comm.result()
-            if not community_candidates:
-                return router._execute_hybrid(
-                    query_text=query_text,
-                    category=category,
-                    ingestion_job=ingestion_job,
-                    raptor_tree=raptor_tree,
-                    graph=graph,
-                    query_embedding=query_embedding,
-                    keywords=keywords,
-                    inferred_relations=set(),
-                )
-            graph_candidates: List[RetrievalCandidate] = []
-            if fut_graph:
-                graph_local_response = fut_graph.result()
-                if not graph_local_response.error:
-                    graph_candidates = router._graph_response_to_candidates(graph_local_response)
-            vector_response = fut_vec.result()
-        dense_candidates = router._vector_results_to_candidates(vector_response)
-        merged = merge_candidates(community_candidates, graph_candidates, dense_candidates)
-        deduped = dedupe_candidates(merged)
-        scored = router._apply_keyword_coverage_boost(deduped, keywords)
-        evidence_filtered, evidence_metadata = router._grade_and_filter_candidates(
-            scored,
-            query_text=query_text,
-            keywords=keywords,
-        )
-        reranked = router._reranker.rerank(query=query_text, candidates=evidence_filtered, top_k=router.max_context_chunks)
-        chunks = [c.text for c in reranked if c.text]
-        block_ids = router._collect_candidate_block_ids(reranked)
-        selected_community_ids = [c.metadata.get("community_id") for c in reranked if c.metadata.get("community_id")]
-        return RetrievalResult(
-            context_chunks=chunks[: router.max_context_chunks],
-            source_block_ids=block_ids,
-            strategy_used=RetrievalStrategy.GRAPH_GLOBAL,
-            query_embedding=query_embedding,
-            vector_response=vector_response,
-            evidence_metadata={
-                **evidence_metadata,
-                "query_entities": query_entities,
-                "selected_communities": selected_community_ids,
-                "mode": "graph_global",
-                "graph_embedding_rerank_applied": bool(query_embedding),
-                "graph_embedding_stats": getattr(graph, "embedding_stats", {}),
-            },
-        )
-
-    def execute_ir_cot_graph(
-        self,
-        router,
-        *,
-        query_text: str,
-        category: StandardCategory,
-        ingestion_job: Optional[StandardIngestionJob],
-        raptor_tree: Optional[RAPTORTree],
-        graph: Optional[TSDGraph],
-        query_embedding: List[float],
-        keywords: List[str],
-        query_entities: List[str],
-    ) -> RetrievalResult:
-        max_iterations = min(max(1, router.advanced_config.ir_cot_max_iterations), 3)
-        current_query = query_text
-        accumulated_candidates: List[RetrievalCandidate] = []
-        seen_block_ids: Set[str] = set()
-        evidence_metadata: Dict[str, Any] = {"ir_cot_iterations": 0, "queries": []}
-
-        for iteration in range(max_iterations):
-            evidence_metadata["queries"].append(current_query)
-            local_keywords = _extract_keywords(current_query)
-            local_entities = router._extract_query_entities(current_query)
-            if router.advanced_config.enable_graph_global:
-                result = router._execute_graph_global(
-                    query_text=current_query,
-                    category=category,
-                    ingestion_job=ingestion_job,
-                    raptor_tree=raptor_tree,
-                    graph=graph,
-                    query_embedding=query_embedding,
-                    keywords=local_keywords,
-                    query_entities=local_entities,
-                )
-            else:
-                result = router._execute_graph_local(
-                    query_text=current_query,
-                    category=category,
-                    ingestion_job=ingestion_job,
-                    raptor_tree=raptor_tree,
-                    graph=graph,
-                    query_embedding=query_embedding,
-                    keywords=local_keywords,
-                    query_entities=local_entities,
-                )
-            new_candidates = [
-                RetrievalCandidate(
-                    id=f"ircot:{iteration}:{idx}",
-                    source_type="raptor",
-                    text=text,
-                    score=1.0 - (0.1 * iteration),
-                    block_ids=list(result.source_block_ids),
-                    metadata={"sensitivity": "internal"},
-                    token_count=max(1, len(text) // 4),
-                )
-                for idx, text in enumerate(result.context_chunks)
-                if text
-            ]
-            accumulated_candidates.extend(new_candidates)
-            new_blocks = set(result.source_block_ids) - seen_block_ids
-            seen_block_ids.update(result.source_block_ids)
-            evidence_metadata["ir_cot_iterations"] = iteration + 1
-            if not new_blocks or len(seen_block_ids) >= router.max_context_chunks:
-                break
-            current_query = router._generate_followup_query(query_text, accumulated_candidates)
-
-        deduped = dedupe_candidates(accumulated_candidates)
-        evidence_filtered, quality_metadata = router._grade_and_filter_candidates(
-            deduped,
-            query_text=query_text,
-            keywords=keywords,
-        )
-        evidence_metadata.update(quality_metadata)
-        reranked = router._reranker.rerank(query=query_text, candidates=evidence_filtered, top_k=router.max_context_chunks)
-        chunks = [c.text for c in reranked if c.text]
-        block_ids = router._collect_candidate_block_ids(reranked)
-        return RetrievalResult(
-            context_chunks=chunks[: router.max_context_chunks],
-            source_block_ids=block_ids,
-            strategy_used=RetrievalStrategy.IR_COT_GRAPH,
-            query_embedding=query_embedding,
-            evidence_metadata=evidence_metadata,
-        )
-
 
 __all__ = ["RetrievalRouteExecutor"]

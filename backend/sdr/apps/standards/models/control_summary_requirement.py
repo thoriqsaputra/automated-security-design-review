@@ -64,7 +64,15 @@ class CategoryControlSummaryRequirement(Base, StandardsBigIntBase):
         "StandardIngestionJob",
         backref=backref("control_summary_requirements", cascade="all, delete-orphan"),
     )
-    parent = relationship("CategoryParameterParent", backref="control_summary_requirements")
+    parent = relationship(
+        "CategoryParameterParent",
+        backref=backref(
+            "control_summary_requirements",
+            cascade="all, delete-orphan",
+            passive_deletes=True,
+        ),
+        passive_deletes=True,
+    )
 
     @property
     def details(self) -> str:

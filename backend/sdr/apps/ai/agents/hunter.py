@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from sdr.apps.ai.prompts.agents import (
     HUNTER_SYSTEM_PROMPT,
@@ -57,6 +57,7 @@ class HunterAgent(BaseAgent):
         persona_focus: Optional[str] = None,
         killed_assumptions: Optional[List[dict]] = None,
         available_block_ids: Optional[List[str]] = None,
+        stream_handler: Optional[Callable[[str], None]] = None,
     ) -> HunterResult:
         # ------------------------------------------------------------------
         # 1. Input validation
@@ -118,7 +119,7 @@ class HunterAgent(BaseAgent):
         # ------------------------------------------------------------------
         # 3. Call LLM
         # ------------------------------------------------------------------
-        response = self._call_llm(user_prompt)
+        response = self._call_llm_with_truncation_retry(user_prompt, stream_handler=stream_handler)
 
         if response.error:
             msg = f"LLM call failed: {response.error}"
@@ -234,6 +235,7 @@ class HunterAgent(BaseAgent):
         parameter_section: str,
         context_chunks: List[str],
         killed_assumptions: Optional[List[dict]] = None,
+        available_block_ids: Optional[List[str]] = None,
     ) -> Dict[str, HunterResult]:
         """
         Executes one Hunter call for multiple child parameters.
@@ -261,12 +263,13 @@ class HunterAgent(BaseAgent):
                 if item.get("id") is not None
             }
 
-        response = self._call_llm(
+        response = self._call_llm_with_truncation_retry(
             self._build_batch_user_prompt(
                 child_inputs=child_inputs,
                 parameter_section=parameter_section,
                 context_chunks=context_chunks,
                 killed_assumptions=killed_assumptions,
+                available_block_ids=available_block_ids,
             )
         )
         if response.error:
@@ -354,12 +357,14 @@ class HunterAgent(BaseAgent):
         parameter_section: str,
         context_chunks: List[str],
         killed_assumptions: Optional[List[dict]],
+        available_block_ids: Optional[List[str]] = None,
     ) -> str:
         return build_batch_hunter_prompt(
             child_inputs=child_inputs,
             parameter_section=parameter_section,
             context_chunks=context_chunks,
             killed_assumptions=killed_assumptions,
+            available_block_ids=available_block_ids,
         )
 
     def _extract_evidence_found(

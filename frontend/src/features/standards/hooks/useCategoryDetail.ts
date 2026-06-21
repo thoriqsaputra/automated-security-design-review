@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   activateIngestionJob,
   cancelIngestionJob,
@@ -24,6 +25,7 @@ import {
 type ParameterParentWithMatch = ParameterParent & { _matchesParent?: boolean };
 
 export function useCategoryDetail(code?: string) {
+  const navigate = useNavigate();
   const [category, setCategory] = useState<StandardCategory | null>(null);
   const [parameters, setParameters] = useState<ParameterParent[]>([]);
   const [diagramRequirements, setDiagramRequirements] = useState<DiagramRequirement[]>([]);
@@ -52,6 +54,27 @@ export function useCategoryDetail(code?: string) {
 
   const jobsPerPage = 3;
 
+  const [prevCode, setPrevCode] = useState(code);
+  if (code !== prevCode) {
+    setPrevCode(code);
+    setLoading(true);
+    setJobsPage(1);
+    setParamsPage(1);
+  }
+
+  const fetchCategoryData = async (catCode: string) => {
+    const [parameterResponse, jobsResponse] = await Promise.all([
+      getCategoryParameters(catCode),
+      listIngestionJobs(catCode),
+    ]);
+    return {
+      category: parameterResponse.data.category,
+      parameters: parameterResponse.data.parameters,
+      diagram_requirements: parameterResponse.data.diagram_requirements || [],
+      jobs: jobsResponse.data,
+    };
+  };
+
   const loadInitial = async () => {
     if (!code) {
       return;
@@ -60,14 +83,11 @@ export function useCategoryDetail(code?: string) {
     setJobsPage(1);
     setParamsPage(1);
     try {
-      const [parameterResponse, jobsResponse] = await Promise.all([
-        getCategoryParameters(code),
-        listIngestionJobs(code),
-      ]);
-      setCategory(parameterResponse.data.category);
-      setParameters(parameterResponse.data.parameters);
-      setDiagramRequirements(parameterResponse.data.diagram_requirements || []);
-      setJobs(jobsResponse.data);
+      const data = await fetchCategoryData(code);
+      setCategory(data.category);
+      setParameters(data.parameters);
+      setDiagramRequirements(data.diagram_requirements);
+      setJobs(data.jobs);
       setFeedback(null);
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : 'Failed to load category details.');
@@ -85,13 +105,39 @@ export function useCategoryDetail(code?: string) {
   };
 
   useEffect(() => {
-    void loadInitial();
+    if (!code) return;
+    
+    let isMounted = true;
+    fetchCategoryData(code)
+      .then(data => {
+        if (!isMounted) return;
+        setCategory(data.category);
+        setParameters(data.parameters);
+        setDiagramRequirements(data.diagram_requirements);
+        setJobs(data.jobs);
+        setFeedback(null);
+        setLoading(false);
+      })
+      .catch(error => {
+        if (!isMounted) return;
+        setFeedback(error instanceof Error ? error.message : 'Failed to load category details.');
+        setLoading(false);
+      });
+
+    return () => { isMounted = false; };
   }, [code]);
 
-  useEffect(() => {
+  const [prevResetDeps, setPrevResetDeps] = useState([activeTab, filterAsvsLevel, pageSize, search]);
+  if (
+    prevResetDeps[0] !== activeTab ||
+    prevResetDeps[1] !== filterAsvsLevel ||
+    prevResetDeps[2] !== pageSize ||
+    prevResetDeps[3] !== search
+  ) {
+    setPrevResetDeps([activeTab, filterAsvsLevel, pageSize, search]);
     setParamsPage(1);
     setDiagramParamsPage(1);
-  }, [activeTab, filterAsvsLevel, pageSize, search]);
+  }
 
   useEffect(() => {
     const hasRunningJob = jobs.some((job) => job.status === 'running' || job.status === 'pending');
@@ -129,6 +175,7 @@ export function useCategoryDetail(code?: string) {
     }
     setUploading(true);
     try {
+      
       await createIngestionJob(code, file, startPage, endPage, levelDefinitionStartPage, levelDefinitionEndPage);
       setShowUpload(false);
       setFile(null);
@@ -137,6 +184,7 @@ export function useCategoryDetail(code?: string) {
       setLevelDefinitionStartPage('');
       setLevelDefinitionEndPage('');
       await loadInitial();
+      navigate(`/standards/${code}`);
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : 'Failed to start ingestion.');
     } finally {

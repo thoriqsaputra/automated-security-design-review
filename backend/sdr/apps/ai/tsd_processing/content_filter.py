@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import logging
+import math
 import re
 from collections import Counter
 from dataclasses import dataclass, field, replace
@@ -9,7 +11,10 @@ from typing import Any, Dict, Iterable, List, Optional, Sequence, Tuple
 
 from sdr.core.config import settings
 
+from sdr.apps.ai.client import get_embeddings
 from sdr.apps.ai.tsd_processing.document_models import DiagramBlock, TextBlock, TSDDocument, TSDPage
+
+logger = logging.getLogger(__name__)
 
 
 _SECURITY_TERMS = (
@@ -97,6 +102,20 @@ _OUTLINE_ENTRY_RE = re.compile(
     r"(?:[.\u2024\u2025\u2026\u2027\u2219\u22ef\u00b7]{4,}|\s{3,})\s*\d{1,4}\b",
     re.I,
 )
+_EMBEDDING_GATE_EXEMPLARS = (
+    "The system architecture consists of multiple services that communicate over internal APIs.",
+    "Users authenticate to the application using a username and password or single sign-on.",
+    "Session tokens are issued after login and expire after a period of inactivity.",
+    "User passwords are hashed and salted before being stored in the database.",
+    "Sensitive data is encrypted before being written to persistent storage.",
+    "Customer data is replicated across multiple availability zones for redundancy.",
+    "The application exchanges data with external third-party systems over the network.",
+    "The service is deployed inside a container orchestration platform such as Kubernetes.",
+    "Secrets and credentials are stored in a dedicated secrets management system.",
+    "Administrators can access a separate console to manage system configuration.",
+    "Users can upload files which are processed and stored by the backend service.",
+    "This feature is not available to mobile or browser-based clients.",
+)
 _UNICODE_PUNCT_TRANSLATION = str.maketrans({
     "\u2024": ".",
     "\u2025": ".",
@@ -156,13 +175,10 @@ def build_filtered_tsd_view(tsd_document: TSDDocument) -> FilteredTSDDocumentVie
         )
 
     min_score = _configured_min_score()
-    filtered_pages: List[TSDPage] = []
-    included_block_ids: List[str] = []
-    excluded_block_ids: List[str] = []
-    decisions_by_block_id: Dict[str, ContentFilterDecision] = {}
-    excluded_by_class: Counter[str] = Counter()
     original_valid_blocks = 0
 
+    # Pass 1 — lexical decisions only, grouped by page (logic unchanged).
+    page_block_decisions: List[Tuple[TSDPage, List[Tuple[TextBlock, ContentFilterDecision]]]] = []
     for page in tsd_document.pages:
         page_context = " ".join(
             part
@@ -176,7 +192,7 @@ def build_filtered_tsd_view(tsd_document: TSDDocument) -> FilteredTSDDocumentVie
         page_admin_class = _admin_class(page_context)
         page_terms = _matched_security_terms(page_context)
         page_has_scope_signal = _has_explicit_scope_signal(page_context)
-        included_blocks: List[TextBlock] = []
+        block_decisions: List[Tuple[TextBlock, ContentFilterDecision]] = []
 
         for block in page.text_blocks:
             if not block.is_valid():
@@ -190,6 +206,45 @@ def build_filtered_tsd_view(tsd_document: TSDDocument) -> FilteredTSDDocumentVie
                 page_has_scope_signal=page_has_scope_signal,
                 min_score=min_score,
             )
+            block_decisions.append((block, decision))
+
+        page_block_decisions.append((page, block_decisions))
+
+    # Rescue step — semantic second chance for blocks dropped purely for
+    # lacking literal keyword overlap. Never overrides admin-class vetoes,
+    # noise, or other deliberate exclusions.
+    embedding_rescued_blocks = 0
+    if _embedding_gate_enabled():
+        rescue_candidates = [
+            (block.block_id, block, decision)
+            for _page, block_decisions in page_block_decisions
+            for block, decision in block_decisions
+            if not decision.include and decision.drop_reason == "below_security_signal_threshold"
+        ]
+        rescued_decisions = _rescue_low_signal_blocks(rescue_candidates)
+        if rescued_decisions:
+            embedding_rescued_blocks = len(rescued_decisions)
+            page_block_decisions = [
+                (
+                    page,
+                    [
+                        (block, rescued_decisions.get(block.block_id, decision))
+                        for block, decision in block_decisions
+                    ],
+                )
+                for page, block_decisions in page_block_decisions
+            ]
+
+    # Pass 2 — assemble the filtered view from the (possibly rescued) decisions.
+    filtered_pages: List[TSDPage] = []
+    included_block_ids: List[str] = []
+    excluded_block_ids: List[str] = []
+    decisions_by_block_id: Dict[str, ContentFilterDecision] = {}
+    excluded_by_class: Counter[str] = Counter()
+
+    for page, block_decisions in page_block_decisions:
+        included_blocks: List[TextBlock] = []
+        for block, decision in block_decisions:
             decisions_by_block_id[block.block_id] = decision
             if decision.include:
                 included_blocks.append(block)
@@ -224,6 +279,7 @@ def build_filtered_tsd_view(tsd_document: TSDDocument) -> FilteredTSDDocumentVie
         "included_blocks": len(included_block_ids),
         "excluded_blocks": len(excluded_block_ids),
         "excluded_by_class": dict(sorted(excluded_by_class.items())),
+        "embedding_rescued_blocks": embedding_rescued_blocks,
     }
     return FilteredTSDDocumentView(
         document_name=tsd_document.document_name,
@@ -294,7 +350,8 @@ def _should_include_text(
     terms = tuple(dict.fromkeys([*_matched_security_terms(combined), *inherited_terms]))
     score = len(terms) + (2 if explicit_scope else 0)
 
-    admin_class = _admin_class(combined) or inherited_admin_class
+    own_admin_class = _admin_class(combined)
+    admin_class = own_admin_class or inherited_admin_class
     if admin_class in {
         "revision_history",
         "approval_signature",
@@ -307,6 +364,11 @@ def _should_include_text(
     }:
         if explicit_scope:
             return ContentFilterDecision(True, "explicit_scope", score, matched_terms=terms)
+        if own_admin_class is None and score >= min_score:
+            # admin_class came only from page-level inheritance (e.g. a noisy
+            # first line) — don't let it veto a block with its own independent
+            # security signal.
+            return ContentFilterDecision(True, "security_relevant", score, matched_terms=terms)
         return ContentFilterDecision(False, admin_class, score, f"excluded_{admin_class}", terms)
     if admin_class == "references" and score < min_score:
         return ContentFilterDecision(False, admin_class, score, "references_without_security_signal", terms)
@@ -323,6 +385,79 @@ def _configured_min_score() -> int:
         return max(0, int(getattr(settings, "AI_TSD_CONTENT_FILTER_MIN_SCORE", 1)))
     except (TypeError, ValueError):
         return 1
+
+
+def _embedding_gate_enabled() -> bool:
+    return bool(getattr(settings, "AI_TSD_CONTENT_FILTER_EMBEDDING_GATE_ENABLED", True))
+
+
+def _embedding_similarity_threshold() -> float:
+    try:
+        return float(getattr(settings, "AI_TSD_CONTENT_FILTER_EMBEDDING_SIMILARITY_THRESHOLD", 0.55))
+    except (TypeError, ValueError):
+        return 0.55
+
+
+def _embedding_batch_size() -> int:
+    try:
+        return max(1, int(getattr(settings, "AI_TSD_CONTENT_FILTER_EMBEDDING_BATCH_SIZE", 32)))
+    except (TypeError, ValueError):
+        return 32
+
+
+def _cosine_similarity(vec_a: Sequence[float], vec_b: Sequence[float]) -> float:
+    if not vec_a or not vec_b or len(vec_a) != len(vec_b):
+        return 0.0
+    dot_product = sum(a * b for a, b in zip(vec_a, vec_b))
+    magnitude_a = math.sqrt(sum(a * a for a in vec_a))
+    magnitude_b = math.sqrt(sum(b * b for b in vec_b))
+    if magnitude_a == 0.0 or magnitude_b == 0.0:
+        return 0.0
+    return dot_product / (magnitude_a * magnitude_b)
+
+
+def _embed_texts_batched(texts: Sequence[str]) -> List[List[float]]:
+    batch_size = _embedding_batch_size()
+    vectors: List[List[float]] = []
+    for start in range(0, len(texts), batch_size):
+        batch = list(texts[start:start + batch_size])
+        try:
+            batch_vectors = get_embeddings(texts=batch) or []
+        except Exception as exc:
+            logger.warning(
+                "content_filter._embed_texts_batched: embedding call failed for batch of %d text(s): %s",
+                len(batch),
+                exc,
+            )
+            batch_vectors = []
+        if len(batch_vectors) != len(batch):
+            batch_vectors = [[] for _ in batch]
+        vectors.extend(batch_vectors)
+    return vectors
+
+
+def _rescue_low_signal_blocks(
+    candidates: List[Tuple[str, TextBlock, ContentFilterDecision]],
+) -> Dict[str, ContentFilterDecision]:
+    if not candidates:
+        return {}
+
+    exemplar_vectors = [v for v in _embed_texts_batched(_EMBEDDING_GATE_EXEMPLARS) if v]
+    if not exemplar_vectors:
+        return {}
+
+    candidate_vectors = _embed_texts_batched([block.text or "" for _, block, _ in candidates])
+    threshold = _embedding_similarity_threshold()
+    rescued: Dict[str, ContentFilterDecision] = {}
+
+    for (block_id, _block, decision), vector in zip(candidates, candidate_vectors):
+        if not vector:
+            continue
+        best_similarity = max(_cosine_similarity(vector, exemplar) for exemplar in exemplar_vectors)
+        if best_similarity >= threshold:
+            rescued[block_id] = replace(decision, include=True, content_class="embedding_relevant")
+
+    return rescued
 
 
 def _normalize(value: str) -> str:

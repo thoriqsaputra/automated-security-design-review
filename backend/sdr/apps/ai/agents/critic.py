@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from sdr.core.config import settings
 
@@ -40,6 +40,7 @@ class CriticAgent(BaseAgent):
         context_chunks: List[str],
         hunter_result: HunterResult,
         cited_blocks: List[dict],
+        available_block_ids: Optional[List[str]] = None,
     ) -> str:
         """
         Delegates to build_critic_prompt() from agent_prompts.py.
@@ -60,6 +61,7 @@ class CriticAgent(BaseAgent):
             hunter_evidence_assessment=hunter_result.evidence_assessment,
             hunter_assumptions=hunter_result.assumptions,
             hunter_cot_trace=hunter_result.cot_trace,
+            available_block_ids=available_block_ids,
         )
 
     def run(
@@ -70,6 +72,8 @@ class CriticAgent(BaseAgent):
         context_chunks: List[str],
         hunter_result: HunterResult,
         cited_blocks: List[dict],
+        stream_handler: Optional[Callable[[str], None]] = None,
+        available_block_ids: Optional[List[str]] = None,
     ) -> CriticResult:
         # ------------------------------------------------------------------
         # 1. Input validation
@@ -160,6 +164,7 @@ class CriticAgent(BaseAgent):
             context_chunks=context_chunks,
             hunter_result=hunter_result,
             cited_blocks=cited_blocks,
+            available_block_ids=available_block_ids,
         )
 
         self.logger.info(
@@ -174,7 +179,7 @@ class CriticAgent(BaseAgent):
         # ------------------------------------------------------------------
         # 5. Call LLM
         # ------------------------------------------------------------------
-        response = self._call_llm(user_prompt)
+        response = self._call_llm_with_truncation_retry(user_prompt, stream_handler=stream_handler)
 
         if response.error:
             msg = f"LLM call failed: {response.error}"
@@ -235,12 +240,12 @@ class CriticAgent(BaseAgent):
         #
         #    The LLM may mark a citation as valid that doesn't actually
         #    appear in the context window — a subtle hallucination pattern.
-        #    We do a lightweight block_id presence check against the raw
-        #    context text as a second line of defence.
+        #    We validate the block_id against the canonical citable id set
+        #    as a second line of defence.
         # ------------------------------------------------------------------
         valid_citations, additionally_invalidated = self._cross_check_citations(
             valid_citations=valid_citations,
-            context_chunks=context_chunks,
+            available_block_ids=available_block_ids,
         )
 
         # Merge any additionally invalidated block_ids into the invalid list
@@ -329,6 +334,7 @@ class CriticAgent(BaseAgent):
         context_chunks: List[str],
         hunter_results: Dict[str, HunterResult],
         cited_blocks_by_child: Optional[Dict[str, List[dict]]] = None,
+        available_block_ids: Optional[List[str]] = None,
     ) -> Dict[str, CriticResult]:
         if not child_inputs:
             return {}
@@ -381,13 +387,14 @@ class CriticAgent(BaseAgent):
         if not llm_child_inputs:
             return results
 
-        response = self._call_llm(
+        response = self._call_llm_with_truncation_retry(
             self._build_batch_user_prompt(
                 child_inputs=llm_child_inputs,
                 parameter_section=parameter_section,
                 context_chunks=context_chunks,
                 hunter_results=llm_hunter_results,
                 cited_blocks_by_child=cited_blocks_by_child or {},
+                available_block_ids=available_block_ids,
             )
         )
         if response.error:
@@ -433,7 +440,7 @@ class CriticAgent(BaseAgent):
             )
             valid_citations, additionally_invalidated = self._cross_check_citations(
                 valid_citations=valid_citations,
-                context_chunks=context_chunks,
+                available_block_ids=available_block_ids,
             )
             invalid_citation_ids = self._extract_invalid_citation_ids(
                 item.get("invalid_citation_ids", [])
@@ -472,6 +479,7 @@ class CriticAgent(BaseAgent):
         context_chunks: List[str],
         hunter_results: Dict[str, HunterResult],
         cited_blocks_by_child: Dict[str, List[dict]],
+        available_block_ids: Optional[List[str]] = None,
     ) -> str:
         hunter_payload = {}
         for child_id, result in hunter_results.items():
@@ -492,6 +500,7 @@ class CriticAgent(BaseAgent):
             parameter_section=parameter_section,
             context_chunks=context_chunks,
             hunter_payload=hunter_payload,
+            available_block_ids=available_block_ids,
         )
 
     # ------------------------------------------------------------------
@@ -606,19 +615,19 @@ class CriticAgent(BaseAgent):
     def _cross_check_citations(
         self,
         valid_citations: List[Citation],
-        context_chunks: List[str],
+        available_block_ids: Optional[List[str]],
     ) -> tuple[List[Citation], List[str]]:
         if not valid_citations:
             return [], []
 
-        if not context_chunks:
+        if not available_block_ids:
             self.logger.debug(
-                "CriticAgent._cross_check_citations: no context chunks "
-                "to check against — returning all citations as-is."
+                "CriticAgent._cross_check_citations: no available_block_ids "
+                "supplied — returning all citations as-is."
             )
             return valid_citations, []
 
-        combined_context = "\n".join(context_chunks)
+        allowed_ids = set(available_block_ids)
 
         confirmed: List[Citation] = []
         additionally_invalidated: List[str] = []
@@ -631,13 +640,13 @@ class CriticAgent(BaseAgent):
                 )
                 continue
 
-            if citation.block_id in combined_context:
+            if citation.block_id in allowed_ids:
                 confirmed.append(citation)
             else:
                 additionally_invalidated.append(citation.block_id)
                 self.logger.debug(
                     "CriticAgent._cross_check_citations: block_id='%s' "
-                    "not found in context — marking as additionally invalidated.",
+                    "not in available_block_ids — marking as additionally invalidated.",
                     citation.block_id,
                 )
 

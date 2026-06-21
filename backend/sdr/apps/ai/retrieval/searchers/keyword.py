@@ -52,6 +52,15 @@ class KeywordSearcher:
         else:
             scores = self._fallback_scores(query_tokens, corpus_tokens)
 
+        scores = list(scores)
+        min_score = min(scores) if scores else 0.0
+        max_score = max(scores) if scores else 0.0
+        score_range = max_score - min_score
+        if score_range > 1e-9:
+            scores = [(s - min_score) / score_range for s in scores]
+        else:
+            scores = [0.0 for _ in scores]
+
         paired = sorted(zip(nodes, scores), key=lambda x: x[1], reverse=True)
         results: List[RetrievalCandidate] = []
         for node, score in paired[:top_k]:

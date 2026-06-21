@@ -10,9 +10,10 @@ except AttributeError:
     pass
 
 from dataclasses import asdict, dataclass, field
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from sdr.apps.ai.client import AIResponse, chat_completion
+from sdr.apps.ai.client.base import AIProvider
 from sdr.apps.ai.utils.parsing import strip_markdown_code_blocks, strip_thinking_block
 
 logger = logging.getLogger(__name__)
@@ -156,30 +157,93 @@ class BaseAgent:
         image_b64: Optional[bytes] = None,
         image_format: str = "png",
         top_p: Optional[float] = None,
+        stream_handler: Optional[Callable[[str], None]] = None,
+        max_tokens: Optional[int] = None,
     ) -> AIResponse:
-        response = chat_completion(
-            messages=[
+        request_kwargs = {
+            "messages": [
                 {"role": "system", "content": self.system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            model=self.model,
-            component=self.model_component,
-            temperature=self.temperature,
-            max_tokens=self.max_tokens,
-            response_format={"type": "json_object"},
-            image_bytes=image_b64,
-            image_format=image_format,
-            top_p=top_p,
-        )
+            "model": self.model,
+            "component": self.model_component,
+            "temperature": self.temperature,
+            "max_tokens": max_tokens or self.max_tokens,
+            "response_format": {"type": "json_object"},
+            "image_bytes": image_b64,
+            "image_format": image_format,
+            "top_p": top_p,
+        }
+        if stream_handler:
+            stream = chat_completion(stream=True, **request_kwargs)
+            content_parts: List[str] = []
+            error: Optional[str] = None
+            if isinstance(stream, AIResponse):
+                response = stream
+            else:
+                try:
+                    for chunk in stream:
+                        if not chunk:
+                            continue
+                        content_parts.append(chunk)
+                        try:
+                            stream_handler(chunk)
+                        except Exception:
+                            self.logger.debug("%s._call_llm: stream handler raised.", self.__class__.__name__, exc_info=True)
+                except Exception as exc:
+                    error = str(exc)
+                response = AIResponse(
+                    content="".join(content_parts),
+                    model=self.model or "",
+                    provider=AIProvider.NVIDIA,
+                    error=error,
+                )
+                if error:
+                    self.logger.warning("%s._call_llm: streamed request failed: %s", self.__class__.__name__, error)
+        else:
+            response = chat_completion(**request_kwargs)
         self.logger.info(
             "%s._call_llm: output_chars=%d max_tokens=%d finish_reason=%s error=%s",
             self.__class__.__name__,
             len(response.content or ""),
-            self.max_tokens,
+            request_kwargs["max_tokens"],
             getattr(response, "finish_reason", None),
             bool(response.error),
         )
         return response
+
+    def _call_llm_with_truncation_retry(
+        self,
+        user_prompt: str,
+        **kwargs: Any,
+    ) -> AIResponse:
+        response = self._call_llm(user_prompt=user_prompt, **kwargs)
+        if response.error:
+            return response
+
+        is_truncated = getattr(response, "finish_reason", None) == "length"
+        is_empty = not (response.content or "").strip()
+        if not (is_truncated or is_empty):
+            return response
+
+        retry_max_tokens = self.max_tokens
+        if is_truncated:
+            retry_max_tokens = min(self.max_tokens * 2, 16384)
+            self.logger.warning(
+                "%s._call_llm_with_truncation_retry: truncated at max_tokens=%d; "
+                "retrying once with max_tokens=%d.",
+                self.__class__.__name__,
+                self.max_tokens,
+                retry_max_tokens,
+            )
+        else:
+            self.logger.warning(
+                "%s._call_llm_with_truncation_retry: empty response (finish_reason=%s); "
+                "retrying once.",
+                self.__class__.__name__,
+                getattr(response, "finish_reason", None),
+            )
+        return self._call_llm(user_prompt=user_prompt, max_tokens=retry_max_tokens, **kwargs)
 
     def _parse_json_response(self, response: AIResponse) -> Optional[Dict[str, Any]]:
         if getattr(response, "finish_reason", None) == "length":
@@ -443,7 +507,7 @@ class BaseAgent:
 
     def _hunter_error(self, message: str, raw: Optional[str] = None) -> HunterResult:
         return HunterResult(
-            verdict=VERDICT_NOT_MET,
+            verdict=VERDICT_NA,
             confidence=0.0,
             reasoning=message,
             logic_summary=message,
@@ -456,7 +520,7 @@ class BaseAgent:
     def _critic_error(self, message: str, raw: Optional[str] = None) -> CriticResult:
         return CriticResult(
             outcome=OUTCOME_UPHOLD,
-            revised_verdict=VERDICT_NOT_MET,
+            revised_verdict=VERDICT_NA,
             revised_confidence=0.0,
             reasoning=message,
             logic_summary=message,

@@ -16,12 +16,16 @@ from sdr.apps.ai.engine.classification.parent_applicability import ParentApplica
 from sdr.apps.ai.engine.persistence.persistence_service import PersistenceService
 from sdr.apps.ai.engine.persistence.review_run_state_service import AnalysisCancelledError
 from sdr.apps.ai.engine.pipeline import TSDAnalysisPipeline
+from sdr.apps.standards.models.parameters import CategoryParameterChild, CategoryParameterParent
+from unittest.mock import Mock
 
 
 def _pipeline():
     return TSDAnalysisPipeline(
         ingestion_service=SimpleNamespace(),
-        retrieval_service=SimpleNamespace(),
+        retrieval_service=SimpleNamespace(
+            get_retrieve_many_max_concurrency=lambda *args, **kwargs: 1
+        ),
         debate_service=SimpleNamespace(),
         persistence_service=SimpleNamespace(),
     )
@@ -902,7 +906,7 @@ def test_category_analysis_coordinator_skips_diagrams_in_text_only_mode(monkeypa
 
     assert calls["text"] == 1
     assert calls["diagram"] == 0
-    assert "6_diagram_debate" not in stages
+    assert "7_diagram_debate" not in stages
 
 
 def test_category_analysis_coordinator_skips_text_path_in_diagram_only_mode(monkeypatch):
@@ -940,5 +944,317 @@ def test_category_analysis_coordinator_skips_text_path_in_diagram_only_mode(monk
     assert calls["text_gate"] == 0
     assert calls["text"] == 0
     assert calls["diagram"] == 1
-    assert stages[-1] == "6_diagram_debate"
+    assert stages[-1] == "7_diagram_debate"
     assert summary.total_parameters == 0
+
+
+def test_parent_applicability_failure_modes_fail_open():
+    from sdr.apps.ai.engine.classification.parent_applicability import classify_parent_applicability
+
+    # Missing child requirements
+    result = classify_parent_applicability(
+        category_code="web_application",
+        version_label="4.0",
+        parent_title="Session Controls",
+        parent_description="Browser session requirements",
+        child_requirements=[],
+        retrieved_context="Some retrieved context.",
+    )
+    assert result.applicable is True
+    assert result.confidence == 0.0
+    assert result.decision_mode == "missing_child_requirements"
+
+    # Missing retrieved context
+    result = classify_parent_applicability(
+        category_code="web_application",
+        version_label="4.0",
+        parent_title="Session Controls",
+        parent_description="Browser session requirements",
+        child_requirements=["Use secure cookie flags."],
+        retrieved_context="",
+    )
+    assert result.applicable is True
+    assert result.confidence == 0.0
+    assert result.decision_mode == "missing_context"
+
+
+def test_parent_applicability_llm_error_fails_open(monkeypatch):
+    import sdr.apps.ai.engine.classification.parent_applicability as parent_applicability_module
+
+    monkeypatch.setattr(
+        parent_applicability_module,
+        "chat_completion",
+        lambda **_kwargs: SimpleNamespace(error="provider unavailable", content=None),
+    )
+
+    result = parent_applicability_module.classify_parent_applicability(
+        category_code="web_application",
+        version_label="4.0",
+        parent_title="Session Controls",
+        parent_description="Browser session requirements",
+        child_requirements=["Use secure cookie flags."],
+        retrieved_context="The application uses browser sessions with secure cookie flags.",
+    )
+
+    assert result.applicable is True
+    assert result.confidence == 0.0
+    assert result.decision_mode == "error"
+    assert result.error == "provider unavailable"
+
+
+def test_parent_applicability_parse_error_fails_open(monkeypatch):
+    import sdr.apps.ai.engine.classification.parent_applicability as parent_applicability_module
+
+    monkeypatch.setattr(
+        parent_applicability_module,
+        "chat_completion",
+        lambda **_kwargs: SimpleNamespace(error=None, content="not valid json{{{"),
+    )
+    monkeypatch.setattr(
+        parent_applicability_module,
+        "parse_json_with_repair",
+        lambda *_args, **_kwargs: (None, "invalid_json"),
+    )
+
+    result = parent_applicability_module.classify_parent_applicability(
+        category_code="web_application",
+        version_label="4.0",
+        parent_title="Session Controls",
+        parent_description="Browser session requirements",
+        child_requirements=["Use secure cookie flags."],
+        retrieved_context="The application uses browser sessions with secure cookie flags.",
+    )
+
+    assert result.applicable is True
+    assert result.confidence == 0.0
+    assert result.decision_mode == "parse_error"
+
+
+def test_parent_applicability_exception_fails_open(monkeypatch):
+    import sdr.apps.ai.engine.classification.parent_applicability as parent_applicability_module
+
+    def _raise(**_kwargs):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(parent_applicability_module, "chat_completion", _raise)
+
+    result = parent_applicability_module.classify_parent_applicability(
+        category_code="web_application",
+        version_label="4.0",
+        parent_title="Session Controls",
+        parent_description="Browser session requirements",
+        child_requirements=["Use secure cookie flags."],
+        retrieved_context="The application uses browser sessions with secure cookie flags.",
+    )
+
+    assert result.applicable is True
+    assert result.confidence == 0.0
+    assert result.decision_mode == "exception"
+    assert result.error == "boom"
+
+
+def test_parent_applicability_unclear_decision_mode_clamps_confidence(monkeypatch):
+    import sdr.apps.ai.engine.classification.parent_applicability as parent_applicability_module
+
+    monkeypatch.setattr(
+        parent_applicability_module,
+        "chat_completion",
+        lambda **_kwargs: SimpleNamespace(
+            error=None,
+            content='{"applicable": false, "confidence": 0.9, "decision_mode": "unclear", "reasoning": "Ambiguous scope.", "evidence": []}',
+        ),
+    )
+
+    result = parent_applicability_module.classify_parent_applicability(
+        category_code="web_application",
+        version_label="4.0",
+        parent_title="Session Controls",
+        parent_description="Browser session requirements",
+        child_requirements=["Use secure cookie flags."],
+        retrieved_context="The application uses browser sessions with secure cookie flags.",
+    )
+
+    assert result.decision_mode == "unclear"
+    assert result.confidence <= 0.4
+
+
+def test_parent_applicability_consults_llm_even_without_keyword_overlap(monkeypatch):
+    import sdr.apps.ai.engine.classification.parent_applicability as parent_applicability_module
+
+    calls = {"count": 0}
+
+    def fake_chat_completion(**_kwargs):
+        calls["count"] += 1
+        return SimpleNamespace(
+            error=None,
+            content='{"applicable": false, "confidence": 0.6, "decision_mode": "negative_match", "reasoning": "No session handling described.", "evidence": []}',
+        )
+
+    monkeypatch.setattr(parent_applicability_module, "chat_completion", fake_chat_completion)
+
+    result = parent_applicability_module.classify_parent_applicability(
+        category_code="web_application",
+        version_label="4.0",
+        parent_title="Session Controls",
+        parent_description="Browser session requirements",
+        child_requirements=["Use secure cookie flags."],
+        retrieved_context="The design is a headless batch job with no user interface at all.",
+    )
+
+    assert calls["count"] == 1
+    assert result.applicable is False
+    assert result.decision_mode == "negative_match"
+
+
+def test_parent_applicability_does_not_override_positive_llm_verdict_without_keyword_overlap(monkeypatch):
+    import sdr.apps.ai.engine.classification.parent_applicability as parent_applicability_module
+
+    monkeypatch.setattr(
+        parent_applicability_module,
+        "chat_completion",
+        lambda **_kwargs: SimpleNamespace(
+            error=None,
+            content='{"applicable": true, "confidence": 0.75, "decision_mode": "positive_match", "reasoning": "MFA is described even though the literal term differs.", "evidence": ["multi-factor authentication"]}',
+        ),
+    )
+
+    result = parent_applicability_module.classify_parent_applicability(
+        category_code="web_application",
+        version_label="4.0",
+        parent_title="Authentication",
+        parent_description="MFA requirements",
+        child_requirements=["Require MFA for admin access."],
+        retrieved_context="Operators must verify identity with a one-time code from a registered device before reaching the control panel.",
+    )
+
+    assert result.applicable is True
+    assert result.confidence == 0.75
+    assert result.decision_mode == "positive_match"
+
+
+def test_match_scope_terms_uses_word_boundaries():
+    from sdr.apps.ai.engine.classification.parent_applicability import _match_scope_terms
+
+    matches = _match_scope_terms(["log"], "Users authenticate via the login form.")
+
+    assert matches == []
+
+
+def test_should_continue_debate_grants_one_escalation_round_on_overturn():
+    service = DebateService(hunter=SimpleNamespace(), critic=SimpleNamespace(), mediator=SimpleNamespace())
+    hunter_result = HunterResult(verdict="met", confidence=0.4)
+    critic_result = CriticResult(outcome="OVERTURN", revised_verdict="not_met", revised_confidence=0.5)
+
+    should_continue, escalation_round_granted = service._should_continue_debate(
+        hunter_result, critic_result, service.max_debate_rounds, False
+    )
+
+    assert should_continue is True
+    assert escalation_round_granted is True
+
+
+def test_should_continue_debate_does_not_grant_escalation_twice():
+    service = DebateService(hunter=SimpleNamespace(), critic=SimpleNamespace(), mediator=SimpleNamespace())
+    hunter_result = HunterResult(verdict="met", confidence=0.4)
+    critic_result = CriticResult(outcome="OVERTURN", revised_verdict="not_met", revised_confidence=0.5)
+
+    should_continue, escalation_round_granted = service._should_continue_debate(
+        hunter_result, critic_result, service.max_debate_rounds, True
+    )
+
+    assert should_continue is False
+    assert escalation_round_granted is True
+
+
+def test_run_debate_executes_escalation_round_on_low_confidence_overturn(monkeypatch):
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.debate.debate_service.settings",
+        SimpleNamespace(
+            AI_DEBATE_MAX_HUNTER_CALLS_PER_PARAMETER=8,
+            AI_DEBATE_MAX_DEBATE_ROUNDS=1,
+        ),
+    )
+    requirement_text = "Use MFA for all admin access."
+    mock_parent = Mock(spec=CategoryParameterParent)
+    mock_parent.id = 1
+    mock_parent.title = "Authentication"
+    mock_parent.description = "Parent scope"
+    parameter = Mock(spec=CategoryParameterChild)
+    parameter.id = 1
+    parameter.parent = mock_parent
+    parameter.requirement_text = requirement_text
+    parameter.details = ""
+    parameter.requirement_text_normalized = requirement_text
+    parameter.ordinal = 0
+    debate_input = SimpleNamespace(
+        parameter=parameter,
+        parameter_text=parameter.requirement_text,
+        parameter_section="Authentication",
+        contract={"domain": "iam_access_control"},
+        killed_assumptions=[],
+        hunter_plan={},
+        retrieval_query_details={},
+        context_chunks=["--- DOCUMENT CHUNK 1 OF 1 ---\np1_b1 Evidence."],
+        context_chunk_map={
+            "p1_b1": {
+                "text": "Evidence.",
+                "section": "Authentication",
+                "source": "retrieval_context",
+                "citation_grade": True,
+            }
+        },
+    )
+    tsd_document = SimpleNamespace(get_diagram_by_id=lambda *_args, **_kwargs: None)
+    retrieval_result = RetrievalResult(
+        context_chunks=list(debate_input.context_chunks),
+        source_block_ids=["p1_b1"],
+        evidence_metadata={},
+    )
+
+    hunter_calls = {"count": 0}
+
+    class _Hunter:
+        def run(self, **_kwargs):
+            hunter_calls["count"] += 1
+            return HunterResult(
+                verdict="not_met",
+                confidence=0.3,
+                reasoning="Hunter found weak evidence.",
+                logic_summary="Hunter found weak evidence.",
+                citations=[Citation(block_id="p1_b1", page_number=1)],
+                evidence_found=True,
+            )
+
+    critic_calls = {"count": 0}
+
+    class _Critic:
+        def run(self, **_kwargs):
+            critic_calls["count"] += 1
+            return CriticResult(
+                outcome="OVERTURN",
+                revised_verdict="met",
+                revised_confidence=0.8,
+                reasoning="Critic disagrees with Hunter.",
+                logic_summary="Critic disagrees with Hunter.",
+                valid_citations=[Citation(block_id="p1_b1", page_number=1)],
+            )
+
+    class _Mediator:
+        def run(self, **_kwargs):
+            return MediatorResult(
+                final_verdict="not_met",
+                confidence=0.5,
+                reasoning="Mediator decision.",
+                logic_summary="Mediator decision.",
+            )
+
+    service = DebateService(hunter=_Hunter(), critic=_Critic(), mediator=_Mediator())
+    debate_output = service.run_debate(
+        debate_input=debate_input,
+        retrieval_result=retrieval_result,
+        tsd_document=tsd_document,
+    )
+
+    assert hunter_calls["count"] == 2
+    assert critic_calls["count"] == 2
+    assert debate_output.debate_rounds == 2

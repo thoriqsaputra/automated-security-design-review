@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 
 from pydantic import BaseModel, Field
 
@@ -16,11 +16,17 @@ from sdr.apps.ai.tsd_processing.ingestor import TSDDocument
 from sdr.apps.ai.tsd_processing.raptor import RAPTORTree
 from sdr.apps.ai.tsd_processing.graph_builder import TSDGraph
 from sdr.apps.standards.models import (
+    CategoryControlSummaryRequirement,
     CategoryParameterChild,
     CategoryParameterParent,
     StandardCategory,
     StandardIngestionJob,
 )
+
+# A debatable unit is either a raw ASVS child requirement or a distilled
+# Control Family Summary Requirement (CFSR) — both flow through the same
+# debate/persistence pipeline.
+DebatableParameter = Union[CategoryParameterChild, CategoryControlSummaryRequirement]
 
 
 class IngestionOutput(BaseModel):
@@ -44,7 +50,7 @@ class RetrievalIndexes(BaseModel):
 
 class DebateInput(BaseModel):
     """Input to DebateService for a single parameter."""
-    parameter: CategoryParameterChild
+    parameter: DebatableParameter
     parameter_text: str
     parameter_section: str
     contract: Dict[str, Any] = Field(default_factory=dict)
@@ -60,7 +66,7 @@ class DebateInput(BaseModel):
 
 class DebateOutput(BaseModel):
     """Output from DebateService._run_debate() — NO database written yet."""
-    parameter: CategoryParameterChild
+    parameter: DebatableParameter
     hunter_result: HunterResult
     critic_result: CriticResult
     mediator_result: MediatorResult
@@ -74,7 +80,7 @@ class DebateOutput(BaseModel):
 
 class PersistenceInput(BaseModel):
     """Input to PersistenceService for a single finding."""
-    parameter: CategoryParameterChild
+    parameter: DebatableParameter
     category: StandardCategory
     ingestion_job: Optional[StandardIngestionJob]
     debate_output: DebateOutput

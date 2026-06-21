@@ -9,6 +9,7 @@ import tiktoken
 
 from sdr.apps.ai.prompts.extraction import build_json_repair_prompt
 from sdr.apps.ai.utils.parsing import strip_markdown_code_blocks, strip_thinking_block
+from sdr.apps.standards.utils import build_parameter_analysis_text, normalize_requirement_text
 
 logger = logging.getLogger(__name__)
 
@@ -20,6 +21,13 @@ _TOC_HEADING_RE = re.compile(
 _TOC_ENTRY_DOTTED_RE = re.compile(r"\.{2,}\s*\d{1,4}\s*$")
 _TOC_ENTRY_SPACED_RE = re.compile(r".{6,}\s{2,}\d{1,4}\s*$")
 _TOC_LABEL_RE = re.compile(r"^\s*(halaman|page|pages?)\s*$", re.IGNORECASE)
+_NOTE_PREFIX_RE = re.compile(r"^\s*note\s*:", re.IGNORECASE)
+_OWASP_SUBSECTION_HEADING_RE = re.compile(
+    r"^\s*V\d+\.\d+\b(?!\s*-\s*\d+\.\d+\.\d+\b)",
+    re.IGNORECASE,
+)
+_CONTROL_ID_RE = re.compile(r"\b(?:[A-Z]{2,}(?:-[A-Z0-9]+)+|\d+\.\d+\.\d+(?:\.\d+)*)\b")
+_DELETED_RESERVED_RE = re.compile(r"\[\s*(?:deleted|reserved|blank)\b", re.IGNORECASE)
 
 
 def _count_tokens(text: str) -> int:
@@ -181,6 +189,111 @@ def _clean_asvs_level_definitions(parsed: Any) -> List[Dict[str, Any]]:
     return sorted(cleaned, key=lambda item: item["level"])
 
 
+def _is_deleted_reserved_or_blank(requirement: str, *, verbatim_quote: str = "") -> bool:
+    combined = " ".join(part for part in (requirement, verbatim_quote) if part).strip()
+    if not combined:
+        return True
+    return bool(_DELETED_RESERVED_RE.search(combined))
+
+
+def _looks_like_owasp_subsection_heading(requirement: str) -> bool:
+    text = (requirement or "").strip()
+    if not text:
+        return False
+    if not _OWASP_SUBSECTION_HEADING_RE.match(text):
+        return False
+    return _CONTROL_ID_RE.search(text) is None
+
+
+def _extract_requirement_anchor(requirement: str) -> str:
+    text = (requirement or "").strip()
+    if not text:
+        return ""
+    match = _CONTROL_ID_RE.search(text)
+    return match.group(0).lower() if match else ""
+
+
+def _should_skip_requirement_item(item: Dict[str, Any]) -> bool:
+    requirement = str(item.get("requirement", "")).strip()
+    details = str(item.get("details", "")).strip()
+    verbatim_quote = str(item.get("verbatim_quote", "")).strip()
+    if not requirement and not details:
+        return True
+    if _NOTE_PREFIX_RE.match(requirement):
+        return True
+    if _is_deleted_reserved_or_blank(requirement, verbatim_quote=verbatim_quote):
+        return True
+    if _looks_like_owasp_subsection_heading(requirement):
+        return True
+    return False
+
+
+def _canonical_requirement_key(item: Dict[str, Any]) -> str:
+    requirement = str(item.get("requirement", "")).strip()
+    details = str(item.get("details", "")).strip()
+    anchor = _extract_requirement_anchor(requirement)
+    if anchor:
+        return f"id:{anchor}"
+    analysis_text = build_parameter_analysis_text(requirement, details)
+    return f"text:{normalize_requirement_text(analysis_text)}"
+
+
+def _requirement_richness(item: Dict[str, Any]) -> tuple:
+    return (
+        1 if item.get("asvs_level") is not None else 0,
+        len(str(item.get("details", "")).strip()),
+        1 if str(item.get("context_marker", "")).strip() else 0,
+        1 if str(item.get("verbatim_quote", "")).strip() else 0,
+    )
+
+
+def canonicalize_requirement_items(items: List[Any]) -> List[Dict[str, Any]]:
+    canonical_items: List[Dict[str, Any]] = []
+    index_by_key: Dict[str, int] = {}
+    for item in items or []:
+        if isinstance(item, dict):
+            normalized_item = {
+                "requirement": str(item.get("requirement", "")).strip(),
+                "details": str(item.get("details", "")).strip(),
+                "verbatim_quote": str(item.get("verbatim_quote", "")).strip(),
+                "context_marker": str(item.get("context_marker", "")).strip(),
+                "asvs_level": _coerce_asvs_level(item.get("asvs_level")),
+            }
+        elif isinstance(item, str):
+            text = str(item).strip()
+            normalized_item = {
+                "requirement": text,
+                "details": "",
+                "verbatim_quote": "",
+                "context_marker": "",
+                "asvs_level": None,
+            }
+        else:
+            continue
+        if _should_skip_requirement_item(normalized_item):
+            continue
+        key = _canonical_requirement_key(normalized_item)
+        existing_idx = index_by_key.get(key)
+        if existing_idx is None:
+            index_by_key[key] = len(canonical_items)
+            canonical_items.append(normalized_item)
+            continue
+        if _requirement_richness(normalized_item) > _requirement_richness(canonical_items[existing_idx]):
+            canonical_items[existing_idx] = normalized_item
+    return canonical_items
+
+
+def canonicalize_structured_requirements(
+    requirements_by_section: Dict[str, List[Any]],
+) -> Dict[str, List[Dict[str, Any]]]:
+    canonicalized: Dict[str, List[Dict[str, Any]]] = {}
+    for section, raw_requirements in (requirements_by_section or {}).items():
+        cleaned_items = canonicalize_requirement_items(raw_requirements)
+        if cleaned_items:
+            canonicalized[str(section).strip()] = cleaned_items
+    return canonicalized
+
+
 def clean_structured_requirements(parsed: Any) -> Dict[str, List[Any]]:
     if not isinstance(parsed, dict):
         return {}
@@ -200,6 +313,7 @@ def clean_structured_requirements(parsed: Any) -> Dict[str, List[Any]]:
                     {
                         "requirement": req,
                         "details": details,
+                        "verbatim_quote": str(item.get("verbatim_quote", "")).strip(),
                         "context_marker": context_marker,
                         "asvs_level": _coerce_asvs_level(item.get("asvs_level")),
                     }
@@ -212,13 +326,14 @@ def clean_structured_requirements(parsed: Any) -> Dict[str, List[Any]]:
                         {
                             "requirement": text,
                             "details": "",
+                            "verbatim_quote": "",
                             "context_marker": "",
                             "asvs_level": None,
                         }
                     )
         if cleaned_reqs:
             cleaned_dict[str(section).strip()] = cleaned_reqs
-    return cleaned_dict
+    return canonicalize_structured_requirements(cleaned_dict)
 
 
 def _backfill_requirement_levels(

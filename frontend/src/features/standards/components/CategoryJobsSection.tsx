@@ -111,19 +111,17 @@ export default function CategoryJobsSection({
                         )}
                       </div>
                     </div>
-                    <div className="flex flex-col items-end gap-2">
-                      {(job.status === 'running' || job.status === 'pending') && job.progress && (
-                        <div className="w-full flex flex-col items-end gap-1 mt-1">
-                          <span className="text-xs text-text-muted">{job.progress.status_label || `${job.progress.percentage}%`}</span>
-                          <div className="w-32 h-1.5 bg-surface-border rounded-full overflow-hidden">
-                            <div
-                              className="h-full bg-flame transition-all duration-500 ease-in-out"
-                              style={{ width: `${job.progress.percentage}%` }}
-                            />
-                          </div>
+                    {(job.status === 'running' || job.status === 'pending') && job.progress && (
+                      <div className="flex flex-col items-start gap-1 mt-2 w-full">
+                        <span className="text-xs text-text-muted">{job.progress.status_label || `${job.progress.percentage}%`}</span>
+                        <div className="w-full h-1.5 bg-surface-border rounded-full overflow-hidden">
+                          <div
+                            className="h-full bg-flame transition-all duration-500 ease-in-out"
+                            style={{ width: `${job.progress.percentage}%` }}
+                          />
                         </div>
-                      )}
-                    </div>
+                      </div>
+                    )}
                   </div>
                 </Card>
               );

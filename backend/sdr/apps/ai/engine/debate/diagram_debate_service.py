@@ -58,7 +58,11 @@ class DiagramDebateService:
                     )
                     return output
             except Exception:
-                pass
+                self.logger.warning(
+                    "DiagramDebateService: cancel_check() raised for diagram_id=%s — treating as not cancelled",
+                    diagram.diagram_id,
+                    exc_info=True,
+                )
 
         if not requirements:
             output.error = "No diagram requirements provided — cannot ground debate."
@@ -116,7 +120,11 @@ class DiagramDebateService:
                     )
                     return output
             except Exception:
-                pass
+                self.logger.warning(
+                    "DiagramDebateService: cancel_check() raised for diagram_id=%s — treating as not cancelled",
+                    diagram.diagram_id,
+                    exc_info=True,
+                )
         if hunter_result is None:
             output.error = f"VisionHunter failed for diagram_id={diagram.diagram_id}"
             return output
@@ -157,7 +165,11 @@ class DiagramDebateService:
                     )
                     return output
             except Exception:
-                pass
+                self.logger.warning(
+                    "DiagramDebateService: cancel_check() raised for diagram_id=%s — treating as not cancelled",
+                    diagram.diagram_id,
+                    exc_info=True,
+                )
         if critic_result is None:
             self.logger.warning(
                 "DiagramDebateService: VisionCritic failed for diagram_id=%s — "
@@ -201,7 +213,11 @@ class DiagramDebateService:
                     )
                     return output
             except Exception:
-                pass
+                self.logger.warning(
+                    "DiagramDebateService: cancel_check() raised for diagram_id=%s — treating as not cancelled",
+                    diagram.diagram_id,
+                    exc_info=True,
+                )
         if mediator_result is None:
             self.logger.warning(
                 "DiagramDebateService: VisionMediator failed for diagram_id=%s — "

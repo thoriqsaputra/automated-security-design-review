@@ -268,6 +268,11 @@ class RAPTORTreeBuilder:
             len(leaf_nodes),
         )
 
+        # Embed leaf nodes now (rather than only at the very end) so
+        # clustering can group them by similarity instead of falling back
+        # to document-order chunking.
+        self._embed_all_nodes(leaf_nodes, progress_callback=progress_callback)
+
         # ------------------------------------------------------------------
         # Steps 2–4: Iteratively cluster and summarise up the tree
         # ------------------------------------------------------------------
@@ -312,6 +317,9 @@ class RAPTORTreeBuilder:
                 len(summary_nodes),
                 len(clusters),
             )
+            # Embed this level's nodes immediately so the next loop
+            # iteration can cluster them by similarity as well.
+            self._embed_all_nodes(summary_nodes, progress_callback=progress_callback)
             if progress_callback:
                 progress_callback(
                     {
@@ -348,9 +356,13 @@ class RAPTORTreeBuilder:
                 tree.root_node = root_node
 
         # ------------------------------------------------------------------
-        # Step 6: Generate embeddings for all nodes
+        # Step 6: Generate embeddings for any remaining nodes (leaf and
+        # summary nodes were already embedded per-level above so they could
+        # be clustered by similarity; this catches the synthesised root
+        # node, plus anything left unembedded by an earlier failure).
         # ------------------------------------------------------------------
         all_nodes = tree.get_all_nodes()
+        nodes_to_embed = [node for node in all_nodes if not node.has_embedding]
         if progress_callback:
             progress_callback(
                 {
@@ -360,10 +372,10 @@ class RAPTORTreeBuilder:
                     "leaf_nodes": len(leaf_nodes),
                     "summary_levels_completed": max(0, len(tree.levels) - 1),
                     "total_nodes": len(all_nodes),
-                    "embedded_nodes": 0,
+                    "embedded_nodes": len(all_nodes) - len(nodes_to_embed),
                 }
             )
-        self._embed_all_nodes(all_nodes, progress_callback=progress_callback)
+        self._embed_all_nodes(nodes_to_embed, progress_callback=progress_callback)
 
         # ------------------------------------------------------------------
         # Finalise tree metadata
@@ -494,6 +506,20 @@ class RAPTORTreeBuilder:
         if len(nodes) == 1:
             return [nodes]
 
+        if all(node.has_embedding for node in nodes):
+            return self._cluster_nodes_by_similarity(nodes)
+
+        self.logger.debug(
+            "RAPTORTreeBuilder._cluster_nodes: not all %d node(s) have "
+            "embeddings — falling back to sequential clustering.",
+            len(nodes),
+        )
+        return self._cluster_nodes_sequential(nodes)
+
+    def _cluster_nodes_sequential(
+        self,
+        nodes: List[RAPTORNode],
+    ) -> List[List[RAPTORNode]]:
         clusters: List[List[RAPTORNode]] = []
         current_cluster: List[RAPTORNode] = []
 
@@ -511,8 +537,8 @@ class RAPTORTreeBuilder:
             ):
                 # Merge undersized trailing cluster into the last cluster
                 self.logger.debug(
-                    "RAPTORTreeBuilder._cluster_nodes: merging trailing "
-                    "cluster of %d node(s) into previous cluster.",
+                    "RAPTORTreeBuilder._cluster_nodes_sequential: merging "
+                    "trailing cluster of %d node(s) into previous cluster.",
                     len(current_cluster),
                 )
                 clusters[-1].extend(current_cluster)
@@ -520,8 +546,54 @@ class RAPTORTreeBuilder:
                 clusters.append(current_cluster)
 
         self.logger.debug(
-            "RAPTORTreeBuilder._cluster_nodes: produced %d cluster(s) "
-            "from %d node(s).",
+            "RAPTORTreeBuilder._cluster_nodes_sequential: produced %d "
+            "cluster(s) from %d node(s).",
+            len(clusters),
+            len(nodes),
+        )
+        return clusters
+
+    def _cluster_nodes_by_similarity(
+        self,
+        nodes: List[RAPTORNode],
+    ) -> List[List[RAPTORNode]]:
+        unclustered = list(nodes)
+        clusters: List[List[RAPTORNode]] = []
+
+        while unclustered:
+            seed = unclustered.pop(0)
+            cluster = [seed]
+
+            if unclustered:
+                scored = sorted(
+                    unclustered,
+                    key=lambda candidate: _compute_cosine_similarity(
+                        seed.embedding, candidate.embedding
+                    ),
+                    reverse=True,
+                )
+                take = scored[: max(0, self.target_cluster_size - 1)]
+                for node in take:
+                    unclustered.remove(node)
+                    cluster.append(node)
+
+            clusters.append(cluster)
+
+        if (
+            len(clusters) > 1
+            and len(clusters[-1]) < self.min_cluster_size
+        ):
+            self.logger.debug(
+                "RAPTORTreeBuilder._cluster_nodes_by_similarity: merging "
+                "trailing cluster of %d node(s) into previous cluster.",
+                len(clusters[-1]),
+            )
+            trailing = clusters.pop()
+            clusters[-1].extend(trailing)
+
+        self.logger.debug(
+            "RAPTORTreeBuilder._cluster_nodes_by_similarity: produced %d "
+            "cluster(s) from %d node(s).",
             len(clusters),
             len(nodes),
         )

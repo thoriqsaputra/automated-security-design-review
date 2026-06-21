@@ -1,12 +1,10 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import List
 
 from sdr.apps.ai.retrieval.core.candidates import RetrievalCandidate
-from sdr.apps.ai.retrieval.graph.communities import CommunitySummary
 from sdr.apps.ai.retrieval.searchers.graph import GraphSearchResponse
 from sdr.apps.ai.retrieval.searchers.vector import VectorSearchResponse
-from sdr.apps.ai.tsd_processing.graph_builder import TSDGraph
 
 
 def build_chunks_from_vector(vector_response: VectorSearchResponse) -> List[str]:
@@ -117,52 +115,9 @@ def graph_response_to_candidates(graph_response: GraphSearchResponse) -> List[Re
     return candidates
 
 
-def community_summaries_to_candidates(
-    graph: TSDGraph,
-    summaries: List[CommunitySummary],
-    keywords: List[str],
-    similarity_resolver,
-    query_embedding: Optional[List[float]] = None,
-) -> List[RetrievalCandidate]:
-    candidates: List[RetrievalCandidate] = []
-    keyword_set = {k.lower() for k in keywords}
-    for summary in summaries:
-        combined_text = f"{summary.title}\n{summary.summary}"
-        coverage = sum(1 for k in keyword_set if k in combined_text.lower())
-        score = 0.3 + (0.1 * min(coverage, 5))
-        community_sim = similarity_resolver(
-            graph=graph,
-            community_id=summary.community_id,
-            text=combined_text,
-            query_embedding=query_embedding,
-        )
-        if community_sim > 0.0:
-            score = (0.65 * score) + (0.35 * community_sim)
-        candidates.append(
-            RetrievalCandidate(
-                id=f"community:{summary.community_id}",
-                source_type="raptor",
-                text=combined_text,
-                score=score,
-                block_ids=list(summary.block_ids),
-                metadata={
-                    "community_id": summary.community_id,
-                    "key_entities": summary.key_entities,
-                    "key_relationships": summary.key_relationships,
-                    "community_similarity": community_sim,
-                    "sensitivity": summary.sensitivity,
-                    "tenant_id": summary.source_metadata.get("tenant_id"),
-                },
-                token_count=max(1, len(combined_text) // 4),
-            )
-        )
-    return candidates
-
-
 __all__ = [
     "build_chunks_from_graph",
     "build_chunks_from_vector",
     "collect_block_ids_from_vector",
-    "community_summaries_to_candidates",
     "graph_response_to_candidates",
 ]

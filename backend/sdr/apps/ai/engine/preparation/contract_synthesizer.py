@@ -168,7 +168,10 @@ class ContractSynthesizer:
             parsed["synth_mode"] = "llm_fallback"
             return parsed
         except Exception:
-            logger.exception("ContractSynthesizer._llm_fallback failed")
+            logger.exception(
+                "ContractSynthesizer._llm_fallback failed for parameter_section=%s",
+                parameter_section,
+            )
             return None
 
     def _coerce_confidence(self, value: Any) -> float:

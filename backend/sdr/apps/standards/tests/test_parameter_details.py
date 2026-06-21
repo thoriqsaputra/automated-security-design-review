@@ -5,6 +5,7 @@ from unittest.mock import patch
 from sdr.apps.ai.engine.extraction import (
     _canonicalize_diagram_requirements,
     _remove_table_of_contents,
+    canonicalize_requirement_items,
     extract_asvs_level_definitions_from_document,
     extract_diagram_requirements,
     extract_structured_requirements,
@@ -211,6 +212,56 @@ def test_extract_structured_requirements_filters_owasp_subsection_heading_only_i
     assert [item["requirement"] for item in result["V2 Authentication"]] == [
         "V2.1 - 2.1.1 Verify user set passwords are at least 12 characters in length"
     ]
+
+
+def test_canonicalize_requirement_items_dedupes_same_control_id_and_keeps_richer_item():
+    items = [
+        {
+            "requirement": "V1.1 - 1.1.1 Verify the use of a secure SDLC",
+            "details": "",
+            "verbatim_quote": "",
+            "context_marker": "V1.1",
+            "asvs_level": None,
+        },
+        {
+            "requirement": "1.1.1 Verify the use of a secure SDLC",
+            "details": "Security activities must be defined across the lifecycle.",
+            "verbatim_quote": "1.1.1 Verify the use of a secure SDLC",
+            "context_marker": "V1.1",
+            "asvs_level": 1,
+        },
+    ]
+
+    result = canonicalize_requirement_items(items)
+
+    assert len(result) == 1
+    assert result[0]["requirement"] == "1.1.1 Verify the use of a secure SDLC"
+    assert result[0]["details"] == "Security activities must be defined across the lifecycle."
+    assert result[0]["asvs_level"] == 1
+
+
+def test_canonicalize_requirement_items_drops_deleted_placeholder_rows():
+    items = [
+        {
+            "requirement": "6.1.1 Verify passwords are hashed using a memory-hard algorithm.",
+            "details": "",
+            "verbatim_quote": "",
+            "context_marker": "V6.1",
+            "asvs_level": 2,
+        },
+        {
+            "requirement": "[DELETED, DUPLICATE OF 6.1.1]",
+            "details": "",
+            "verbatim_quote": "[DELETED, DUPLICATE OF 6.1.1]",
+            "context_marker": "V6.1",
+            "asvs_level": 2,
+        },
+    ]
+
+    result = canonicalize_requirement_items(items)
+
+    assert len(result) == 1
+    assert result[0]["requirement"] == "6.1.1 Verify passwords are hashed using a memory-hard algorithm."
 
 
 def test_extract_asvs_level_definitions_from_document():

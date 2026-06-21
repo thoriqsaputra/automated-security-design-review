@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 import re
 import time
-from collections import deque
+from collections import Counter, deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -13,6 +13,7 @@ from sdr.apps.ai.engine.classification.parent_applicability import classify_pare
 from sdr.apps.ai.engine.dto import AnalysisSummary, DebateInput, DebateOutput, PersistenceInput
 from sdr.apps.ai.utils.concurrency import ConcurrencyProbe
 from sdr.apps.reviews.models import Review
+from sdr.apps.reviews.services.debate_events import build_debate_id, review_debate_event_store
 from sdr.apps.standards.utils import build_parameter_analysis_text
 
 from sdr.apps.ai.engine.persistence.review_run_state_service import AnalysisCancelledError
@@ -74,6 +75,12 @@ class TextDebateCoordinator:
         parent_context_cache: Optional[Dict[Tuple[Any, Any, Any], Any]] = None,
     ) -> None:
         category_code = getattr(category, "code", None) or "unknown"
+        self.seed_live_debates(
+            review=review,
+            category_code=category_code,
+            parameters=parameters,
+            execution_mode="single",
+        )
         category_stats = summary.asvs.setdefault("categories", {}).setdefault(category_code, {})
         if int(category_stats.get("analysis_total_count") or 0) == 0 and parameters:
             self.progress_service.initialize_category_progress(
@@ -98,6 +105,7 @@ class TextDebateCoordinator:
             )
             try:
                 debate_output = self.analyze_single_child_with_parent_context(
+                    review=review,
                     category=category,
                     ingestion_job=ingestion_job,
                     parameter=parameter,
@@ -105,6 +113,7 @@ class TextDebateCoordinator:
                     tsd_document=tsd_document,
                     killed_assumptions=list(killed_assumptions_memory),
                     parent_context_cache=parent_context_cache or {},
+                    execution_mode="single",
                 )
                 self.run_state.raise_if_cancelled(review, phase="run.after_debate")
                 debate_output = self.retry_if_needed(
@@ -167,6 +176,12 @@ class TextDebateCoordinator:
                     parameter_id=parameter.id,
                     status="terminal_error",
                 )
+                review_debate_event_store.fail_agent(
+                    review.id,
+                    debate_id=self.build_live_debate_id(parameter),
+                    agent="mediator",
+                    error_message=str(exc),
+                )
 
     def run_batched_analysis_for_category(
         self,
@@ -183,6 +198,12 @@ class TextDebateCoordinator:
     ) -> None:
         start_ts = time.monotonic()
         category_code = getattr(category, "code", None) or "unknown"
+        self.seed_live_debates(
+            review=review,
+            category_code=category_code,
+            parameters=parameters,
+            execution_mode="batch",
+        )
         category_stats = summary.asvs.setdefault("categories", {}).setdefault(category_code, {})
         if int(category_stats.get("analysis_total_count") or 0) == 0 and parameters:
             self.progress_service.initialize_category_progress(
@@ -246,6 +267,16 @@ class TextDebateCoordinator:
         def _run_batch(parent, batch_parameters, killed_snapshot):
             if self.run_state.is_cancelled(review):
                 return {}
+            for parameter in batch_parameters:
+                self.publish_live_agent_start(
+                    review=review,
+                    parameter=parameter,
+                    category_code=category_code,
+                    agent="hunter",
+                    execution_mode="batch",
+                    progress_percent=5,
+                    content=f"Running inside shared Hunter batch for {len(batch_parameters)} debate(s).",
+                )
             retrieval_result = parent_context_by_key[getattr(parent, "id", None) or id(parent)]
             debate_inputs = [
                 self.build_debate_input_for_parameter(
@@ -257,12 +288,60 @@ class TextDebateCoordinator:
                 )
                 for parameter in batch_parameters
             ]
-            return self.debate.run_batch_debate(
+            batch_outputs = self.debate.run_batch_debate(
                 debate_inputs=debate_inputs,
                 retrieval_result=retrieval_result,
                 tsd_document=tsd_document,
                 cancel_check=lambda: self.run_state.is_cancelled(review),
             )
+            for parameter in batch_parameters:
+                child_id = str(parameter.id)
+                output = batch_outputs.get(child_id)
+                if output is None:
+                    continue
+                self.publish_live_agent_complete(
+                    review=review,
+                    parameter=parameter,
+                    agent="hunter",
+                    content=getattr(output.hunter_result, "logic_summary", None) or getattr(output.hunter_result, "reasoning", None) or "",
+                    progress_percent=33,
+                    execution_mode="batch",
+                )
+                self.publish_live_agent_start(
+                    review=review,
+                    parameter=parameter,
+                    category_code=category_code,
+                    agent="critic",
+                    execution_mode="batch",
+                    progress_percent=40,
+                    content="Running inside shared Critic batch.",
+                )
+                self.publish_live_agent_complete(
+                    review=review,
+                    parameter=parameter,
+                    agent="critic",
+                    content=getattr(output.critic_result, "logic_summary", None) or getattr(output.critic_result, "reasoning", None) or "",
+                    progress_percent=66,
+                    execution_mode="batch",
+                )
+                self.publish_live_agent_start(
+                    review=review,
+                    parameter=parameter,
+                    category_code=category_code,
+                    agent="mediator",
+                    execution_mode="batch",
+                    progress_percent=72,
+                    content="Running inside shared Mediator batch.",
+                )
+                self.publish_live_agent_complete(
+                    review=review,
+                    parameter=parameter,
+                    agent="mediator",
+                    content=getattr(output.mediator_result, "logic_summary", None) or getattr(output.mediator_result, "reasoning", None) or "",
+                    progress_percent=90,
+                    execution_mode="batch",
+                )
+            return batch_outputs
 
         batch_probe = ConcurrencyProbe(max_concurrency=max_concurrency)
         with ThreadPoolExecutor(max_workers=max_concurrency, thread_name_prefix="BatchDebate") as executor:
@@ -297,6 +376,12 @@ class TextDebateCoordinator:
                     )
                     for parameter in batch_parameters:
                         invalid_reasons[str(parameter.id)] = ["batch_exception"]
+                        review_debate_event_store.fail_agent(
+                            review.id,
+                            debate_id=self.build_live_debate_id(parameter),
+                            agent="hunter",
+                            error_message=f"Shared batch failed: {exc}",
+                        )
                     continue
                 batch_valid, batch_invalid = self.validate_batch_outputs(batch_parameters, batch_outputs)
                 accepted_outputs.update(batch_valid)
@@ -323,6 +408,7 @@ class TextDebateCoordinator:
         fallback_enabled = self.config.batch_debate_fallback_enabled
         final_outputs: Dict[str, DebateOutput] = {}
         fallback_parameters: List[Any] = []
+        fallback_reason_counter: Counter[str] = Counter()
         for parameter in parameters:
             child_id = str(parameter.id)
             output = accepted_outputs.get(child_id)
@@ -348,11 +434,18 @@ class TextDebateCoordinator:
                     continue
                 if fallback_enabled:
                     fallback_count += 1
+                    fallback_reason_counter.update(reasons)
                     fallback_parameters.append(parameter)
                     continue
                 if output is None:
                     summary.error_count += 1
                     terminal_error_ids.add(child_id)
+                    review_debate_event_store.fail_agent(
+                        review.id,
+                        debate_id=self.build_live_debate_id(parameter),
+                        agent="mediator",
+                        error_message="Shared batch returned no usable result for this debate.",
+                    )
                     if child_id not in debate_recorded_ids:
                         debate_recorded_ids.add(child_id)
                         self.record_debate_progress(
@@ -369,6 +462,12 @@ class TextDebateCoordinator:
             if output is None:
                 summary.error_count += 1
                 terminal_error_ids.add(child_id)
+                review_debate_event_store.fail_agent(
+                    review.id,
+                    debate_id=self.build_live_debate_id(parameter),
+                    agent="mediator",
+                    error_message="No debate output was produced for this requirement.",
+                )
                 if child_id not in debate_recorded_ids:
                     debate_recorded_ids.add(child_id)
                     self.record_debate_progress(
@@ -396,6 +495,11 @@ class TextDebateCoordinator:
                 )
 
         if fallback_parameters:
+            self.logger.warning(
+                "TextDebateCoordinator.run_batched_analysis_for_category: fallback_parameters=%d reasons=%s",
+                len(fallback_parameters),
+                dict(fallback_reason_counter),
+            )
             def _run_fallback(parameter, killed_snapshot):
                 if self.run_state.is_cancelled(review):
                     return None
@@ -404,19 +508,23 @@ class TextDebateCoordinator:
                 retrieval_result = parent_context_by_key.get(parent_key)
                 if retrieval_result is None:
                     return self.analyze_single_child(
+                        review=review,
                         category=category,
                         ingestion_job=ingestion_job,
                         parameter=parameter,
                         indexes=indexes,
                         tsd_document=tsd_document,
                         killed_assumptions=killed_snapshot,
+                        execution_mode="fallback",
                     )
                 return self.analyze_single_child_with_retrieval_result(
+                    review=review,
                     category=category,
                     parameter=parameter,
                     retrieval_result=retrieval_result,
                     tsd_document=tsd_document,
                     killed_assumptions=killed_snapshot,
+                    execution_mode="fallback",
                 )
 
             fallback_probe = ConcurrencyProbe(max_concurrency=max_concurrency)
@@ -464,6 +572,12 @@ class TextDebateCoordinator:
                             "TextDebateCoordinator.run_batched_analysis_for_category: fallback failed parameter=%s: %s",
                             child_id,
                             exc,
+                        )
+                        review_debate_event_store.fail_agent(
+                            review.id,
+                            debate_id=self.build_live_debate_id(parameter),
+                            agent="mediator",
+                            error_message=f"Fallback debate failed: {exc}",
                         )
                         if child_id not in debate_recorded_ids:
                             debate_recorded_ids.add(child_id)
@@ -537,12 +651,14 @@ class TextDebateCoordinator:
     def analyze_single_child(
         self,
         *,
+        review,
         category,
         ingestion_job,
         parameter,
         indexes,
         tsd_document,
         killed_assumptions: List[Dict[str, Any]],
+        execution_mode: str = "single",
     ) -> DebateOutput:
         debate_input, retrieval_result = self.build_single_child_debate_input(
             parameter=parameter,
@@ -557,16 +673,41 @@ class TextDebateCoordinator:
             retrieval_result=retrieval_result,
             tsd_document=tsd_document,
             cancel_check=lambda: self.run_state.is_cancelled(review),
+            agent_chunk_handler=lambda agent, chunk: self.publish_live_agent_chunk(
+                review=review,
+                parameter=parameter,
+                agent=agent,
+                chunk=chunk,
+            ),
+            agent_started_handler=lambda agent: self.publish_live_agent_start(
+                review=review,
+                parameter=parameter,
+                category_code=getattr(category, "code", None) or "unknown",
+                agent=agent,
+                execution_mode=execution_mode,
+                progress_percent=self.agent_progress_percent(agent, "started"),
+                content=f"{agent.title()} is analyzing this requirement.",
+            ),
+            agent_completed_handler=lambda agent, content: self.publish_live_agent_complete(
+                review=review,
+                parameter=parameter,
+                agent=agent,
+                content=content,
+                progress_percent=self.agent_progress_percent(agent, "completed"),
+                execution_mode=execution_mode,
+            ),
         )
 
     def analyze_single_child_with_retrieval_result(
         self,
         *,
+        review,
         category,
         parameter,
         retrieval_result,
         tsd_document,
         killed_assumptions: List[Dict[str, Any]],
+        execution_mode: str = "single",
     ) -> DebateOutput:
         debate_input = self.build_debate_input_for_parameter(
             parameter=parameter,
@@ -580,6 +721,29 @@ class TextDebateCoordinator:
             retrieval_result=retrieval_result,
             tsd_document=tsd_document,
             cancel_check=lambda: self.run_state.is_cancelled(review),
+            agent_chunk_handler=lambda agent, chunk: self.publish_live_agent_chunk(
+                review=review,
+                parameter=parameter,
+                agent=agent,
+                chunk=chunk,
+            ),
+            agent_started_handler=lambda agent: self.publish_live_agent_start(
+                review=review,
+                parameter=parameter,
+                category_code=getattr(category, "code", None) or "unknown",
+                agent=agent,
+                execution_mode=execution_mode,
+                progress_percent=self.agent_progress_percent(agent, "started"),
+                content=f"{agent.title()} is analyzing this requirement.",
+            ),
+            agent_completed_handler=lambda agent, content: self.publish_live_agent_complete(
+                review=review,
+                parameter=parameter,
+                agent=agent,
+                content=content,
+                progress_percent=self.agent_progress_percent(agent, "completed"),
+                execution_mode=execution_mode,
+            ),
         )
 
     def build_single_child_debate_input(
@@ -754,19 +918,51 @@ class TextDebateCoordinator:
         parent_groups = self.group_parameters_by_parent(parameters)
         parent_context_cache: Dict[Tuple[Any, Any, Any], Any] = {}
         applicable_parameters: List[Any] = []
+        parent_retrieval_results: Dict[Any, Any] = {}
 
         summary.applicability["parents_total"] += len(parent_groups)
+        max_concurrency = min(
+            self.retrieval.get_retrieve_many_max_concurrency(),
+            len(parent_groups) or 1,
+        )
+        if parent_groups and max_concurrency > 1:
+            with ThreadPoolExecutor(
+                max_workers=max_concurrency,
+                thread_name_prefix="ParentApplicability",
+            ) as executor:
+                future_map = {}
+                for parent, child_parameters in parent_groups:
+                    future = executor.submit(
+                        self.get_parent_retrieval_result,
+                        parent=parent,
+                        child_parameters=child_parameters,
+                        category=category,
+                        ingestion_job=ingestion_job,
+                        indexes=indexes,
+                        tsd_document=tsd_document,
+                        cache=parent_context_cache,
+                    )
+                    future_map[future] = (parent, child_parameters)
+                for future in as_completed(future_map):
+                    self.run_state.raise_if_cancelled(review, phase="parent_applicability.prefetch")
+                    parent, child_parameters = future_map[future]
+                    parent_key = getattr(parent, "id", None) or id(parent)
+                    parent_retrieval_results[parent_key] = future.result()
+
         for parent, child_parameters in parent_groups:
             self.run_state.raise_if_cancelled(review, phase="parent_applicability")
-            retrieval_result = self.get_parent_retrieval_result(
-                parent=parent,
-                child_parameters=child_parameters,
-                category=category,
-                ingestion_job=ingestion_job,
-                indexes=indexes,
-                tsd_document=tsd_document,
-                cache=parent_context_cache,
-            )
+            parent_key = getattr(parent, "id", None) or id(parent)
+            retrieval_result = parent_retrieval_results.get(parent_key)
+            if retrieval_result is None:
+                retrieval_result = self.get_parent_retrieval_result(
+                    parent=parent,
+                    child_parameters=child_parameters,
+                    category=category,
+                    ingestion_job=ingestion_job,
+                    indexes=indexes,
+                    tsd_document=tsd_document,
+                    cache=parent_context_cache,
+                )
             query_details = self.build_parent_retrieval_query_details(parent, child_parameters)
             child_requirement_texts = [
                 build_parameter_analysis_text(parameter).strip()
@@ -924,6 +1120,7 @@ class TextDebateCoordinator:
     def analyze_single_child_with_parent_context(
         self,
         *,
+        review,
         category,
         ingestion_job,
         parameter,
@@ -931,6 +1128,7 @@ class TextDebateCoordinator:
         tsd_document,
         killed_assumptions: List[Dict[str, Any]],
         parent_context_cache: Dict[Tuple[Any, Any, Any], Any],
+        execution_mode: str = "single",
     ) -> DebateOutput:
         parent = getattr(parameter, "parent", None)
         if parent is not None:
@@ -945,19 +1143,23 @@ class TextDebateCoordinator:
             )
             if parent_result is not None and not getattr(parent_result, "error", None):
                 return self.analyze_single_child_with_retrieval_result(
+                    review=review,
                     category=category,
                     parameter=parameter,
                     retrieval_result=parent_result,
                     tsd_document=tsd_document,
                     killed_assumptions=killed_assumptions,
+                    execution_mode=execution_mode,
                 )
         return self.analyze_single_child(
+            review=review,
             category=category,
             ingestion_job=ingestion_job,
             parameter=parameter,
             indexes=indexes,
             tsd_document=tsd_document,
             killed_assumptions=killed_assumptions,
+            execution_mode=execution_mode,
         )
 
     def validate_batch_outputs(
@@ -1074,7 +1276,7 @@ class TextDebateCoordinator:
         tsd_document,
         debate_output: DebateOutput,
         summary: AnalysisSummary,
-    ) -> None:
+    ):
         gated_output = self.apply_not_met_evidence_gate(
             category=category,
             ingestion_job=ingestion_job,
@@ -1089,7 +1291,24 @@ class TextDebateCoordinator:
             ingestion_job=ingestion_job,
             debate_output=gated_output,
         )
-        self.persistence.persist_finding(review, persistence_input, summary)
+        finding = self.persistence.persist_finding(review, persistence_input, summary)
+        if finding is not None:
+            review_debate_event_store.complete_debate(
+                review.id,
+                debate_id=self.build_live_debate_id(parameter),
+                finding_id=getattr(finding, "id", None),
+                last_snippet=getattr(gated_output.mediator_result, "logic_summary", None)
+                or getattr(gated_output.mediator_result, "reasoning", None)
+                or "",
+            )
+        else:
+            review_debate_event_store.fail_agent(
+                review.id,
+                debate_id=self.build_live_debate_id(parameter),
+                agent="mediator",
+                error_message="Failed to persist debate result.",
+            )
+        return finding
 
     def ungrounded_not_met_policy(self) -> str:
         raw = self.config.batch_debate_ungrounded_not_met_policy
@@ -1142,119 +1361,50 @@ class TextDebateCoordinator:
             debate_output.analysis_trace.setdefault("evidence_gate_outcome", "skipped_preserve_not_met_policy")
             return debate_output
         debate_output.analysis_trace["evidence_gate_attempted"] = True
-        retry_context_available = all(value is not None for value in [ingestion_job, indexes, tsd_document])
-        debate_output.analysis_trace["evidence_gate_retry_context_available"] = retry_context_available
-        if not retry_context_available:
-            debate_output.analysis_trace["evidence_gate_outcome"] = "no_retry_context_preserved_not_met"
+        debate_output.analysis_trace["evidence_gate_retry_context_available"] = False
+        debate_output.analysis_trace["evidence_gate_retry_skipped"] = "disabled_no_new_evidence_source"
+        downgrade_policy = self.ungrounded_not_met_policy()
+        applicability_established = True
+        verdict_policy = debate_output.analysis_trace.get("verdict_policy") or {}
+        if isinstance(verdict_policy, dict):
+            applicability_established = bool(verdict_policy.get("applicability_established", True))
+        if downgrade_policy == "selective_fallback" and applicability_established:
+            debate_output.analysis_trace["evidence_gate_outcome"] = "retry_disabled_preserved_not_met"
             debate_output.analysis_trace["downgraded_due_to_missing_citations"] = False
             debate_output.analysis_trace["downgrade_reason"] = None
             return debate_output
-        downgrade_policy = self.ungrounded_not_met_policy()
-        retry_output = debate_output
-        try:
-            retry_details = dict(self.debate_input_factory.build_retrieval_query_details(parameter, debate_output.analysis_trace.get("contract") or {}))
-            retry_details["retry_queries"] = [{
-                "attempt": 1,
-                "reason": "evidence_gate_retry_for_ungrounded_not_met",
-                "primary_domain": retry_details.get("primary_domain"),
-                "keywords": retry_details.get("generated_domain_keywords", []),
-            }]
-            self.retrieval.retrieve_for_parameter(
-                parameter=parameter,
-                category=category,
-                ingestion_job=ingestion_job,
-                indexes=indexes,
-                tsd_document=tsd_document,
-                query_details=retry_details,
-            )
-            mediator_agent = self.mediator_agent_factory()
-            hunter_result = debate_output.hunter_result
-            critic_result = debate_output.critic_result
-            contract = debate_output.analysis_trace.get("contract") or {}
-            parameter_text = build_parameter_analysis_text(parameter).strip()
-            parameter_section = (getattr(getattr(parameter, "parent", None), "title", "") or "").strip()
-            mediator_result = mediator_agent.run(
-                parameter_text=parameter_text,
-                parameter_section=parameter_section,
-                contract=contract,
-                hunter_result=hunter_result,
-                critic_result=critic_result,
-                debate_history=[],
-            )
-            if mediator_result:
-                retry_output = DebateOutput(
-                    parameter=debate_output.parameter,
-                    hunter_result=hunter_result,
-                    critic_result=critic_result,
-                    mediator_result=mediator_result,
-                    analysis_trace={**(debate_output.analysis_trace or {}), "evidence_gate_retry": "mediator_only"},
-                )
-        except Exception as exc:
-            self.logger.warning(
-                "TextDebateCoordinator.apply_not_met_evidence_gate: retry failed parameter=%s: %s",
-                parameter.id,
-                exc,
-            )
-            retry_output.analysis_trace = dict(getattr(retry_output, "analysis_trace", {}) or {})
-            retry_output.analysis_trace["evidence_gate_outcome"] = "retry_failed_preserved_not_met"
-            retry_output.analysis_trace["downgraded_due_to_missing_citations"] = False
-            retry_output.analysis_trace["downgrade_reason"] = None
-            return retry_output
-        if self.has_grounded_citations(retry_output):
-            retry_output.analysis_trace = dict(getattr(retry_output, "analysis_trace", {}) or {})
-            retry_output.analysis_trace["evidence_gate_outcome"] = "recovered_with_citations"
-            retry_output.analysis_trace["downgraded_due_to_missing_citations"] = False
-            return retry_output
-        retry_trace = dict(getattr(retry_output, "analysis_trace", {}) or {})
-        verdict_policy = retry_trace.get("verdict_policy") or {}
-        applicability_established = bool(verdict_policy.get("applicability_established", True))
-        retry_evidence_quality = self.extract_retrieval_evidence_quality(retry_trace)
-        if retry_evidence_quality and int(retry_evidence_quality.get("implementation_evidence_count") or 0) == 0 and not bool(retry_evidence_quality.get("applicability_signal")):
-            retry_output.analysis_trace = retry_trace
-            reason = self.build_missing_evidence_reasoning(parameter, retry_evidence_quality, applicability_established=False)
-            retry_output.mediator_result.final_verdict = "na"
-            retry_output.mediator_result.raw_final_verdict = "na"
-            retry_output.mediator_result.severity = None
-            retry_output.mediator_result.recommendation = None
-            retry_output.mediator_result.reasoning = reason
-            retry_output.mediator_result.logic_summary = reason
-            retry_output.analysis_trace["evidence_gate_outcome"] = "downgraded_to_na_no_applicability_signal_after_retry"
-            retry_output.analysis_trace["downgraded_due_to_missing_citations"] = True
-            retry_output.analysis_trace["downgrade_reason"] = "not_met_without_applicability_or_implementation_evidence_after_retry"
-            return retry_output
         if downgrade_policy == "selective_fallback" and not applicability_established:
-            retry_output.analysis_trace = retry_trace
-            retry_output.mediator_result.final_verdict = "na"
-            retry_output.mediator_result.raw_final_verdict = "na"
-            retry_output.mediator_result.severity = None
-            retry_output.mediator_result.recommendation = None
-            retry_output.mediator_result.reasoning = (
-                (retry_output.mediator_result.reasoning or "").strip()
+            debate_output.mediator_result.final_verdict = "na"
+            debate_output.mediator_result.raw_final_verdict = "na"
+            debate_output.mediator_result.severity = None
+            debate_output.mediator_result.recommendation = None
+            debate_output.mediator_result.reasoning = (
+                (debate_output.mediator_result.reasoning or "").strip()
                 + "\n\nInsufficient grounded evidence found, and applicability was not established."
             ).strip()
-            retry_output.analysis_trace["evidence_gate_outcome"] = "downgraded_to_na_applicability_not_established"
-            retry_output.analysis_trace["downgraded_due_to_missing_citations"] = True
-            retry_output.analysis_trace["downgrade_reason"] = "not_met_without_grounded_citations_or_applicability_after_retry"
-            return retry_output
+            debate_output.mediator_result.logic_summary = debate_output.mediator_result.reasoning
+            debate_output.analysis_trace["evidence_gate_outcome"] = "downgraded_to_na_applicability_not_established_without_retry"
+            debate_output.analysis_trace["downgraded_due_to_missing_citations"] = True
+            debate_output.analysis_trace["downgrade_reason"] = "not_met_without_grounded_citations_or_applicability_without_retry"
+            return debate_output
         if downgrade_policy != "downgrade_na":
-            retry_output.analysis_trace = dict(getattr(retry_output, "analysis_trace", {}) or {})
-            retry_output.analysis_trace["evidence_gate_outcome"] = "retry_exhausted_preserved_not_met"
-            retry_output.analysis_trace["downgraded_due_to_missing_citations"] = False
-            retry_output.analysis_trace["downgrade_reason"] = None
-            return retry_output
-        retry_output.analysis_trace = dict(getattr(retry_output, "analysis_trace", {}) or {})
-        retry_output.mediator_result.final_verdict = "na"
-        retry_output.mediator_result.raw_final_verdict = "na"
-        retry_output.mediator_result.severity = None
-        retry_output.mediator_result.recommendation = None
-        retry_output.mediator_result.reasoning = (
-            (retry_output.mediator_result.reasoning or "").strip()
+            debate_output.analysis_trace["evidence_gate_outcome"] = "retry_disabled_preserved_not_met"
+            debate_output.analysis_trace["downgraded_due_to_missing_citations"] = False
+            debate_output.analysis_trace["downgrade_reason"] = None
+            return debate_output
+        debate_output.mediator_result.final_verdict = "na"
+        debate_output.mediator_result.raw_final_verdict = "na"
+        debate_output.mediator_result.severity = None
+        debate_output.mediator_result.recommendation = None
+        debate_output.mediator_result.reasoning = (
+            (debate_output.mediator_result.reasoning or "").strip()
             + "\n\nInsufficient grounded evidence found to support a 'not_met' determination."
         ).strip()
-        retry_output.analysis_trace["evidence_gate_outcome"] = "downgraded_to_na_missing_citations"
-        retry_output.analysis_trace["downgraded_due_to_missing_citations"] = True
-        retry_output.analysis_trace["downgrade_reason"] = "not_met_without_grounded_citations_after_retry"
-        return retry_output
+        debate_output.mediator_result.logic_summary = debate_output.mediator_result.reasoning
+        debate_output.analysis_trace["evidence_gate_outcome"] = "downgraded_to_na_missing_citations_without_retry"
+        debate_output.analysis_trace["downgraded_due_to_missing_citations"] = True
+        debate_output.analysis_trace["downgrade_reason"] = "not_met_without_grounded_citations_without_retry"
+        return debate_output
 
     def extract_retrieval_evidence_quality(self, analysis_trace: dict) -> Dict[str, Any]:
         details = (analysis_trace or {}).get("retrieval_query_details") or {}
@@ -1380,6 +1530,113 @@ class TextDebateCoordinator:
                 }
             )
         return killed
+
+    def build_live_debate_id(self, parameter: Any) -> str:
+        return build_debate_id(getattr(parameter, "id", None), getattr(parameter, "stable_key", None))
+
+    def build_live_debate_descriptor(
+        self,
+        *,
+        parameter: Any,
+        category_code: str,
+        execution_mode: str,
+    ) -> Dict[str, Any]:
+        requirement_text = build_parameter_analysis_text(parameter).strip()
+        section_title = getattr(getattr(parameter, "parent", None), "title", None) or "General"
+        return {
+            "debate_id": self.build_live_debate_id(parameter),
+            "parameter_id": getattr(parameter, "id", None),
+            "requirement_reference": getattr(parameter, "stable_key", None),
+            "requirement_text": requirement_text,
+            "section_title": section_title,
+            "category_code": category_code,
+            "execution_mode": execution_mode,
+        }
+
+    def seed_live_debates(
+        self,
+        *,
+        review: Review,
+        category_code: str,
+        parameters: List[Any],
+        execution_mode: str,
+    ) -> None:
+        review_debate_event_store.seed_debates(
+            review.id,
+            review_status=getattr(review, "status", Review.STATUS_RUNNING),
+            debates=[
+                self.build_live_debate_descriptor(
+                    parameter=parameter,
+                    category_code=category_code,
+                    execution_mode=execution_mode,
+                )
+                for parameter in parameters
+            ],
+        )
+
+    def agent_progress_percent(self, agent: str, phase: str) -> int:
+        agent_key = str(agent or "").strip().lower()
+        if phase == "started":
+            return {"hunter": 5, "critic": 40, "mediator": 72}.get(agent_key, 0)
+        return {"hunter": 33, "critic": 66, "mediator": 90}.get(agent_key, 0)
+
+    def publish_live_agent_start(
+        self,
+        *,
+        review: Review,
+        parameter: Any,
+        category_code: str,
+        agent: str,
+        execution_mode: str,
+        progress_percent: int,
+        content: str,
+    ) -> None:
+        review_debate_event_store.start_agent(
+            review.id,
+            debate=self.build_live_debate_descriptor(
+                parameter=parameter,
+                category_code=category_code,
+                execution_mode=execution_mode,
+            ),
+            agent=agent,
+            execution_mode=execution_mode,
+            content=content,
+            progress_percent=progress_percent,
+        )
+
+    def publish_live_agent_chunk(
+        self,
+        *,
+        review: Review,
+        parameter: Any,
+        agent: str,
+        chunk: str,
+    ) -> None:
+        review_debate_event_store.append_agent_chunk(
+            review.id,
+            debate_id=self.build_live_debate_id(parameter),
+            agent=agent,
+            chunk=chunk,
+        )
+
+    def publish_live_agent_complete(
+        self,
+        *,
+        review: Review,
+        parameter: Any,
+        agent: str,
+        content: str,
+        progress_percent: int,
+        execution_mode: str,
+    ) -> None:
+        review_debate_event_store.complete_agent(
+            review.id,
+            debate_id=self.build_live_debate_id(parameter),
+            agent=agent,
+            content=content,
+            progress_percent=progress_percent,
+            execution_mode=execution_mode,
+        )
 
     def record_debate_progress(
         self,

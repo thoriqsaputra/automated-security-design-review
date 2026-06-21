@@ -22,7 +22,6 @@ from sdr.apps.ai.engine.extraction.normalizers import (
     render_asvs_plain_text,
 )
 
-
 def test_structured_requirement_extraction_service_parses_details():
     response = SimpleNamespace(
         error=None,
@@ -114,7 +113,6 @@ def test_requirement_document_extraction_service_uses_configured_chunk_sizing():
         config=ExtractionConfig(
             standard_extraction_max_workers=1,
             standard_extraction_chunk_token_target=4242,
-            standard_extraction_chunk_overlap_tokens=111,
         ),
     )
 

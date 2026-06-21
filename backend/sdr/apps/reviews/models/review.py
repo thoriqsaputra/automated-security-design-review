@@ -7,6 +7,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship, backref
 
 from sdr.core.database import Base
 from .choices import ReviewAnalysisMode, ReviewStatus
+from sdr.apps.reviews.services.debate_events import review_debate_event_store
 
 
 
@@ -80,6 +81,7 @@ class Review(Base):
     @property
     def progress(self) -> Optional[Dict[str, Any]]:
         summary = self.summary_json or {}
+        live_snapshot = review_debate_event_store.load_snapshot(self.id) if getattr(self, "id", None) else None
         debate_total = int(summary.get("debate_total_parameters") or summary.get("analysis_total_parameters") or 0)
         debate_completed = int(summary.get("debate_completed_parameters") or summary.get("analysis_processed_parameters") or 0)
         debate_remaining = int(summary.get("debate_remaining_parameters") or summary.get("analysis_remaining_parameters") or 0)
@@ -124,6 +126,13 @@ class Review(Base):
             remaining_items = 0
 
         progress_percent = int(round((completed_items / total_items) * 100)) if total_items > 0 else 0
+        current_debate = None
+        if isinstance(live_snapshot, dict):
+            debates = live_snapshot.get("debates") or []
+            for debate in debates:
+                if str(debate.get("status") or "").lower() == "running":
+                    current_debate = debate
+                    break
         label = (
             f"Debate {debate_completed}/{debate_total} · "
             f"Persistence {persistence_completed}/{persistence_total}"
@@ -136,8 +145,8 @@ class Review(Base):
             "failed_items": error_count,
             "remaining_items": remaining_items,
             "progress_percent": progress_percent,
-            "current_parameter_reference": None,
-            "current_parameter_title": None,
+            "current_parameter_reference": current_debate.get("requirement_reference") if isinstance(current_debate, dict) else None,
+            "current_parameter_title": current_debate.get("requirement_text") if isinstance(current_debate, dict) else None,
             "preparation": {
                 "debate": {
                     "total": debate_total,

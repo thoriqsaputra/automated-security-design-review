@@ -107,7 +107,7 @@ def _match_scope_terms(scope_terms: Sequence[str], context_text: str) -> List[st
     lowered = (context_text or "").lower()
     matches = []
     for term in scope_terms:
-        if term and term in lowered:
+        if term and re.search(r"\b" + re.escape(term) + r"\b", lowered):
             matches.append(term)
     return matches[:8]
 
@@ -125,18 +125,18 @@ def classify_parent_applicability(
     context_text = (retrieved_context or "").strip()
     if not child_requirements:
         return ParentApplicabilityResult(
-            applicable=False,
+            applicable=True,
             confidence=0.0,
-            reasoning="No child requirements were supplied, so applicability could not be established.",
+            reasoning="No child requirements were supplied, so applicability could not be established. Failing open.",
             evidence=[],
             decision_mode="missing_child_requirements",
             error="missing_child_requirements",
         )
     if not context_text:
         return ParentApplicabilityResult(
-            applicable=False,
+            applicable=True,
             confidence=0.0,
-            reasoning="No retrieved TSD context was available, so applicability could not be established.",
+            reasoning="No retrieved TSD context was available, so applicability could not be established. Failing open.",
             evidence=[],
             decision_mode="missing_context",
             error="missing_retrieved_context",
@@ -148,15 +148,6 @@ def classify_parent_applicability(
         query_details=query_details,
     )
     matched_scope_terms = _match_scope_terms(scope_terms, context_text)
-    if scope_terms and not matched_scope_terms:
-        return ParentApplicabilityResult(
-            applicable=False,
-            confidence=0.9,
-            reasoning="The retrieved TSD context does not contain direct scope signals for this control family.",
-            evidence=[],
-            decision_mode="no_scope_match",
-            error=None,
-        )
 
     child_block = "\n".join(f"- {item}" for item in child_requirements[:8])
     prompt = build_parent_applicability_prompt(
@@ -184,9 +175,9 @@ def classify_parent_applicability(
         )
         if response.error or not response.content:
             return ParentApplicabilityResult(
-                applicable=False,
+                applicable=True,
                 confidence=0.0,
-                reasoning="Parent applicability classification failed, so applicability could not be established.",
+                reasoning="Parent applicability classification failed, so applicability could not be established. Failing open.",
                 evidence=matched_scope_terms[:5],
                 decision_mode="error",
                 error=str(response.error or "empty_response"),
@@ -200,9 +191,9 @@ def classify_parent_applicability(
         )
         if not isinstance(parsed, dict):
             return ParentApplicabilityResult(
-                applicable=False,
+                applicable=True,
                 confidence=0.0,
-                reasoning="Parent applicability classification could not be parsed, so applicability could not be established.",
+                reasoning="Parent applicability classification could not be parsed, so applicability could not be established. Failing open.",
                 evidence=matched_scope_terms[:5],
                 decision_mode="parse_error",
                 error=parse_error or "invalid_response",
@@ -215,10 +206,8 @@ def classify_parent_applicability(
         decision_mode = str(parsed.get("decision_mode") or "").strip().lower()
         if not decision_mode:
             decision_mode = "positive_match" if applicable else "negative_match"
-        if applicable and not matched_scope_terms:
-            applicable = False
-            decision_mode = "no_scope_match"
-            confidence = max(confidence, 0.8)
+        if decision_mode == "unclear":
+            confidence = min(confidence, 0.4)
         return ParentApplicabilityResult(
             applicable=applicable,
             confidence=confidence,
@@ -229,9 +218,9 @@ def classify_parent_applicability(
     except Exception as exc:
         logger.exception("classify_parent_applicability: failed")
         return ParentApplicabilityResult(
-            applicable=False,
+            applicable=True,
             confidence=0.0,
-            reasoning="Parent applicability classification raised an exception, so applicability could not be established.",
+            reasoning="Parent applicability classification raised an exception, so applicability could not be established. Failing open.",
             evidence=matched_scope_terms[:5],
             decision_mode="exception",
             error=str(exc),

@@ -5,6 +5,7 @@ from typing import Dict, List, Optional
 
 from .common import (
     _ASSUMPTIONS_FIRST_RULES,
+    _build_block_ids_block,
     _CITATION_SCHEMA,
     _REASONING_SCHEMA,
     _VERDICT_VALUES,
@@ -62,13 +63,7 @@ def build_hunter_prompt(
                 lines.append(f"- {text}")
         if lines:
             killed_block = "\nDo not repeat these invalidated assumptions:\n" + "\n".join(lines)
-    block_ids_block = ""
-    if available_block_ids:
-        block_ids_block = (
-            "\nVALID CITATION BLOCK IDS (only cite block_ids from this list — "
-            "do not invent or guess IDs):\n"
-            + ", ".join(sorted(available_block_ids))
-        )
+    block_ids_block = _build_block_ids_block(available_block_ids)
 
     return f"""\
 ## SECURITY PARAMETER TO EVALUATE
@@ -109,7 +104,7 @@ Reasoning -> assumptions: ["Only retrieved context may be used."]; logic_summary
 	- "met"     → TSD contains explicit evidence satisfying the requirement.
 	- "not_met" → The requirement is applicable, and the TSD lacks implementation evidence or explicitly contradicts the requirement.
 	- "na"      → The retrieved context does not establish the technology, data flow, control trigger, or document scope needed to assess this requirement.
-	- citations → Only use block_ids that appear literally in the CONTEXT_CHUNK headers above. Do not invent or guess block_ids.
+	- citations → You MUST copy the id, page_number, and bbox coordinates EXACTLY from the CONTEXT_CHUNK XML attributes into the JSON, and the CONTEXT_CHUNK must have citable="true". Do not invent or guess them. If attributes are missing, use null.
 	- A "met" verdict must include at least one valid citation and an evidence quote.
 	- A "not_met" verdict where evidence_found=true must include citations to the block_ids you examined and found insufficient. If you cannot identify a relevant block_id, set evidence_found=false instead.
 	- First decide applicability, then implementation. A heading, graph node, requirement title, or baseline control text is not implementation evidence.
@@ -127,10 +122,12 @@ def build_batch_hunter_prompt(
     parameter_section: str,
     context_chunks: List[str],
     killed_assumptions: Optional[List[dict]],
+    available_block_ids: Optional[List[str]] = None,
 ) -> str:
     chunks_text = "\n\n---\n\n".join(context_chunks)
     killed_text = json.dumps(killed_assumptions or [], indent=2)
     children_text = json.dumps(child_inputs, indent=2)
+    block_ids_block = _build_block_ids_block(available_block_ids)
     return f"""\
 ## PARENT SECURITY SECTION
 Section: {parameter_section}
@@ -143,6 +140,7 @@ Section: {parameter_section}
 
 ## INVALIDATED ASSUMPTIONS TO AVOID
 {killed_text}
+{block_ids_block}
 
 Analyse each child parameter independently. Do not merge child requirements.
 Return strict JSON with exactly one result object per child id:
@@ -161,7 +159,7 @@ Return strict JSON with exactly one result object per child id:
       "evidence_assessment": "<why evidence satisfies or fails this child>",
       "evidence_found": <true | false>,
       "citations": [
-        {{"block_id": "<CONTEXT_CHUNK id only>", "page_number": <integer>, "quoted_text": "<short quote>", "bbox": {{"x0": null, "y0": null, "x1": null, "y1": null}}}}
+        {{"block_id": "<CONTEXT_CHUNK id>", "page_number": <CONTEXT_CHUNK page_number or null>, "quoted_text": "<verbatim quote>", "bbox": {{"x0": <bbox_x0 or null>, "y0": <bbox_y0 or null>, "x1": <bbox_x1 or null>, "y1": <bbox_y1 or null>}}}}
       ]
     }}
   ]
@@ -172,6 +170,6 @@ Rules:
 - A "met" verdict must include at least one valid citation and evidence quote.
 - A "not_met" verdict where evidence_found=true must include citations to the block_ids examined and found insufficient. If no relevant block_id exists, set evidence_found=false.
 - For "not_met", explain what explicit evidence is missing for that child.
-- Only cite block_ids that appear literally in the CONTEXT_CHUNK headers in SHARED TSD CONTEXT. Do not invent or guess block_ids.
+- You MUST copy the id, page_number, and bbox coordinates EXACTLY from the CONTEXT_CHUNK XML attributes into the JSON, and the CONTEXT_CHUNK must have citable="true". Do not invent or guess them. If missing, use null.
 """
 

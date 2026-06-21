@@ -161,11 +161,11 @@ Decide whether this parent control family from a security standard is applicable
 
 Return only valid JSON:
 {{
-  "applicable": true,
-  "confidence": 0.0,
-  "decision_mode": "positive_match" | "negative_match" | "unclear",
-  "reasoning": "short explanation",
-  "evidence": ["short evidence or scope signal", "..."]
+  "applicable": false,
+  "confidence": 0.42,
+  "decision_mode": "unclear",
+  "reasoning": "The retrieved context mentions authentication generally but does not clearly establish whether this subsystem is in scope.",
+  "evidence": ["mentions authentication", "no explicit subsystem boundary"]
 }}
 
 Rules:
@@ -174,6 +174,16 @@ Rules:
 - If applicability is unclear, return applicable=false and decision_mode="unclear".
 - Do not treat missing implementation detail as out of scope. This step is only about scope/applicability.
 - Do not infer applicability from broad security language unless it directly matches the family-specific scope terms.
+- FAMILY SCOPE TERMS are heuristic hints to help you focus your reading; the TSD may describe
+  the same capability using different wording. Do not conclude inapplicable solely because
+  none of these literal terms appear in the context — judge applicability by meaning.
+- confidence → your certainty in this specific applicable/not-applicable call (1.0 = certain,
+  0.5 = genuinely ambiguous). If you are not confident, prefer decision_mode="unclear" with a
+  low confidence value rather than forcing a high-confidence guess.
+- reasoning must be exactly one sentence on a single line.
+- evidence must be a JSON array with 0 to 3 short single-line strings.
+- Do not use markdown, bullets, code fences, or multiline string values.
+- If you include quotes inside a JSON string value, they must be properly escaped.
 
 STANDARD CATEGORY: {category_code}
 STANDARD VERSION: {version_label}
@@ -185,7 +195,7 @@ CHILD REQUIREMENTS:
 {child_block}
 
 RETRIEVED TSD CONTEXT:
-{context_text[:3000]}
+{context_text[:8000]}
 """
 
 

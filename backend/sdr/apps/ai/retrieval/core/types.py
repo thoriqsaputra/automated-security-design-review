@@ -4,6 +4,8 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Optional, TYPE_CHECKING
 
+from sdr.core.config import settings
+
 from sdr.apps.ai.retrieval.searchers.graph import GraphSearchResponse
 from sdr.apps.ai.retrieval.searchers.raptor import RAPTORSearchResponse
 from sdr.apps.ai.retrieval.searchers.vector import VectorSearchResponse
@@ -15,8 +17,6 @@ class RetrievalStrategy(Enum):
     RAPTOR_HIGH = "raptor_high"
     GRAPH_TRAVERSE = "graph_traverse"
     GRAPH_LOCAL = "graph_local"
-    GRAPH_GLOBAL = "graph_global"
-    IR_COT_GRAPH = "ir_cot_graph"
     HYBRID = "hybrid"
 
 
@@ -29,12 +29,24 @@ class QueryType(Enum):
 
 @dataclass
 class AdvancedRetrievalConfig:
-    enable_graph_global: bool = False
-    enable_ir_cot: bool = False
-    ir_cot_max_iterations: int = 2
-    enable_community_llm_summary: bool = False
     enable_cross_encoder_rerank: bool = False
-    graph_global_support_blocks_per_community: int = 3
+    hybrid_max_workers: int = 3
+    graph_local_max_workers: int = 3
+    retrieve_many_max_concurrency: int = 2
+
+    @classmethod
+    def from_settings(cls) -> "AdvancedRetrievalConfig":
+        return cls(
+            enable_cross_encoder_rerank=bool(
+                getattr(settings, "AI_RETRIEVAL_ENABLE_CROSS_ENCODER_RERANK", False)
+            ),
+            hybrid_max_workers=max(1, int(getattr(settings, "AI_RETRIEVAL_HYBRID_MAX_WORKERS", 3))),
+            graph_local_max_workers=max(1, int(getattr(settings, "AI_RETRIEVAL_GRAPH_LOCAL_MAX_WORKERS", 3))),
+            retrieve_many_max_concurrency=max(
+                1,
+                int(getattr(settings, "AI_RETRIEVAL_MANY_MAX_CONCURRENCY", 2)),
+            ),
+        )
 
 
 @dataclass

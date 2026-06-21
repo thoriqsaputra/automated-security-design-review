@@ -1,4 +1,5 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import { ChevronDown, ChevronRight } from 'lucide-react';
 import type { CitationAnchor, Finding } from '../../../api/reviews';
 import {
   formatLabel,
@@ -209,6 +210,8 @@ interface FindingDetailsProps {
 }
 
 export function FindingDetails({ finding, activeCitationId = null, onCitationSelect }: FindingDetailsProps) {
+  const [activeAgentAudit, setActiveAgentAudit] = useState<string | null>('Hunter');
+
   const auditItems = [
     { label: 'Finding ID', value: finding.id },
     { label: 'Review ID', value: finding.review_id },
@@ -301,18 +304,37 @@ export function FindingDetails({ finding, activeCitationId = null, onCitationSel
       {(finding.hunter_reasoning || finding.critic_reasoning || finding.mediator_reasoning || finding.hunter_thought_process || finding.critic_thought_process || finding.mediator_thought_process) && (
         <section className="space-y-3 rounded-xl border border-surface-border bg-surface-base/50 p-4">
           <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Agent Audit</p>
-          <div className="grid grid-cols-1 gap-3 xl:grid-cols-3">
+          <div className="flex flex-col gap-3">
             {[
               { role: 'Hunter', color: 'text-flame', reasoning: finding.hunter_reasoning, thought: finding.hunter_thought_process },
               { role: 'Critic', color: 'text-burgundy-light', reasoning: finding.critic_reasoning, thought: finding.critic_thought_process },
               { role: 'Mediator', color: 'text-emerald-400', reasoning: finding.mediator_reasoning, thought: finding.mediator_thought_process },
-            ].map((agent) => (
-              <div key={agent.role} className="space-y-2 rounded-lg border border-surface-border bg-midnight p-3">
-                <p className={`text-[10px] font-bold uppercase tracking-wider ${agent.color}`}>{agent.role}</p>
-                <TextBlock title="Reasoning">{agent.reasoning}</TextBlock>
-                <TextBlock title="Thought Process">{agent.thought}</TextBlock>
-              </div>
-            ))}
+            ].map((agent) => {
+              if (!agent.reasoning && !agent.thought) return null;
+              const isActive = activeAgentAudit === agent.role;
+              return (
+                <div key={agent.role} className="rounded-lg border border-surface-border bg-midnight">
+                  <button
+                    type="button"
+                    onClick={() => setActiveAgentAudit(isActive ? null : agent.role)}
+                    className="flex w-full items-center justify-between p-3 text-left transition-colors hover:bg-surface-border/30"
+                  >
+                    <p className={`text-[10px] font-bold uppercase tracking-wider ${agent.color}`}>{agent.role}</p>
+                    {isActive ? (
+                      <ChevronDown size={14} className="text-text-muted shrink-0" />
+                    ) : (
+                      <ChevronRight size={14} className="text-text-muted shrink-0" />
+                    )}
+                  </button>
+                  {isActive && (
+                    <div className="space-y-4 border-t border-surface-border p-3 animate-fade-in">
+                      <TextBlock title="Reasoning">{agent.reasoning}</TextBlock>
+                      <TextBlock title="Thought Process">{agent.thought}</TextBlock>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
           </div>
         </section>
       )}

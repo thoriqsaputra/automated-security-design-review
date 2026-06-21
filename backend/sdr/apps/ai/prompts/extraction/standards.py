@@ -137,6 +137,10 @@ You are a security standards expert. Your task is to convert text-based ASVS \
 security requirements into diagram-verifiable equivalents — requirements that \
 can be assessed by LOOKING AT an architecture or data-flow diagram.
 
+Apply your per-requirement and merge rules mechanically and consistently — given \
+the same input, you must always produce the same requirements, grouping, and \
+stable_key assignment. Do not introduce arbitrary variation between runs.
+
 Output strict JSON only.
 """
 
@@ -149,6 +153,10 @@ CFSR_EXTRACTION_SYSTEM_PROMPT = """\
 You are a senior security architect. Your task is to synthesize detailed ASVS \
 security requirements into a small set of actionable, text-verifiable summary \
 requirements that can be evaluated against a Technical System Design document.
+
+Apply your merge and stable_key-assignment rules mechanically and consistently — \
+given the same input, you must always produce the same grouping, count, and \
+stable_key assignment. Do not introduce arbitrary variation between runs.
 
 Output strict JSON only.
 """
@@ -174,7 +182,11 @@ Each summary requirement MUST:
 - Be specific enough that a "not met" verdict indicates a real architectural gap.
 
 For each summary requirement provide:
-- stable_key: short ID like "CFSR-V2-1" (section-ordinal, no level suffix)
+- stable_key: deterministic ID derived from the LOWEST-numbered child it covers, formatted as
+  "CFSR-{{section-prefix}}-{{lowest covered child's ordinal number}}" (e.g. if a CFSR's lowest
+  covered child is "child-003", its stable_key is "CFSR-V2-3"). Never assign stable_key freely —
+  it must always be mechanically derived from the lowest covered child's ordinal so the same
+  grouping always produces the same key.
 - requirement_text: ONE concise sentence, max 150 chars, stating what the TSD must demonstrate
 - analysis_hint: 2-3 sentences describing what specific TSD content would satisfy this requirement
 - asvs_level: the MINIMUM level at which this control first becomes mandatory (1, 2, or 3).
@@ -182,20 +194,29 @@ For each summary requirement provide:
   If a child has no level set, treat it as L1.
 - covered_child_keys: list of the child IDs (e.g. "child-001") from the SOURCE REQUIREMENTS section that this summary covers
 
-STRATEGY:
-- Scan ALL children across L1, L2, L3 together.
-- Identify the 3–{max_count} most architecturally distinct security assertions for this family.
+STRATEGY (apply mechanically — do not target a specific number of CFSRs; the merge rule below
+determines the count, capped at {max_count}):
+- Process children in the order given (child-001, child-002, ...).
+- MERGE RULE: merge two children into the same CFSR ONLY if they govern the exact same security
+  mechanism/control objective — the same verb acting on the same target (e.g. both require
+  "encrypt data at rest" or both require "log authentication events"). Do NOT merge children
+  merely because they are thematically related or belong to the same broad topic; a shared topic
+  is not sufficient grounds for merging. Apply this test literally and consistently for every
+  pair of children — given the same input, this must always yield the same grouping.
 - Assign each CFSR its minimum applicable level (the lowest-level child it covers).
-- Merge children that share the same architectural implication into one CFSR.
 - Each CFSR must express a UNIQUELY DISTINCT architectural assertion. Before emitting, scan all
   your planned CFSRs and ensure no two share the same or overlapping security concept. If two
   planned CFSRs cover the same idea, merge them into one and combine their covered_child_keys.
 - Each child ID must appear in EXACTLY ONE CFSR's covered_child_keys — not zero, not more than one.
 - Every child ID in SOURCE REQUIREMENTS MUST appear in at least one CFSR's covered_child_keys.
-  Do NOT skip any child. If a requirement is code/config/process-level, merge it into the most
-  thematically similar CFSR rather than omitting it.
+  Do NOT skip any child. If a requirement is code/config/process-level, merge it into the CFSR
+  whose covered children are governed by the most similar control mechanism rather than omitting it.
 - After writing all CFSRs, verify that the union of all covered_child_keys equals the full set
   of child IDs provided (child-001 through child-NNN). Add any missing child IDs to the closest CFSR.
+- If applying the merge rule would exceed {max_count} CFSRs for this family, merge the two
+  most similar remaining CFSRs (by control mechanism similarity) repeatedly until at most
+  {max_count} remain.
+- Emit the final CFSRs in ascending order of their lowest-numbered covered child.
 
 ## SOURCE REQUIREMENTS (with stable_keys and ASVS levels)
 
@@ -222,11 +243,15 @@ Given the following ASVS security requirements, generate diagram-verifiable \
 equivalents — requirements that can be assessed by looking at an architecture \
 or data-flow diagram.
 
-BUDGET: Generate exactly 5-7 diagram-verifiable requirements per ASVS level.
 Each requirement must be assessable by LOOKING AT an architecture or data-flow diagram.
+Do not target a specific count of requirements — the per-requirement and merge rules below
+determine the count, and they must be applied mechanically so the same input always yields
+the same output.
 
 For each requirement provide:
-- stable_key: A short unique ID like "D-V1.1" or "D-V2.3" based on the section prefix
+- stable_key: deterministic ID, NOT freely chosen. If source_requirement_id is a single id,
+  use "D-{{source_requirement_id}}". If merged (composite), use
+  "D-composite-{{first source_requirement_id in the merge, in input order}}".
 - source_requirement_id: The original text requirement's stable_key (or "composite" if merged from multiple)
 - requirement_text: ONE LINE, max 100 chars, written as "what must be visible in the diagram"
 - verification_hint: 1-2 sentences describing what specific visual elements to look for
@@ -237,11 +262,16 @@ Level 1: Basic architecture controls (topology, boundaries, flows, component lab
 Level 2: + Authentication, encryption, logging, session management, API gateway
 Level 3: + Defense-in-depth, key management, mTLS, secrets, zero-trust
 
-SKIP any requirement that cannot be verified visually (code-level, process-level,
-configuration-level controls are NOT diagram-verifiable).
-
-If multiple text requirements map to the same visual check, merge them into one
-diagram requirement with source_requirement_id="composite".
+PROCEDURE (apply mechanically, in the order the source requirements are given):
+- SKIP any requirement that cannot be verified visually (code-level, process-level,
+  configuration-level controls are NOT diagram-verifiable).
+- For every remaining requirement, emit exactly ONE diagram requirement, UNLESS it verifies
+  the IDENTICAL diagram element via the IDENTICAL visual check as another remaining requirement
+  (e.g. both are satisfied by the same trust-boundary line, or the same TLS/padlock icon on the
+  same connection) — only then merge them into one diagram requirement with
+  source_requirement_id="composite". A shared theme or related topic is NOT sufficient grounds
+  to merge; the visual check itself must be identical.
+- Emit diagram requirements in the same order as their (first, for composites) source requirement.
 
 ## SOURCE REQUIREMENTS
 
@@ -252,7 +282,7 @@ Respond with a single JSON object:
   "diagram_requirements": [
     {{
       "stable_key": "D-V1.1",
-      "source_requirement_id": "...",
+      "source_requirement_id": "V1.1",
       "requirement_text": "Layered architecture: labeled trust boundaries between layers",
       "verification_hint": "Look for boxes/regions labeled with layer names separated by boundary lines or colored zones",
       "asvs_level": 1,

@@ -588,13 +588,6 @@ class GraphSearcher:
             if not entity:
                 continue
 
-            # Optional keyword filter
-            if keywords:
-                name_lower = entity.name.lower()
-                if not any(kw in name_lower for kw in keywords if len(kw) >= _MIN_KEYWORD_LENGTH):
-                    # Still include — relation match is the primary signal
-                    pass
-
             # Only return relations that match the requested types
             relevant_relations = [
                 edge_data.get("relation_obj")

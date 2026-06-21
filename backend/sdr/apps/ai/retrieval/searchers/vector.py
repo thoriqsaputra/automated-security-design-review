@@ -72,6 +72,7 @@ class VectorSearchResponse:
     total_found: int = 0
     query_text: str = ""
     error: Optional[str] = None
+    threshold_relaxed: bool = False
 
     @property
     def is_empty(self) -> bool:
@@ -173,6 +174,20 @@ class VectorSearcher:
             )
 
         relevant_results = [r for r in results if r.is_relevant]
+        threshold_relaxed = False
+
+        if not relevant_results and results:
+            threshold_relaxed = True
+            relevant_results = sorted(results, key=lambda r: r.cosine_distance)[:resolved_top_k]
+            self.logger.warning(
+                "VectorSearcher.search: no results met threshold "
+                "(max_cosine_distance=%.2f) for query '%s...' in category "
+                "'%s' — relaxing to best available (closest distance=%.4f).",
+                self.max_cosine_distance,
+                query_text[:60],
+                category.code,
+                relevant_results[0].cosine_distance,
+            )
 
         self.logger.info(
             "VectorSearcher.search: found %d result(s) (%d above threshold) "
@@ -189,6 +204,7 @@ class VectorSearcher:
             total_found=len(relevant_results),
             query_text=query_text,
             error=None,
+            threshold_relaxed=threshold_relaxed,
         )
 
     def search_by_parameter(

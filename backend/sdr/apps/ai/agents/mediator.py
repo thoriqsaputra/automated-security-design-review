@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import json
-from typing import Dict, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from sdr.apps.ai.prompts.agents import (
     MEDIATOR_SYSTEM_PROMPT,
@@ -33,7 +33,7 @@ logger = logging.getLogger(__name__)
 class MediatorAgent(BaseAgent):
     system_prompt: str = MEDIATOR_SYSTEM_PROMPT
     model_component: str = "mediator"
-    max_tokens: int = 4096  # Give the structured JSON enough room to finish cleanly
+    max_tokens: int = 8192  # Give the structured JSON enough room to finish cleanly
     temperature: float = 0.0
 
     def _build_user_prompt(
@@ -79,6 +79,7 @@ class MediatorAgent(BaseAgent):
         hunter_result: HunterResult,
         critic_result: CriticResult,
         debate_history: Optional[List[dict]] = None,
+        stream_handler: Optional[Callable[[str], None]] = None,
     ) -> MediatorResult:
         # ------------------------------------------------------------------
         # 1. Input validation
@@ -137,7 +138,7 @@ class MediatorAgent(BaseAgent):
         # ------------------------------------------------------------------
         # 4. Call LLM
         # ------------------------------------------------------------------
-        response = self._call_llm(user_prompt)
+        response = self._call_llm_with_truncation_retry(user_prompt, stream_handler=stream_handler)
 
         if response.error:
             msg = f"LLM call failed: {response.error}"
@@ -149,6 +150,7 @@ class MediatorAgent(BaseAgent):
                 critic_result=critic_result,
                 error_msg=msg,
                 raw=response.content,
+                parameter_text=parameter_text,
             )
 
         if self._response_was_truncated(response):
@@ -161,6 +163,7 @@ class MediatorAgent(BaseAgent):
                 critic_result=critic_result,
                 error_msg=msg,
                 raw=response.content,
+                parameter_text=parameter_text,
             )
 
         # ------------------------------------------------------------------
@@ -179,6 +182,7 @@ class MediatorAgent(BaseAgent):
                 critic_result=critic_result,
                 error_msg=msg,
                 raw=response.content,
+                parameter_text=parameter_text,
             )
 
         # ------------------------------------------------------------------
@@ -215,6 +219,17 @@ class MediatorAgent(BaseAgent):
             ),
             critic_valid_citations=critic_result.valid_citations,
             parameter_text=parameter_text,
+        )
+
+        final_verdict, confidence, recommendation, reasoning_fields = (
+            self._enforce_citation_grounding(
+                final_verdict=final_verdict,
+                confidence=confidence,
+                final_citations=final_citations,
+                recommendation=recommendation,
+                reasoning_fields=reasoning_fields,
+                parameter_text=parameter_text,
+            )
         )
 
         # ------------------------------------------------------------------
@@ -342,7 +357,7 @@ class MediatorAgent(BaseAgent):
         if not llm_child_inputs:
             return results
 
-        response = self._call_llm(
+        response = self._call_llm_with_truncation_retry(
             self._build_batch_user_prompt(
                 child_inputs=llm_child_inputs,
                 parameter_section=parameter_section,
@@ -360,6 +375,7 @@ class MediatorAgent(BaseAgent):
                     critic_result=critic_results.get(c_id) or CriticResult(),
                     error_msg=msg,
                     raw=response.content,
+                    parameter_text=item.get("requirement") or str(item.get("text") or ""),
                 )
             return results
 
@@ -375,6 +391,7 @@ class MediatorAgent(BaseAgent):
                     critic_result=critic_results.get(c_id) or CriticResult(),
                     error_msg=msg,
                     raw=response.content,
+                    parameter_text=item.get("requirement") or str(item.get("text") or ""),
                 )
             return results
 
@@ -410,6 +427,16 @@ class MediatorAgent(BaseAgent):
                 ),
                 critic_valid_citations=critic_result.valid_citations,
                 parameter_text=str(child_id),
+            )
+            final_verdict, confidence, recommendation, reasoning_fields = (
+                self._enforce_citation_grounding(
+                    final_verdict=final_verdict,
+                    confidence=confidence,
+                    final_citations=final_citations,
+                    recommendation=recommendation,
+                    reasoning_fields=reasoning_fields,
+                    parameter_text=str(child_id),
+                )
             )
             if final_verdict in {VERDICT_MET, VERDICT_NA}:
                 severity = None
@@ -524,6 +551,8 @@ class MediatorAgent(BaseAgent):
         # All conditions met — produce a fast-path result
         agreed_verdict = hunter_result.verdict
         if agreed_verdict == VERDICT_NOT_MET and not critic_result.valid_citations:
+            return None
+        if agreed_verdict == VERDICT_MET and not critic_result.valid_citations:
             return None
 
         averaged_confidence = (
@@ -741,6 +770,48 @@ class MediatorAgent(BaseAgent):
             return "low"
 
     # ------------------------------------------------------------------
+    # Grounding enforcement
+    # ------------------------------------------------------------------
+
+    def _enforce_citation_grounding(
+        self,
+        *,
+        final_verdict: str,
+        confidence: float,
+        final_citations: List[Citation],
+        recommendation: Optional[str],
+        reasoning_fields: dict,
+        parameter_text: str,
+    ) -> tuple:
+        """Downgrade an ungrounded 'met' (zero surviving citations) to 'not_met'.
+
+        Unlike severity, final_verdict/final_citations are never recalculated
+        downstream — they flow straight into the persisted Finding, so a
+        'met' verdict with no surviving evidence must never escape here.
+        """
+        if final_verdict != VERDICT_MET or final_citations:
+            return final_verdict, confidence, recommendation, reasoning_fields
+
+        self.logger.warning(
+            "MediatorAgent._enforce_citation_grounding: final_verdict='met' but "
+            "zero final_citations survived — downgrading to 'not_met' for "
+            "parameter '%s...'.",
+            parameter_text[:60],
+        )
+        downgrade_msg = (
+            "Mediator reached 'met' but no citation survived Critic verification; "
+            "downgraded to not_met pending explicit grounded evidence."
+        )
+        reasoning_fields["logic_summary"] = downgrade_msg
+        reasoning_fields["reasoning"] = downgrade_msg
+        recommendation = recommendation or (
+            "Provide explicit, verifiable implementation evidence (e.g. citations "
+            "to configuration, code, or architecture) demonstrating that this "
+            "control is met."
+        )
+        return VERDICT_NOT_MET, min(confidence, 0.45), recommendation, reasoning_fields
+
+    # ------------------------------------------------------------------
     # Recommendation helper
     # ------------------------------------------------------------------
 
@@ -774,6 +845,7 @@ class MediatorAgent(BaseAgent):
         critic_result: CriticResult,
         error_msg: str,
         raw: Optional[str] = None,
+        parameter_text: str = "",
     ) -> MediatorResult:
         self.logger.warning(
             "MediatorAgent._fallback_to_critic: falling back to Critic "
@@ -783,28 +855,42 @@ class MediatorAgent(BaseAgent):
             error_msg,
         )
 
-        # Infer severity from Critic's confidence since the LLM didn't provide one
+        final_verdict = critic_result.revised_verdict
+        confidence = critic_result.revised_confidence
+        final_citations = list(critic_result.valid_citations)
+        degraded_msg = (
+            f"[DEGRADED — Mediator LLM failed] "
+            f"Verdict derived from Critic output: "
+            f"{critic_result.reasoning}"
+        )
+        reasoning_fields = {"reasoning": degraded_msg, "logic_summary": degraded_msg}
+
+        final_verdict, confidence, _recommendation, reasoning_fields = (
+            self._enforce_citation_grounding(
+                final_verdict=final_verdict,
+                confidence=confidence,
+                final_citations=final_citations,
+                recommendation=None,
+                reasoning_fields=reasoning_fields,
+                parameter_text=parameter_text,
+            )
+        )
+
+        # Infer severity from the (possibly downgraded) verdict/confidence
+        # since the LLM didn't provide one
         severity = self._infer_severity_from_confidence(
-            verdict=critic_result.revised_verdict,
-            confidence=critic_result.revised_confidence,
+            verdict=final_verdict,
+            confidence=confidence,
         )
 
         return MediatorResult(
-            final_verdict=critic_result.revised_verdict,
-            confidence=critic_result.revised_confidence,
-            reasoning=(
-                f"[DEGRADED — Mediator LLM failed] "
-                f"Verdict derived from Critic output: "
-                f"{critic_result.reasoning}"
-            ),
-            logic_summary=(
-                f"[DEGRADED — Mediator LLM failed] "
-                f"Verdict derived from Critic output: "
-                f"{critic_result.reasoning}"
-            ),
-            final_citations=list(critic_result.valid_citations),
+            final_verdict=final_verdict,
+            confidence=confidence,
+            reasoning=reasoning_fields["reasoning"],
+            logic_summary=reasoning_fields["logic_summary"],
+            final_citations=final_citations,
             severity=severity,
-            recommendation=None,  # Cannot generate without LLM
+            recommendation=_recommendation,
             raw_response=raw,
             error=error_msg,
         )

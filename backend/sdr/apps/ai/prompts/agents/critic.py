@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from .common import (
     _ASSUMPTIONS_FIRST_RULES,
+    _build_block_ids_block,
     _CITATION_SCHEMA,
     _REASONING_SCHEMA,
     _VERDICT_VALUES,
@@ -58,11 +59,13 @@ def build_critic_prompt(
     hunter_evidence_assessment: str = "",
     hunter_assumptions: List[dict] | None = None,
     hunter_cot_trace: str | None = None,
+    available_block_ids: Optional[List[str]] = None,
 ) -> str:
     citations_text = json.dumps(hunter_citation_ids, indent=2) if hunter_citation_ids else "[]"
     cited_blocks_text = json.dumps(cited_blocks, indent=2) if cited_blocks else "[]"
     chunks_text = "\n\n---\n\n".join(context_chunks)
     quotes_text = json.dumps(hunter_evidence_quotes or [], indent=2)
+    block_ids_block = _build_block_ids_block(available_block_ids)
 
     return f"""\
 ## SECURITY PARAMETER UNDER REVIEW
@@ -130,13 +133,14 @@ Reasoning -> assumptions: ["Validity depends on quoted evidence in cited blocks.
 	- "PARTIAL"  → Some citations are valid, verdict needs adjustment.
 	- decision mapping → uphold = UPHOLD, challenge = PARTIAL, reject = OVERTURN.
 	- requires_rebuttal → true when Hunter reasoning is weak/generic, evidence may be missed, or citations need a direct response.
-	- valid_citations   → Only block_ids you have personally verified in the context.
+	- valid_citations   → Only block_ids you have personally verified in the context, and only from CONTEXT_CHUNK elements with citable="true".
 	- invalid_citation_ids → block_ids cited by the Hunter that do NOT contain \
 	the claimed evidence.
 	- Challenge generic missing-evidence findings unless Hunter identified both why the control applies and what implementation evidence is missing.
 	- If the retrieved context is only headings, graph summaries, baseline requirements, or unrelated snippets and does not establish applicability, revise the verdict to "na".
 	- Do not uphold "not_met" solely because evidence is absent; absent evidence is a failure only after applicability is established.
 	- Use evidence-only reasoning; do not infer controls that are not explicitly stated.
+{block_ids_block}
 {_ASSUMPTIONS_FIRST_RULES}
 """
 
@@ -146,7 +150,9 @@ def build_batch_critic_prompt(
     parameter_section: str,
     context_chunks: List[str],
     hunter_payload: Dict[str, dict],
+    available_block_ids: Optional[List[str]] = None,
 ) -> str:
+    block_ids_block = _build_block_ids_block(available_block_ids)
     return f"""\
 ## PARENT SECURITY SECTION
 Section: {parameter_section}
@@ -188,7 +194,9 @@ Challenge or confirm each Hunter finding independently. Return strict JSON:
 Rules:
 - Use child_id exactly as supplied.
 - Verify citations against ORIGINAL TSD CONTEXT for that child only.
+- valid_citations → only block_ids from CONTEXT_CHUNK elements with citable="true".
 - Do not let evidence for one child satisfy a different child.
 - Scrutinise the Hunter's assumptions and cot_trace for logical leaps.
+{block_ids_block}
 """
 

@@ -5,8 +5,9 @@ from collections import deque
 from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import select
+from sqlalchemy.orm import selectinload
 
-from sdr.apps.ai.agents.base import CriticResult, HunterResult, MediatorResult
+from sdr.apps.ai.agents.base import Citation, CriticResult, HunterResult, MediatorResult
 from sdr.apps.ai.engine.classification.asvs_level import filter_parameters_for_asvs_level
 from sdr.apps.ai.engine.dto import DebateOutput, PersistenceInput
 from sdr.apps.reviews.models import Finding
@@ -82,7 +83,7 @@ class CategoryAnalysisCoordinator:
         if not parameters:
             return
         if analysis_mode == "diagram_only":
-            self.run_state.update_stage(review, summary, "6_diagram_debate")
+            self.run_state.update_stage(review, summary, "7_diagram_debate")
             self.diagram_analysis.run(
                 review=review,
                 tsd_document=tsd_document,
@@ -102,19 +103,25 @@ class CategoryAnalysisCoordinator:
             effective_asvs_level=effective_asvs_level,
         )
 
-        if cfsrs:
+        multi_child_cfsrs = [
+            c for c in cfsrs
+            if len(getattr(c, "covered_child_keys", None) or []) > 1
+        ]
+
+        if multi_child_cfsrs:
             self.logger.info(
                 "CategoryAnalysisCoordinator.run_category: CFSR path "
-                "category=%s cfsrs=%d raw_children=%d",
+                "category=%s multi_child_cfsrs=%d single_child_cfsrs_bypassed=%d raw_children=%d",
                 category_code,
-                len(cfsrs),
+                len(multi_child_cfsrs),
+                len(cfsrs) - len(multi_child_cfsrs),
                 len(parameters),
             )
             self._run_cfsr_analysis(
                 review=review,
                 category=category,
                 ingestion_job=ingestion_job,
-                cfsrs=cfsrs,
+                cfsrs=multi_child_cfsrs,
                 raw_parameters=parameters,
                 indexes=indexes,
                 tsd_document=tsd_document,
@@ -145,7 +152,7 @@ class CategoryAnalysisCoordinator:
 
         if analysis_mode == "text_only":
             return
-        self.run_state.update_stage(review, summary, "6_diagram_debate")
+        self.run_state.update_stage(review, summary, "7_diagram_debate")
         self.diagram_analysis.run(
             review=review,
             tsd_document=tsd_document,
@@ -179,6 +186,7 @@ class CategoryAnalysisCoordinator:
             category_code=category_code,
         )
         parent_skip_before = int(summary.applicability.get("children_marked_na_by_parent", 0) or 0)
+        self.run_state.update_stage(review, summary, "5_parent_retrieval")
         applicable_parameters, parent_context_cache = self.text_debate.apply_parent_applicability_gate(
             review=review,
             category=category,
@@ -211,7 +219,7 @@ class CategoryAnalysisCoordinator:
             len(applicable_parameters),
             parent_skipped_for_category,
         )
-        self.run_state.update_stage(review, summary, "5_text_debate")
+        self.run_state.update_stage(review, summary, "6_text_debate")
         if self.config.batch_debate_enabled:
             self.text_debate.run_batched_analysis_for_category(
                 review=review,
@@ -262,6 +270,7 @@ class CategoryAnalysisCoordinator:
             category_code=category_code,
         )
         parent_skip_before = int(summary.applicability.get("children_marked_na_by_parent", 0) or 0)
+        self.run_state.update_stage(review, summary, "5_parent_retrieval")
         # CFSRs are duck-type compatible with CategoryParameterChild for the applicability gate
         # (they have .parent, .requirement_text, .stable_key, .asvs_level, .details).
         applicable_cfsrs, parent_context_cache = self.text_debate.apply_parent_applicability_gate(
@@ -296,7 +305,7 @@ class CategoryAnalysisCoordinator:
             len(applicable_cfsrs),
             parent_skipped_for_category,
         )
-        self.run_state.update_stage(review, summary, "5_text_debate")
+        self.run_state.update_stage(review, summary, "6_text_debate")
 
         # Run debate against CFSRs using the same batched/single path
         if self.config.batch_debate_enabled:
@@ -419,25 +428,29 @@ class CategoryAnalysisCoordinator:
 
         children_with_evidence: List[Any] = []
         children_no_evidence: List[Any] = []
+        retrieval_results = self.text_debate.retrieval.retrieve_many_for_parameters(
+            parameters=children_to_gate,
+            category=category,
+            ingestion_job=ingestion_job,
+            indexes=indexes,
+            tsd_document=tsd_document,
+        )
         for child in children_to_gate:
-            try:
-                retrieval_result = self.text_debate.retrieval.retrieve_for_parameter(
-                    parameter=child,
-                    category=category,
-                    ingestion_job=ingestion_job,
-                    indexes=indexes,
-                    tsd_document=tsd_document,
-                )
-                if retrieval_result.is_empty:
-                    children_no_evidence.append(child)
-                else:
-                    children_with_evidence.append(child)
-            except Exception as exc:
+            retrieval_result = retrieval_results.get(str(child.id))
+            if retrieval_result is None:
+                children_with_evidence.append(child)
+                continue
+            if retrieval_result.error:
                 self.logger.warning(
                     "CategoryAnalysisCoordinator._rag_gate_children: retrieval failed for child=%s, routing to debate: %s",
                     getattr(child, "stable_key", None),
-                    exc,
+                    retrieval_result.error,
                 )
+                children_with_evidence.append(child)
+                continue
+            if retrieval_result.is_empty:
+                children_no_evidence.append(child)
+            else:
                 children_with_evidence.append(child)
 
         self.logger.info(
@@ -592,7 +605,9 @@ class CategoryAnalysisCoordinator:
         # Query Findings that were just created for this review and are CFSR-based not_met
         with SessionLocal() as db:
             not_met_cfsr_findings = db.execute(
-                select(Finding).where(
+                select(Finding)
+                .options(selectinload(Finding.citations))
+                .where(
                     Finding.review_id == review.id,
                     Finding.requirement_reference.in_(cfsr_stable_keys),
                     Finding.met_status == "not_met",
@@ -658,6 +673,18 @@ class CategoryAnalysisCoordinator:
             f"Control summary '{cfsr_ref}' was found not met. {cfsr_reason}".strip()
         )
         confidence = float(getattr(cfsr_finding, "confidence_score", 0.7) or 0.7)
+        parent_citations = [
+            Citation(
+                block_id=anchor.block_id,
+                page_number=anchor.page_number,
+                quoted_text=anchor.quoted_text or "",
+                bbox_x0=anchor.bbox_x0,
+                bbox_y0=anchor.bbox_y0,
+                bbox_x1=anchor.bbox_x1,
+                bbox_y1=anchor.bbox_y1,
+            )
+            for anchor in (getattr(cfsr_finding, "citations", None) or [])
+        ]
         analysis_trace = {
             "contract": {
                 "synth_mode": "cfsr_cascade",
@@ -677,7 +704,7 @@ class CategoryAnalysisCoordinator:
             verdict="not_met",
             confidence=confidence,
             evidence_found=True,
-            citations=[],
+            citations=parent_citations,
             reasoning=reasoning,
             logic_summary=reasoning,
         )
@@ -685,7 +712,7 @@ class CategoryAnalysisCoordinator:
             outcome="uphold",
             revised_verdict="not_met",
             revised_confidence=confidence,
-            valid_citations=[],
+            valid_citations=parent_citations,
             reasoning=reasoning,
             logic_summary=reasoning,
         )
@@ -694,7 +721,7 @@ class CategoryAnalysisCoordinator:
             raw_final_verdict="not_met",
             confidence=confidence,
             finding_description=reasoning,
-            final_citations=[],
+            final_citations=parent_citations,
             severity=getattr(cfsr_finding, "severity", None),
             recommendation=getattr(cfsr_finding, "recommendation", None),
             reasoning=reasoning,

@@ -1,13 +1,18 @@
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Dict, List, Optional
+
+from sdr.core.config import settings
 
 from sdr.apps.standards.utils import build_parameter_analysis_text
 
 from sdr.apps.ai.engine.preparation.contract_synthesizer import ContractSynthesizer
 from sdr.apps.ai.engine.classification.domain_classification import DOMAIN_KEYWORDS, classify_requirement_domain
 from sdr.apps.ai.engine.dto import DebateInput
+
+logger = logging.getLogger(__name__)
 
 
 class DebateInputFactory:
@@ -104,6 +109,30 @@ class DebateInputFactory:
                 **retrieval_query_details,
                 "retrieval_evidence_metadata": retrieval_metadata,
             }
+        supplemental_block_limit = max(0, int(getattr(settings, "AI_DEBATE_CONTEXT_SUPPLEMENTAL_BLOCK_LIMIT", 0)))
+        debate_context_chunks = self.build_xml_context_chunks(
+            retrieval_result.context_chunks or [],
+            retrieval_metadata=retrieval_metadata,
+            tsd_document=tsd_document,
+            source_block_ids=getattr(retrieval_result, "source_block_ids", []) or [],
+            include_source_blocks=supplemental_block_limit > 0,
+        )
+        context_chunk_map = self.build_context_chunk_map(
+            retrieval_result.context_chunks or [],
+            retrieval_metadata=retrieval_metadata,
+            tsd_document=tsd_document,
+            source_block_ids=getattr(retrieval_result, "source_block_ids", []) or [],
+            include_source_blocks=supplemental_block_limit > 0,
+            source_block_limit=supplemental_block_limit,
+        )
+        logger.info(
+            "DebateInputFactory.build_debate_input: parameter id=%s retrieval_chunks=%d source_block_ids=%d prompt_chunks=%d chunk_map_entries=%d",
+            getattr(parameter, "id", None),
+            len(retrieval_result.context_chunks or []),
+            len(getattr(retrieval_result, "source_block_ids", []) or []),
+            len(debate_context_chunks),
+            len(context_chunk_map),
+        )
         return DebateInput(
             parameter=parameter,
             parameter_text=parameter_text,
@@ -112,18 +141,8 @@ class DebateInputFactory:
             hunter_plan={},
             retrieval_query_details=retrieval_query_details,
             killed_assumptions=list(killed_assumptions),
-            context_chunks=self.build_xml_context_chunks(
-                retrieval_result.context_chunks or [],
-                retrieval_metadata=retrieval_metadata,
-                tsd_document=tsd_document,
-                source_block_ids=getattr(retrieval_result, "source_block_ids", []) or [],
-            ),
-            context_chunk_map=self.build_context_chunk_map(
-                retrieval_result.context_chunks or [],
-                retrieval_metadata=retrieval_metadata,
-                tsd_document=tsd_document,
-                source_block_ids=getattr(retrieval_result, "source_block_ids", []) or [],
-            ),
+            context_chunks=debate_context_chunks,
+            context_chunk_map=context_chunk_map,
         )
 
     def build_context_chunk_map(
@@ -132,6 +151,8 @@ class DebateInputFactory:
         retrieval_metadata: Optional[dict] = None,
         tsd_document=None,
         source_block_ids: Optional[list] = None,
+        include_source_blocks: bool = True,
+        source_block_limit: Optional[int] = None,
     ) -> dict:
         chunk_map = {}
         evidence_quality = (retrieval_metadata or {}).get("evidence_quality") or {}
@@ -148,27 +169,37 @@ class DebateInputFactory:
                 "evidence_quality": evidence_quality,
                 **source_location,
             }
-        for block_id in source_block_ids or []:
-            if not block_id or block_id in chunk_map or "_d" in block_id:
-                continue
-            source_location = self.resolve_chunk_source_location(block_id, tsd_document)
-            text = ""
-            try:
-                block = tsd_document.get_block_by_id(block_id) if tsd_document is not None else None
-                text = getattr(block, "text", "") or ""
-            except Exception:
+        if include_source_blocks:
+            supplemental_added = 0
+            for block_id in source_block_ids or []:
+                if source_block_limit is not None and supplemental_added >= max(0, int(source_block_limit)):
+                    break
+                if not block_id or block_id in chunk_map or "_d" in block_id:
+                    continue
+                source_location = self.resolve_chunk_source_location(block_id, tsd_document)
                 text = ""
-            if not text:
-                continue
-            chunk_map[block_id] = {
-                "source": "retrieval_grounded_source",
-                "section": source_location.get("section") or "unknown",
-                "text": text,
-                "evidence_kind": "grounded_text_block",
-                "citation_grade": True,
-                "evidence_quality": evidence_quality,
-                **source_location,
-            }
+                try:
+                    block = tsd_document.get_block_by_id(block_id) if tsd_document is not None else None
+                    text = getattr(block, "text", "") or ""
+                except Exception:
+                    logger.warning(
+                        "DebateInputFactory.build_context_chunk_map: failed to resolve block_id=%s",
+                        block_id,
+                        exc_info=True,
+                    )
+                    text = ""
+                if not text:
+                    continue
+                chunk_map[block_id] = {
+                    "source": "retrieval_grounded_source",
+                    "section": source_location.get("section") or "unknown",
+                    "text": text,
+                    "evidence_kind": "grounded_text_block",
+                    "citation_grade": True,
+                    "evidence_quality": evidence_quality,
+                    **source_location,
+                }
+                supplemental_added += 1
         return chunk_map
 
     def resolve_chunk_source_location(self, chunk_id: str, tsd_document) -> Dict[str, Any]:
@@ -181,6 +212,11 @@ class DebateInputFactory:
             elif hasattr(tsd_document, "get_block_by_id"):
                 block = tsd_document.get_block_by_id(chunk_id)
         except Exception:
+            logger.warning(
+                "DebateInputFactory.resolve_chunk_source_location: failed to resolve chunk_id=%s",
+                chunk_id,
+                exc_info=True,
+            )
             return {}
         if block is None:
             return {}
@@ -227,20 +263,41 @@ class DebateInputFactory:
         retrieval_metadata: Optional[dict] = None,
         tsd_document=None,
         source_block_ids: Optional[list] = None,
+        include_source_blocks: bool = False,
     ) -> list:
+        source_block_limit = None
+        if include_source_blocks:
+            source_block_limit = max(0, int(getattr(settings, "AI_DEBATE_CONTEXT_SUPPLEMENTAL_BLOCK_LIMIT", 0)))
         chunk_map = self.build_context_chunk_map(
             context_chunks,
             retrieval_metadata=retrieval_metadata,
             tsd_document=tsd_document,
             source_block_ids=source_block_ids,
+            include_source_blocks=include_source_blocks,
+            source_block_limit=source_block_limit,
         )
         xml_chunks = []
         for chunk_id, payload in chunk_map.items():
+            attrs = [
+                f'id="{chunk_id}"',
+                f'source="{payload.get("source", "unknown")}"',
+                f'citable="{"true" if payload.get("citation_grade") else "false"}"',
+                f'section="{payload.get("section", "unknown")}"',
+            ]
+            if payload.get("page_number") is not None:
+                attrs.append(f'page_number="{payload["page_number"]}"')
+            if payload.get("bbox_x0") is not None:
+                attrs.append(f'bbox_x0="{payload["bbox_x0"]}"')
+                attrs.append(f'bbox_y0="{payload["bbox_y0"]}"')
+                attrs.append(f'bbox_x1="{payload["bbox_x1"]}"')
+                attrs.append(f'bbox_y1="{payload["bbox_y1"]}"')
+
+            attr_str = " ".join(attrs)
             xml_chunks.append(
                 "\n".join(
                     [
-                        f'<CONTEXT_CHUNK id="{chunk_id}" source="{payload["source"]}" section="{payload["section"]}">',
-                        payload["text"],
+                        f"<CONTEXT_CHUNK {attr_str}>",
+                        payload.get("text", ""),
                         "</CONTEXT_CHUNK>",
                     ]
                 )

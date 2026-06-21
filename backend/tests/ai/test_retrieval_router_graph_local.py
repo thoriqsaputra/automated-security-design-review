@@ -18,12 +18,12 @@ def _router() -> HybridRetrievalRouter:
     router.raptor_top_k = 5
     router.graph_top_k = 6
     router.max_context_chunks = 12
+    router.advanced_config = SimpleNamespace(graph_local_max_workers=3, hybrid_max_workers=3)
     router._vector_searcher = SimpleNamespace()
     router._raptor_searcher = SimpleNamespace()
     router._graph_searcher = SimpleNamespace()
     router._keyword_searcher = SimpleNamespace()
     router._reranker = SimpleNamespace(rerank=lambda query, candidates, top_k: list(candidates))
-    router._community_service = SimpleNamespace()
     return router
 
 
@@ -96,4 +96,3 @@ def test_execute_graph_local_returns_grounded_texts(monkeypatch):
     assert result.graph_node_ids == ["api_gateway"]
     assert result.graph_edge_ids == ["api_gateway->auth_service"]
     assert result.error is None
-

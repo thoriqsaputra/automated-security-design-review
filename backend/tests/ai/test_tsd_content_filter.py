@@ -11,7 +11,7 @@ from sdr.apps.ai.tsd_processing.graph_builder import GraphEntity, TSDGraphBuilde
 from sdr.apps.ai.tsd_processing.graph_builder import GraphRelation, TSDGraph
 from sdr.apps.ai.tsd_processing.ingestor import DiagramBlock, TSDDocument, TSDPage, TextBlock
 from sdr.apps.ai.tsd_processing.prepared_view import prepare_tsd_view
-from sdr.apps.ai.tsd_processing.raptor import RAPTORTreeBuilder
+from sdr.apps.ai.tsd_processing.raptor import RAPTORNode, RAPTORTreeBuilder
 
 
 def _block(block_id: str, text: str, page_number: int = 1, heading: str | None = None) -> TextBlock:
@@ -95,6 +95,174 @@ def test_content_filter_keeps_explicit_negative_scope_statements(settings_overri
 
     assert view.included_block_ids == ["p1_b1"]
     assert "no mobile app" in view.full_text.lower()
+
+
+def test_content_filter_does_not_let_inherited_admin_class_veto_own_security_signal(settings_override):
+    settings_override(AI_TSD_CONTENT_FILTER_ENABLED=True, AI_TSD_CONTENT_FILTER_MIN_SCORE=1)
+    doc = _document(
+        [
+            _page(
+                1,
+                "Architecture Overview",
+                [
+                    _block("p1_b1", "Approved by security lead on review date for compliance sign-off"),
+                    _block("p1_b2", "Users authenticate with OIDC and JWT tokens over TLS connections"),
+                ],
+            ),
+        ]
+    )
+
+    view = build_filtered_tsd_view(doc)
+
+    # The admin-pattern block itself is correctly excluded — it owns the match.
+    assert "p1_b1" in view.excluded_block_ids
+    assert view.decisions_by_block_id["p1_b1"].content_class == "approval_signature"
+    # A noisy first line on the page must not veto a sibling block that carries
+    # its own independent security signal.
+    assert "p1_b2" in view.included_block_ids
+
+
+def test_min_block_text_length_is_configurable(settings_override):
+    settings_override(AI_TSD_MIN_BLOCK_TEXT_LENGTH=10)
+    short_block = _block("p1_b1", "TLS 1.0 only.")
+    assert short_block.is_valid()
+
+    settings_override(AI_TSD_MIN_BLOCK_TEXT_LENGTH=20)
+    assert not short_block.is_valid()
+
+
+def _fake_get_embeddings_matching_hashed(texts, **kwargs):
+    return [[1.0, 0.0] if "hashed" in text.lower() or "salted" in text.lower() else [0.0, 1.0] for text in texts]
+
+
+def _make_orthogonal_fake_get_embeddings():
+    """First call (exemplars) returns one vector; second call (candidates) returns an orthogonal one."""
+    calls = {"n": 0}
+
+    def _fake(texts, **kwargs):
+        calls["n"] += 1
+        vector = [1.0, 0.0] if calls["n"] == 1 else [0.0, 1.0]
+        return [vector for _ in texts]
+
+    return _fake
+
+
+def test_embedding_gate_rescues_low_signal_block_with_no_keyword_overlap(settings_override, monkeypatch):
+    settings_override(
+        AI_TSD_CONTENT_FILTER_ENABLED=True,
+        AI_TSD_CONTENT_FILTER_MIN_SCORE=1,
+        AI_TSD_CONTENT_FILTER_EMBEDDING_GATE_ENABLED=True,
+        AI_TSD_CONTENT_FILTER_EMBEDDING_SIMILARITY_THRESHOLD=0.5,
+    )
+    monkeypatch.setattr(
+        "sdr.apps.ai.tsd_processing.content_filter.get_embeddings",
+        _fake_get_embeddings_matching_hashed,
+    )
+    doc = _document(
+        [
+            _page(1, "Notes", [_block("p1_b1", "Passwords are hashed and salted before being stored")]),
+        ]
+    )
+
+    view = build_filtered_tsd_view(doc)
+
+    assert "p1_b1" in view.included_block_ids
+    assert view.decisions_by_block_id["p1_b1"].content_class == "embedding_relevant"
+    assert view.stats["embedding_rescued_blocks"] == 1
+
+
+def test_embedding_gate_does_not_rescue_when_similarity_below_threshold(settings_override, monkeypatch):
+    settings_override(
+        AI_TSD_CONTENT_FILTER_ENABLED=True,
+        AI_TSD_CONTENT_FILTER_MIN_SCORE=1,
+        AI_TSD_CONTENT_FILTER_EMBEDDING_GATE_ENABLED=True,
+        AI_TSD_CONTENT_FILTER_EMBEDDING_SIMILARITY_THRESHOLD=0.5,
+    )
+    monkeypatch.setattr(
+        "sdr.apps.ai.tsd_processing.content_filter.get_embeddings",
+        _make_orthogonal_fake_get_embeddings(),
+    )
+    doc = _document(
+        [
+            _page(1, "Notes", [_block("p1_b1", "Passwords are hashed and salted before being stored")]),
+        ]
+    )
+
+    view = build_filtered_tsd_view(doc)
+
+    assert "p1_b1" in view.excluded_block_ids
+    assert view.decisions_by_block_id["p1_b1"].content_class == "low_signal"
+    assert view.stats["embedding_rescued_blocks"] == 0
+
+
+def test_embedding_gate_does_not_override_admin_class_exclusions(settings_override, monkeypatch):
+    settings_override(
+        AI_TSD_CONTENT_FILTER_ENABLED=True,
+        AI_TSD_CONTENT_FILTER_MIN_SCORE=1,
+        AI_TSD_CONTENT_FILTER_EMBEDDING_GATE_ENABLED=True,
+        AI_TSD_CONTENT_FILTER_EMBEDDING_SIMILARITY_THRESHOLD=0.0,
+    )
+    monkeypatch.setattr(
+        "sdr.apps.ai.tsd_processing.content_filter.get_embeddings",
+        lambda texts, **kwargs: [[1.0, 0.0] for _ in texts],
+    )
+    doc = _document(
+        [
+            _page(1, "Approval", [_block("p1_b1", "Approved by security lead on review date for compliance sign-off")]),
+        ]
+    )
+
+    view = build_filtered_tsd_view(doc)
+
+    assert "p1_b1" in view.excluded_block_ids
+    assert view.decisions_by_block_id["p1_b1"].content_class == "approval_signature"
+    assert view.stats["embedding_rescued_blocks"] == 0
+
+
+def test_embedding_gate_fails_safe_on_embedding_error(settings_override, monkeypatch):
+    settings_override(
+        AI_TSD_CONTENT_FILTER_ENABLED=True,
+        AI_TSD_CONTENT_FILTER_MIN_SCORE=1,
+        AI_TSD_CONTENT_FILTER_EMBEDDING_GATE_ENABLED=True,
+    )
+
+    def _raise(texts, **kwargs):
+        raise RuntimeError("embedding service unavailable")
+
+    monkeypatch.setattr("sdr.apps.ai.tsd_processing.content_filter.get_embeddings", _raise)
+    doc = _document(
+        [
+            _page(1, "Notes", [_block("p1_b1", "Passwords are hashed and salted before being stored")]),
+        ]
+    )
+
+    view = build_filtered_tsd_view(doc)
+
+    assert "p1_b1" in view.excluded_block_ids
+    assert view.decisions_by_block_id["p1_b1"].content_class == "low_signal"
+
+
+def test_embedding_gate_disabled_by_default_setting_off(settings_override, monkeypatch):
+    settings_override(
+        AI_TSD_CONTENT_FILTER_ENABLED=True,
+        AI_TSD_CONTENT_FILTER_MIN_SCORE=1,
+        AI_TSD_CONTENT_FILTER_EMBEDDING_GATE_ENABLED=False,
+    )
+
+    def _fail_if_called(texts, **kwargs):
+        raise AssertionError("get_embeddings should not be called when the gate is disabled")
+
+    monkeypatch.setattr("sdr.apps.ai.tsd_processing.content_filter.get_embeddings", _fail_if_called)
+    doc = _document(
+        [
+            _page(1, "Notes", [_block("p1_b1", "Passwords are hashed and salted before being stored")]),
+        ]
+    )
+
+    view = build_filtered_tsd_view(doc)
+
+    assert "p1_b1" in view.excluded_block_ids
+    assert view.decisions_by_block_id["p1_b1"].content_class == "low_signal"
 
 
 def test_raptor_leaf_nodes_use_filtered_text_and_preserve_block_ids(settings_override, monkeypatch):
@@ -234,7 +402,7 @@ def test_tsd_document_all_diagrams_flattens_page_diagrams():
     assert [diagram.diagram_id for diagram in doc.all_diagrams] == ["p1_d1", "p1_d2", "p2_d1"]
 
 
-def test_retrieval_service_infers_diagram_ids_from_document_pages():
+def test_retrieval_service_filters_explicit_diagram_ids():
     doc = CanonicalTSDDocument(
         file_path="/tmp/example.pdf",
         document_name="Example TSD",
@@ -245,14 +413,14 @@ def test_retrieval_service_infers_diagram_ids_from_document_pages():
     )
     service = RetrievalService()
 
-    diagram_ids, metadata = service._infer_diagram_block_ids(
-        source_block_ids=["p1_b1"],
+    diagram_ids, metadata = service._filter_loadable_diagram_block_ids(
+        ["p1_d1", "missing", "p3_d1"],
         tsd_document=doc,
-        max_diagrams=3,
+        max_diagrams=2,
     )
 
-    assert diagram_ids == ["p1_d1"]
-    assert metadata == []
+    assert diagram_ids == ["p1_d1", "p3_d1"]
+    assert metadata == [{"diagram_id": "missing", "reason": "not_found"}]
     prepared = prepare_tsd_view(doc)
     prepared_calls = []
     linked = []
@@ -331,3 +499,187 @@ def test_graph_search_relation_embedding_uses_public_formatter(monkeypatch):
 
     assert relation.has_embedding is True
     assert relation.embedding == [0.1, 0.2, 0.3]
+
+
+def test_parse_extraction_response_keeps_relation_referencing_entity_not_on_page():
+    import json
+
+    builder = TSDGraphBuilder(graph_extraction_mode="llm")
+    page = _page(2, "Data Flow", [_block("p2_b1", "Payment Service writes transaction records to the Ledger Database")])
+    raw_content = json.dumps(
+        {
+            "entities": [
+                {"entity_id": "payment_service", "name": "Payment Service", "entity_type": "service"},
+            ],
+            "relations": [
+                {
+                    "source_entity_id": "payment_service",
+                    "target_entity_id": "api_gateway",
+                    "relation_type": "sends_data_to",
+                    "confidence": 0.9,
+                }
+            ],
+        }
+    )
+
+    entities, relations, parse_failure = builder._parse_extraction_response(raw_content, page=page)
+
+    assert parse_failure is None
+    assert [e.entity_id for e in entities] == ["payment_service"]
+    assert len(relations) == 1
+    assert relations[0].source_entity_id == "payment_service"
+    assert relations[0].target_entity_id == "api_gateway"
+
+
+def test_build_creates_cross_page_relation_edge(monkeypatch):
+    doc = _document(
+        [
+            _page(1, "Components", [_block("p1_b1", "The API Gateway routes client requests")]),
+            _page(2, "Data Flow", [_block("p2_b1", "The API Gateway sends data to the Ledger Database")]),
+        ]
+    )
+    builder = TSDGraphBuilder(graph_extraction_mode="llm")
+
+    def _fake_extract(page: TSDPage):
+        if page.page_number == 1:
+            return [
+                GraphEntity(
+                    entity_id="api_gateway",
+                    name="API Gateway",
+                    entity_type="api",
+                    source_pages=[page.page_number],
+                    source_block_ids=[block.block_id for block in page.text_blocks],
+                )
+            ], []
+        return [
+            GraphEntity(
+                entity_id="ledger_database",
+                name="Ledger Database",
+                entity_type="database",
+                source_pages=[page.page_number],
+                source_block_ids=[block.block_id for block in page.text_blocks],
+            )
+        ], [
+            GraphRelation(
+                source_entity_id="api_gateway",
+                target_entity_id="ledger_database",
+                relation_type="sends_data_to",
+                confidence=0.9,
+                source_pages=[page.page_number],
+            )
+        ]
+
+    monkeypatch.setattr(builder, "_extract_from_page", _fake_extract)
+    monkeypatch.setattr(builder, "_embed_graph_entities", lambda *args, **kwargs: None)
+
+    graph = builder.build(doc)
+
+    assert graph.graph.has_edge("api_gateway", "ledger_database")
+
+
+def test_populate_graph_still_rejects_relation_referencing_unknown_entity():
+    builder = TSDGraphBuilder(graph_extraction_mode="llm")
+    tsd_graph = TSDGraph(document_name="Example")
+    entities = {
+        "api_gateway": GraphEntity(
+            entity_id="api_gateway",
+            name="API Gateway",
+            entity_type="api",
+        ),
+    }
+    relations = [
+        GraphRelation(
+            source_entity_id="api_gateway",
+            target_entity_id="phantom_service",
+            relation_type="sends_data_to",
+            confidence=0.9,
+        )
+    ]
+
+    builder._populate_graph(tsd_graph, entities, relations)
+
+    assert tsd_graph.graph.number_of_edges() == 0
+
+
+def test_cluster_nodes_groups_by_embedding_similarity_when_available():
+    builder = RAPTORTreeBuilder(target_cluster_size=2, min_cluster_size=1)
+    nodes = [
+        RAPTORNode(node_id="n0", level=0, text="a", embedding=[1.0, 0.0], has_embedding=True),
+        RAPTORNode(node_id="n1", level=0, text="b", embedding=[0.0, 1.0], has_embedding=True),
+        RAPTORNode(node_id="n2", level=0, text="c", embedding=[0.9, 0.1], has_embedding=True),
+        RAPTORNode(node_id="n3", level=0, text="d", embedding=[0.1, 0.9], has_embedding=True),
+    ]
+
+    clusters = builder._cluster_nodes(nodes)
+    cluster_ids = [sorted(node.node_id for node in cluster) for cluster in clusters]
+
+    assert sorted(cluster_ids) == [["n0", "n2"], ["n1", "n3"]]
+
+
+def test_cluster_nodes_falls_back_to_sequential_when_embeddings_missing():
+    builder = RAPTORTreeBuilder(target_cluster_size=2, min_cluster_size=1)
+    nodes = [
+        RAPTORNode(node_id="n0", level=0, text="a", embedding=[1.0, 0.0], has_embedding=True),
+        RAPTORNode(node_id="n1", level=0, text="b", embedding=[], has_embedding=False),
+        RAPTORNode(node_id="n2", level=0, text="c", embedding=[0.9, 0.1], has_embedding=True),
+        RAPTORNode(node_id="n3", level=0, text="d", embedding=[0.1, 0.9], has_embedding=True),
+    ]
+
+    clusters = builder._cluster_nodes(nodes)
+    cluster_ids = [[node.node_id for node in cluster] for cluster in clusters]
+
+    assert cluster_ids == [["n0", "n1"], ["n2", "n3"]]
+
+
+def test_build_embeds_leaf_nodes_before_clustering(settings_override, monkeypatch):
+    settings_override(AI_TSD_CONTENT_FILTER_ENABLED=True, AI_TSD_CONTENT_FILTER_MIN_SCORE=1)
+    doc = _document(
+        [
+            _page(1, "API Architecture", [_block("p1_b1", "The Merchant API calls Payment Service over HTTPS TLS")]),
+            _page(2, "Database", [_block("p2_b1", "Payment Service writes transaction records to the Ledger Database")]),
+            _page(3, "Authentication", [_block("p3_b1", "The API requires JWT authentication through the Auth Service")]),
+        ]
+    )
+    builder = RAPTORTreeBuilder(max_depth=1, target_cluster_size=2, min_cluster_size=1)
+    monkeypatch.setattr(
+        "sdr.apps.ai.tsd_processing.raptor.get_embeddings",
+        lambda texts, **kwargs: [[1.0, 0.0] for _ in texts],
+    )
+    monkeypatch.setattr(builder, "_synthesise_root", lambda *args, **kwargs: None)
+
+    seen_embedding_states = []
+    original_cluster_nodes = builder._cluster_nodes
+
+    def _spy_cluster_nodes(nodes):
+        seen_embedding_states.append([node.has_embedding for node in nodes])
+        return original_cluster_nodes(nodes)
+
+    monkeypatch.setattr(builder, "_cluster_nodes", _spy_cluster_nodes)
+
+    builder.build(doc)
+
+    assert seen_embedding_states
+    assert all(all(states) for states in seen_embedding_states)
+
+
+def test_build_does_not_redundantly_reembed_nodes(settings_override, monkeypatch):
+    settings_override(AI_TSD_CONTENT_FILTER_ENABLED=True, AI_TSD_CONTENT_FILTER_MIN_SCORE=1)
+    doc = _document(
+        [
+            _page(1, "API Architecture", [_block("p1_b1", "The Merchant API calls Payment Service over HTTPS TLS")]),
+            _page(2, "Database", [_block("p2_b1", "Payment Service writes transaction records to the Ledger Database")]),
+            _page(3, "Authentication", [_block("p3_b1", "The API requires JWT authentication through the Auth Service")]),
+        ]
+    )
+    builder = RAPTORTreeBuilder(max_depth=1, target_cluster_size=2, min_cluster_size=1)
+    embedded_texts: list[str] = []
+
+    def _fake_get_embeddings(texts, **kwargs):
+        embedded_texts.extend(texts)
+        return [[1.0, 0.0] for _ in texts]
+
+    monkeypatch.setattr("sdr.apps.ai.tsd_processing.raptor.get_embeddings", _fake_get_embeddings)
+
+    builder.build(doc)
+
+    assert len(embedded_texts) == len(set(embedded_texts))

@@ -7,12 +7,21 @@ import time
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
+from sdr.core.config import settings
+
 logger = logging.getLogger(__name__)
 
-_MIN_BLOCK_TEXT_LENGTH = 20
+_MIN_BLOCK_TEXT_LENGTH = 10
 _MIN_DIAGRAM_BYTES = 512
 _SUPPORTED_IMAGE_FORMATS = frozenset({"png", "jpeg", "jpg", "gif", "webp"})
 _FORMAT_NORMALISATION = {"jpg": "jpeg"}
+
+
+def _min_block_text_length() -> int:
+    try:
+        return max(0, int(getattr(settings, "AI_TSD_MIN_BLOCK_TEXT_LENGTH", _MIN_BLOCK_TEXT_LENGTH)))
+    except (TypeError, ValueError):
+        return _MIN_BLOCK_TEXT_LENGTH
 
 
 @dataclass
@@ -40,7 +49,7 @@ class TextBlock:
     def is_valid(self) -> bool:
         return (
             bool(self.block_id)
-            and len(self.text.strip()) >= _MIN_BLOCK_TEXT_LENGTH
+            and len(self.text.strip()) >= _min_block_text_length()
             and self.page_number > 0
         )
 
@@ -209,11 +218,16 @@ class TSDPage:
         self,
         bbox: Tuple[float, float, float, float],
         radius_pt: float = 50.0,
+        direction: str = "below",
     ) -> List[TextBlock]:
-        _, _, _, ref_y1 = bbox
+        ref_x0, ref_y0, ref_x1, ref_y1 = bbox
+        want_below = direction in ("below", "both")
+        want_above = direction in ("above", "both")
         nearby = []
         for block in self.text_blocks:
-            if ref_y1 <= block.bbox_y0 <= ref_y1 + radius_pt:
+            is_below = ref_y1 <= block.bbox_y0 <= ref_y1 + radius_pt
+            is_above = ref_y0 - radius_pt <= block.bbox_y1 <= ref_y0
+            if (want_below and is_below) or (want_above and is_above):
                 nearby.append(block)
         return sorted(nearby, key=lambda b: b.bbox_y0)
 

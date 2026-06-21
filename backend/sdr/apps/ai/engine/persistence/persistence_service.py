@@ -140,7 +140,7 @@ class PersistenceService:
                         ),
                         parent_parameter_id=parameter.parent.id if parameter.parent else None,
                         child_parameter_id=None if is_cfsr else parameter.id,
-                        finding_type=FindingType.REQUIREMENT.value if hasattr(FindingType, 'value') else FindingType.REQUIREMENT,
+                        finding_type=FindingType.REQUIREMENT.value,
                         title=finding_title,
                         description=sanitized_description,
                         met_status=persisted_met_status,
@@ -267,7 +267,7 @@ class PersistenceService:
                 diagram_input=diagram_input,
             )
 
-            finding_type_val = FindingType.DIAGRAM.value if hasattr(FindingType, 'value') else FindingType.DIAGRAM
+            finding_type_val = FindingType.DIAGRAM.value
 
             with SessionLocal() as db:
                 qs = select(Finding).where(
@@ -554,9 +554,7 @@ class PersistenceService:
                 continue
 
             anchor_type = (
-                AnchorType.DIAGRAM.value if hasattr(AnchorType, 'value') else AnchorType.DIAGRAM
-                if "_d" in hydrated.block_id
-                else AnchorType.TEXT.value if hasattr(AnchorType, 'value') else AnchorType.TEXT
+                AnchorType.DIAGRAM.value if "_d" in hydrated.block_id else AnchorType.TEXT.value
             )
 
             anchors.append(
@@ -804,7 +802,7 @@ class PersistenceService:
             met_status=met_status,
             confidence_score=confidence_score,
             domain=domain,
-            finding_type=FindingType.REQUIREMENT.value if hasattr(FindingType, 'value') else FindingType.REQUIREMENT,
+            finding_type=FindingType.REQUIREMENT.value,
             raw_final_verdict=raw_final_verdict,
             requirement_text=requirement_text,
             requirement_metadata=requirement_metadata,
@@ -843,7 +841,7 @@ class PersistenceService:
             met_status=met_status,
             confidence_score=confidence_score,
             domain=domain,
-            finding_type=FindingType.DIAGRAM.value if hasattr(FindingType, 'value') else FindingType.DIAGRAM,
+            finding_type=FindingType.DIAGRAM.value,
             ambiguous_elements=ambiguous_elements,
             missing_information=missing_information,
             requirement_text=requirement_text,

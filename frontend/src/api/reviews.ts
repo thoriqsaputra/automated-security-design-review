@@ -155,9 +155,69 @@ export interface Review {
   updated_at: string;
 }
 
-export const listReviews = (designId?: number) =>
+export type DebateAgent = 'hunter' | 'critic' | 'mediator' | 'system';
+export type DebateStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+export type DebateExecutionMode = 'single' | 'batch' | 'fallback';
+
+export interface DebateTranscriptMessage {
+  message_id: string;
+  agent: DebateAgent;
+  kind: string;
+  status: DebateStatus | 'completed';
+  content: string;
+  started_at: string | null;
+  completed_at: string | null;
+  updated_at: string | null;
+}
+
+export interface DebateStreamState {
+  debate_id: string;
+  parameter_id: number | null;
+  requirement_reference: string | null;
+  requirement_text: string | null;
+  section_title: string | null;
+  category_code: string | null;
+  status: DebateStatus;
+  active_agent: DebateAgent | null;
+  execution_mode: DebateExecutionMode;
+  progress_percent: number;
+  last_snippet: string;
+  updated_at: string | null;
+  finding_id: number | null;
+  transcript: DebateTranscriptMessage[];
+}
+
+export interface DebateSnapshotPayload {
+  review_id: number;
+  review_status: string | null;
+  error_message?: string | null;
+  updated_at: string | null;
+  last_event_id: string | null;
+  debates: DebateStreamState[];
+}
+
+export interface DebateUpdatePayload {
+  type: string;
+  review_id: number;
+  debate?: DebateStreamState;
+  debates?: DebateStreamState[];
+  review_status?: string | null;
+  error_message?: string | null;
+}
+
+export const listReviews = (
+  designId?: number,
+  options?: {
+    skip?: number;
+    limit?: number;
+  },
+) =>
   api.get<Review[]>('/reviews/', {
-    params: designId ? { design_id: designId } : undefined,
+    params: {
+      ...(designId ? { design_id: designId } : {}),
+      ...(options?.skip !== undefined ? { skip: options.skip } : {}),
+      ...(options?.limit !== undefined ? { limit: options.limit } : {}),
+    },
   });
 
 export const getReview = (id: number) => api.get<Review>(`/reviews/${id}`);
@@ -206,3 +266,6 @@ export const getFindings = (
 
 export const getRetrievalVisualization = (reviewId: number) =>
   api.get<RetrievalVisualization>(`/reviews/${reviewId}/retrieval-visualization`);
+
+export const getReviewDebateStreamUrl = (reviewId: number) =>
+  `/api/v1/reviews/${reviewId}/debates/stream`;

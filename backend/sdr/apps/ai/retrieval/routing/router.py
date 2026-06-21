@@ -1,18 +1,14 @@
 from __future__ import annotations
 
-import hashlib
 import logging
-import math
 from typing import Any, Dict, List, Optional, Set
 
 from sdr.apps.ai.client import get_embedding
 from sdr.apps.ai.retrieval.core import AdvancedRetrievalConfig, RetrievalCandidate, RetrievalResult, RetrievalStrategy
-from sdr.apps.ai.retrieval.graph.communities import CommunitySummary, GraphCommunityService
 from sdr.apps.ai.retrieval.postprocessing.chunk_builders import (
     build_chunks_from_graph,
     build_chunks_from_vector,
     collect_block_ids_from_vector,
-    community_summaries_to_candidates,
     graph_response_to_candidates,
 )
 from sdr.apps.ai.retrieval.postprocessing.evidence_grader import EvidenceGrader
@@ -41,7 +37,6 @@ _GRAPH_TOP_K = 6
 _MAX_CONTEXT_CHUNKS = 12
 _EMBEDDING_DIMENSIONS = 1024
 
-
 class HybridRetrievalRouter:
     def __init__(
         self,
@@ -55,16 +50,13 @@ class HybridRetrievalRouter:
         self.raptor_top_k = raptor_top_k
         self.graph_top_k = graph_top_k
         self.max_context_chunks = max_context_chunks
-        self.advanced_config = advanced_config or AdvancedRetrievalConfig()
+        self.advanced_config = advanced_config or AdvancedRetrievalConfig.from_settings()
         self._vector_searcher = VectorSearcher()
         self._raptor_searcher = RAPTORSearcher()
         self._graph_searcher = GraphSearcher()
         self._keyword_searcher = KeywordSearcher()
         self._reranker = SafeOptionalReranker(
             enable_cross_encoder=self.advanced_config.enable_cross_encoder_rerank,
-        )
-        self._community_service = GraphCommunityService(
-            enable_llm_summary=self.advanced_config.enable_community_llm_summary,
         )
         self._strategy_selector = RetrievalStrategySelector()
         self._route_executor = RetrievalRouteExecutor()
@@ -91,7 +83,7 @@ class HybridRetrievalRouter:
         keywords = _extract_keywords(query_text)
         inferred_relations = _infer_relation_types_from_parameter(keywords)
         query_entities = self._extract_query_entities(query_text)
-        query_type = self._classify_query_type(query_text, keywords, inferred_relations)
+        query_type = self._classify_query_type(query_text, keywords, inferred_relations, query_entities)
         strategy = force_strategy or self._select_strategy(
             query_text=query_text,
             keywords=keywords,
@@ -132,28 +124,6 @@ class HybridRetrievalRouter:
                     keywords=keywords,
                     query_entities=query_entities,
                 )
-            if strategy == RetrievalStrategy.GRAPH_GLOBAL:
-                return self._execute_graph_global(
-                    query_text=query_text,
-                    category=category,
-                    ingestion_job=ingestion_job,
-                    raptor_tree=raptor_tree,
-                    graph=graph,
-                    query_embedding=query_embedding,
-                    keywords=keywords,
-                    query_entities=query_entities,
-                )
-            if strategy == RetrievalStrategy.IR_COT_GRAPH:
-                return self._execute_ir_cot_graph(
-                    query_text=query_text,
-                    category=category,
-                    ingestion_job=ingestion_job,
-                    raptor_tree=raptor_tree,
-                    graph=graph,
-                    query_embedding=query_embedding,
-                    keywords=keywords,
-                    query_entities=query_entities,
-                )
             return self._execute_hybrid(
                 query_text=query_text,
                 category=category,
@@ -173,20 +143,20 @@ class HybridRetrievalRouter:
         kwargs.pop("query_text", None)
         return self._strategy_helper().select_strategy(
             advanced_config=self.advanced_config,
-            has_community_summaries=self._has_community_summaries,
             **kwargs,
         )
 
     def _extract_query_entities(self, query_text: str) -> List[str]:
         return self._strategy_helper().extract_query_entities(query_text, _extract_keywords)
 
-    def _classify_query_type(self, query_text: str, keywords: List[str], inferred_relations: Set[str]):
-        return self._strategy_helper().classify_query_type(query_text, keywords, inferred_relations)
-
-    def _has_community_summaries(self, graph: Optional[TSDGraph]) -> bool:
-        if graph is None or graph.is_empty():
-            return False
-        return len(self._community_service.detect_communities(graph)) > 0
+    def _classify_query_type(
+        self,
+        query_text: str,
+        keywords: List[str],
+        inferred_relations: Set[str],
+        query_entities: Optional[List[str]] = None,
+    ):
+        return self._strategy_helper().classify_query_type(query_text, keywords, inferred_relations, query_entities)
 
     def _execute_vector_only(self, **kwargs) -> RetrievalResult:
         return self._executor().execute_vector_only(self, **kwargs)
@@ -206,38 +176,14 @@ class HybridRetrievalRouter:
     def _execute_graph_local(self, **kwargs) -> RetrievalResult:
         return self._executor().execute_graph_local(self, **kwargs)
 
-    def _execute_graph_global(self, **kwargs) -> RetrievalResult:
-        return self._executor().execute_graph_global(self, **kwargs)
-
-    def _execute_ir_cot_graph(self, **kwargs) -> RetrievalResult:
-        return self._executor().execute_ir_cot_graph(self, **kwargs)
-
     def _graph_response_to_candidates(self, graph_response: GraphSearchResponse) -> List[RetrievalCandidate]:
         return graph_response_to_candidates(graph_response)
-
-    def _community_summaries_to_candidates(
-        self,
-        graph: TSDGraph,
-        summaries: List[CommunitySummary],
-        keywords: List[str],
-        query_embedding: Optional[List[float]] = None,
-    ) -> List[RetrievalCandidate]:
-        return community_summaries_to_candidates(
-            graph=graph,
-            summaries=summaries,
-            keywords=keywords,
-            similarity_resolver=self._community_similarity,
-            query_embedding=query_embedding,
-        )
 
     def _classify_candidate_evidence(self, candidate: RetrievalCandidate, *, keywords: List[str]):
         return self._grader().classify_candidate_evidence(candidate, keywords=keywords)
 
     def _grade_and_filter_candidates(self, candidates: List[RetrievalCandidate], *, query_text: str, keywords: List[str]):
         return self._grader().grade_and_filter_candidates(candidates, query_text=query_text, keywords=keywords)
-
-    def _generate_followup_query(self, original_query: str, candidates: List[RetrievalCandidate]) -> str:
-        return self._grader().generate_followup_query(original_query, candidates, _extract_keywords)
 
     def _apply_keyword_coverage_boost(self, candidates: List[RetrievalCandidate], keywords: List[str]) -> List[RetrievalCandidate]:
         return self._grader().apply_keyword_coverage_boost(candidates, keywords)
@@ -326,34 +272,6 @@ class HybridRetrievalRouter:
         metadata.update(normalized)
         result.evidence_metadata = metadata
         return normalized
-
-    def _community_similarity(
-        self,
-        graph: Optional[TSDGraph],
-        community_id: str,
-        text: str,
-        query_embedding: Optional[List[float]],
-    ) -> float:
-        if graph is None or not query_embedding or not text:
-            return 0.0
-        text_hash = hashlib.sha256(text.encode("utf-8")).hexdigest()
-        cache_key = f"{community_id}:{text_hash}"
-        vector = graph.community_embedding_cache.get(cache_key)
-        if not vector:
-            vector = get_embedding(text=text, dimensions=_EMBEDDING_DIMENSIONS) or []
-            if vector:
-                graph.community_embedding_cache[cache_key] = vector
-        return self._cosine_similarity(query_embedding, vector)
-
-    def _cosine_similarity(self, vec_a: List[float], vec_b: List[float]) -> float:
-        if not vec_a or not vec_b or len(vec_a) != len(vec_b):
-            return 0.0
-        dot = sum(a * b for a, b in zip(vec_a, vec_b))
-        norm_a = math.sqrt(sum(a * a for a in vec_a))
-        norm_b = math.sqrt(sum(b * b for b in vec_b))
-        if norm_a == 0.0 or norm_b == 0.0:
-            return 0.0
-        return max(0.0, min(1.0, dot / (norm_a * norm_b)))
 
     def _generate_query_embedding(self, query_text: str) -> List[float]:
         try:

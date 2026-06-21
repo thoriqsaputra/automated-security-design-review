@@ -79,6 +79,7 @@ class RAPTORSearchResponse:
     query_text: str = ""
     level_searched: int = RAPTOR_LEVEL_LOW
     error: Optional[str] = None
+    threshold_relaxed: bool = False
 
     @property
     def is_empty(self) -> bool:
@@ -240,6 +241,23 @@ class RAPTORSearcher:
         relevant_results.sort(key=lambda r: r.cosine_similarity, reverse=True)
         top_results = relevant_results[:resolved_top_k]
 
+        threshold_relaxed = False
+        if not top_results and scored_results:
+            threshold_relaxed = True
+            scored_results.sort(key=lambda r: r.cosine_similarity, reverse=True)
+            top_results = scored_results[:resolved_top_k]
+            self.logger.warning(
+                "RAPTORSearcher.search: no nodes met threshold "
+                "(min_cosine_similarity=%.2f) at level %d in tree '%s' for "
+                "query '%s...' — relaxing to best available "
+                "(top similarity=%.4f).",
+                self.min_cosine_similarity,
+                level,
+                tree.document_name,
+                query_text[:60],
+                top_results[0].cosine_similarity,
+            )
+
         self.logger.info(
             "RAPTORSearcher.search: level=%d found %d/%d node(s) above "
             "threshold=%.2f for query '%s...' in tree '%s'.",
@@ -258,6 +276,7 @@ class RAPTORSearcher:
             query_text=query_text,
             level_searched=level,
             error=None,
+            threshold_relaxed=threshold_relaxed,
         )
 
     def search_multi_level(
@@ -308,6 +327,7 @@ class RAPTORSearcher:
         all_results: List[RAPTORSearchResult] = []
         seen_node_ids: set = set()
         levels_searched: List[int] = []
+        any_threshold_relaxed = False
 
         for level in resolved_levels:
             level_response = self.search(
@@ -328,6 +348,7 @@ class RAPTORSearcher:
                 continue
 
             levels_searched.append(level)
+            any_threshold_relaxed = any_threshold_relaxed or level_response.threshold_relaxed
 
             # Deduplicate by node_id — a node exists at exactly one level
             # in a RAPTOR tree, but the guard is kept for correctness
@@ -372,6 +393,7 @@ class RAPTORSearcher:
             query_text=query_text,
             level_searched=reported_level,
             error=None,
+            threshold_relaxed=any_threshold_relaxed,
         )
 
     def search_collapsed_raptor(

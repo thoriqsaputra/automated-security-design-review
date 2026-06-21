@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from sdr.core.config import settings
 
@@ -62,6 +62,9 @@ class DebateService:
         retrieval_result: Optional[RetrievalResult],
         tsd_document: TSDDocument,
         cancel_check: Optional[Any] = None,
+        agent_chunk_handler: Optional[Callable[[str, str], None]] = None,
+        agent_started_handler: Optional[Callable[[str], None]] = None,
+        agent_completed_handler: Optional[Callable[[str, str], None]] = None,
     ) -> DebateOutput:
         self._raise_if_cancelled(cancel_check, phase="run_debate.entry")
         self.logger.info(
@@ -83,6 +86,20 @@ class DebateService:
         hunter_call_count = 0
 
         current_context_chunks = list(context_chunks)
+        warn_threshold = max(1, int(getattr(settings, "AI_DEBATE_WARN_CONTEXT_CHUNK_THRESHOLD", 40)))
+        self.logger.info(
+            "DebateService.run_debate: parameter id=%s prompt_context_chunks=%d citation_grade_ids=%d",
+            debate_input.parameter.id,
+            len(current_context_chunks),
+            len(retrieved_chunk_ids),
+        )
+        if len(current_context_chunks) > warn_threshold:
+            self.logger.warning(
+                "DebateService.run_debate: parameter id=%s prompt_context_chunks=%d exceeded warn threshold=%d",
+                debate_input.parameter.id,
+                len(current_context_chunks),
+                warn_threshold,
+            )
         hunter_result: HunterResult = HunterResult()
         critic_result: CriticResult = CriticResult()
         debate_rounds = 0
@@ -94,7 +111,10 @@ class DebateService:
         debate_history: List[Dict[str, Any]] = []
         rebuttal_context: List[str] = []
 
-        for round_number in range(1, self.max_debate_rounds + 1):
+        round_number = 0
+        escalation_round_granted = False
+        while True:
+            round_number += 1
             self._raise_if_cancelled(cancel_check, phase=f"run_debate.round_{round_number}.before_hunter")
             debate_rounds = round_number
             self.logger.info(
@@ -102,6 +122,8 @@ class DebateService:
                 round_number,
                 parameter.id,
             )
+            if agent_started_handler:
+                agent_started_handler("hunter")
             hunter_started = time.monotonic()
             (
                 hunter_result,
@@ -119,6 +141,7 @@ class DebateService:
                 hunter_plan=hunter_plan,
                 hunter_call_count=hunter_call_count,
                 available_block_ids=list(retrieved_chunk_ids),
+                stream_handler=(lambda chunk: agent_chunk_handler("hunter", chunk)) if agent_chunk_handler else None,
             )
             timing[f"hunter_round_{round_number}_seconds"] = round(
                 time.monotonic() - hunter_started, 4
@@ -149,7 +172,10 @@ class DebateService:
                     rejected_ids=[c.block_id for c in hunter_rejected],
                     hunter_call_count=hunter_call_count,
                     retrieved_chunk_ids=retrieved_chunk_ids,
+                    stream_handler=(lambda chunk: agent_chunk_handler("hunter", chunk)) if agent_chunk_handler else None,
                 )
+            if agent_completed_handler:
+                agent_completed_handler("hunter", hunter_result.logic_summary or hunter_result.reasoning)
             sanitized_hunter = self._sanitize_hunter_for_handoff(hunter_result)
 
             self.logger.info(
@@ -158,6 +184,8 @@ class DebateService:
                 parameter.id,
             )
             self._raise_if_cancelled(cancel_check, phase=f"run_debate.round_{round_number}.before_critic")
+            if agent_started_handler:
+                agent_started_handler("critic")
             critic_started = time.monotonic()
             critic_result = self.critic.run(
                 parameter_text=parameter_text,
@@ -168,6 +196,8 @@ class DebateService:
                 cited_blocks=self._build_cold_start_cited_blocks(
                     sanitized_hunter.citations, context_chunk_map
                 ),
+                stream_handler=(lambda chunk: agent_chunk_handler("critic", chunk)) if agent_chunk_handler else None,
+                available_block_ids=list(retrieved_chunk_ids),
             )
             timing[f"critic_round_{round_number}_seconds"] = round(
                 time.monotonic() - critic_started, 4
@@ -182,6 +212,8 @@ class DebateService:
                 critic_result.invalid_citation_ids,
                 [citation.block_id for citation in critic_rejected],
             )
+            if agent_completed_handler:
+                agent_completed_handler("critic", critic_result.logic_summary or critic_result.reasoning)
             sanitized_critic = self._sanitize_critic_for_handoff(critic_result)
 
             debate_history.append(
@@ -195,7 +227,10 @@ class DebateService:
                 )
             )
 
-            if not self._should_continue_debate(hunter_result, critic_result, round_number):
+            should_continue, escalation_round_granted = self._should_continue_debate(
+                hunter_result, critic_result, round_number, escalation_round_granted
+            )
+            if not should_continue:
                 break
 
             self._raise_if_cancelled(cancel_check, phase=f"run_debate.round_{round_number}.before_rebuttal")
@@ -214,6 +249,8 @@ class DebateService:
             parameter.id,
         )
         self._raise_if_cancelled(cancel_check, phase="run_debate.before_mediator")
+        if agent_started_handler:
+            agent_started_handler("mediator")
         mediator_started = time.monotonic()
         mediator_result = self.mediator.run(
             parameter_text=parameter_text,
@@ -222,6 +259,7 @@ class DebateService:
             hunter_result=sanitized_hunter,
             critic_result=sanitized_critic,
             debate_history=debate_history,
+            stream_handler=(lambda chunk: agent_chunk_handler("mediator", chunk)) if agent_chunk_handler else None,
         )
         timing["mediator_seconds"] = round(time.monotonic() - mediator_started, 4)
         mediator_result = self._normalize_reasoning_payload(mediator_result)
@@ -236,6 +274,8 @@ class DebateService:
             hunter_result=hunter_result,
             critic_result=critic_result,
         )
+        if agent_completed_handler:
+            agent_completed_handler("mediator", mediator_result.logic_summary or mediator_result.reasoning)
 
         timing["flow_total_seconds"] = round(time.monotonic() - start_ts, 4)
 
@@ -320,9 +360,17 @@ class DebateService:
         self._raise_if_cancelled(cancel_check, phase="run_batch_debate.entry")
 
         first = debate_inputs[0]
-        context_chunks = list(first.context_chunks or [])
-        context_chunk_map = dict(first.context_chunk_map or {})
+        context_chunks: List[str] = []
+        seen_chunks: set = set()
+        context_chunk_map: Dict[str, Any] = {}
+        for item in debate_inputs:
+            for chunk in item.context_chunks or []:
+                if chunk not in seen_chunks:
+                    seen_chunks.add(chunk)
+                    context_chunks.append(chunk)
+            context_chunk_map.update(item.context_chunk_map or {})
         retrieved_chunk_ids = self._citation_grade_ids(context_chunk_map)
+        warn_threshold = max(1, int(getattr(settings, "AI_DEBATE_WARN_CONTEXT_CHUNK_THRESHOLD", 40)))
         child_inputs = [
             {
                 "id": str(item.parameter.id),
@@ -334,16 +382,25 @@ class DebateService:
         start_ts = time.monotonic()
 
         self.logger.info(
-            "DebateService.run_batch_debate: [ENTRY] children=%d parent_section=%s",
+            "DebateService.run_batch_debate: [ENTRY] children=%d parent_section=%s prompt_context_chunks=%d citation_grade_ids=%d",
             len(debate_inputs),
             first.parameter_section,
+            len(context_chunks),
+            len(retrieved_chunk_ids),
         )
+        if len(context_chunks) > warn_threshold:
+            self.logger.warning(
+                "DebateService.run_batch_debate: prompt_context_chunks=%d exceeded warn threshold=%d",
+                len(context_chunks),
+                warn_threshold,
+            )
         self._raise_if_cancelled(cancel_check, phase="run_batch_debate.before_hunter")
         hunter_results = self.hunter.run_batch(
             child_inputs=child_inputs,
             parameter_section=first.parameter_section,
             context_chunks=context_chunks,
             killed_assumptions=first.killed_assumptions,
+            available_block_ids=list(retrieved_chunk_ids),
         )
         sanitized_hunters: Dict[str, HunterResult] = {}
         cited_blocks_by_child: Dict[str, List[dict]] = {}
@@ -374,6 +431,7 @@ class DebateService:
             context_chunks=context_chunks,
             hunter_results=sanitized_hunters,
             cited_blocks_by_child=cited_blocks_by_child,
+            available_block_ids=list(retrieved_chunk_ids),
         )
         sanitized_critics: Dict[str, CriticResult] = {}
         critic_rejected_by_child: Dict[str, List[Any]] = {}
@@ -518,6 +576,7 @@ class DebateService:
         hunter_plan: Dict[str, Any],
         hunter_call_count: int,
         available_block_ids: Optional[List[str]] = None,
+        stream_handler: Optional[Callable[[str], None]] = None,
     ) -> tuple[HunterResult, Dict[str, Any], Dict[str, Any], Dict[str, Any], int]:
         if hunter_call_count >= self.max_hunter_calls_per_parameter:
             self.logger.warning(
@@ -551,6 +610,7 @@ class DebateService:
             persona_focus=persona,
             killed_assumptions=killed_assumptions,
             available_block_ids=available_block_ids,
+            stream_handler=stream_handler,
         )
         hunter_call_count += 1
         result = self._normalize_reasoning_payload(result)
@@ -673,6 +733,7 @@ class DebateService:
         rejected_ids: List[str],
         hunter_call_count: int,
         retrieved_chunk_ids: set,
+        stream_handler: Optional[Callable[[str], None]] = None,
     ) -> tuple[HunterResult, int]:
         valid_ids_str = ", ".join(sorted(retrieved_chunk_ids)) or "none"
         if rejected_ids:
@@ -700,6 +761,7 @@ class DebateService:
             context_chunks=retry_chunks,
             killed_assumptions=killed_assumptions,
             available_block_ids=list(retrieved_chunk_ids),
+            stream_handler=stream_handler,
         )
         hunter_call_count += 1
         retry_result = self._normalize_reasoning_payload(retry_result)
@@ -757,26 +819,25 @@ class DebateService:
         hunter_result: HunterResult,
         critic_result: CriticResult,
         round_number: int,
-    ) -> bool:
+        escalation_round_granted: bool,
+    ) -> tuple[bool, bool]:
         if round_number >= self.max_debate_rounds:
             # Allow ONE escalation round when the Critic fundamentally disagrees
             # with the Hunter (overturn) AND the Hunter has low confidence.
             # This prevents the Mediator from receiving a stale/contested result
             # that it cannot resolve without additional evidence.
-            if round_number == 1 and critic_result.outcome == OUTCOME_OVERTURN:
+            if not escalation_round_granted and critic_result.outcome == OUTCOME_OVERTURN:
                 hunter_conf = float(getattr(hunter_result, "confidence", 0.5) or 0.5)
                 if hunter_conf < 0.80:
-                    return True
-            return False
+                    return True, True
+            return False, escalation_round_granted
         if critic_result.outcome in {OUTCOME_OVERTURN, OUTCOME_PARTIAL}:
-            return True
+            return True, escalation_round_granted
         if critic_result.requires_rebuttal:
-            return True
+            return True, escalation_round_granted
         if hunter_result.error and not critic_result.error:
-            return True
-        if hunter_result.verdict == "met" and not hunter_result.citations:
-            return True
-        return False
+            return True, escalation_round_granted
+        return False, escalation_round_granted
 
     def _build_rebuttal_context_chunks(
         self,

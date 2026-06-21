@@ -219,7 +219,6 @@ class TSDGraph:
     raptor_node_to_entities: Dict[str, Set[str]] = field(default_factory=dict)
     entity_to_raptor_node_ids: Dict[str, Set[str]] = field(default_factory=dict)
     object_embedding_cache: Dict[str, List[float]] = field(default_factory=dict)
-    community_embedding_cache: Dict[str, List[float]] = field(default_factory=dict)
     embedding_stats: Dict[str, int] = field(default_factory=dict)
     build_stats: Dict[str, float] = field(default_factory=dict)
 
@@ -1046,10 +1045,11 @@ class TSDGraphBuilder:
         relations: List[GraphRelation] = []
 
         if isinstance(raw_relations, list):
-            # Build a set of valid entity_ids from this page's extraction
-            # so we can reject relations that reference unknown entities
-            valid_entity_ids: Set[str] = {e.entity_id for e in entities}
-
+            # Entity-id existence is validated globally later in
+            # _populate_graph (against the document-wide entity set, once
+            # every page has been merged in) — not here, since restricting
+            # to this page's own extraction would make relations between
+            # entities introduced on different pages structurally impossible.
             for item in raw_relations:
                 if not isinstance(item, dict):
                     continue
@@ -1060,26 +1060,6 @@ class TSDGraphBuilder:
                 target_id = _normalise_entity_id(
                     item.get("target_entity_id", "")
                 )
-
-                # Reject relations referencing entities not on this page
-                if source_id not in valid_entity_ids:
-                    self.logger.debug(
-                        "TSDGraphBuilder._parse_extraction_response: "
-                        "source_entity_id '%s' not in extracted entities "
-                        "on page %d — skipping relation.",
-                        source_id,
-                        page.page_number,
-                    )
-                    continue
-                if target_id not in valid_entity_ids:
-                    self.logger.debug(
-                        "TSDGraphBuilder._parse_extraction_response: "
-                        "target_entity_id '%s' not in extracted entities "
-                        "on page %d — skipping relation.",
-                        target_id,
-                        page.page_number,
-                    )
-                    continue
 
                 confidence = _safe_float_clamp(
                     item.get("confidence", 1.0),

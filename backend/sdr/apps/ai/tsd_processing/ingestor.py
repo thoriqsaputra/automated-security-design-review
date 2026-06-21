@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from typing import Any, Dict, List, Optional, Tuple
 
 from sdr.apps.workspace.document_processing import convert_pdf_to_markdown
+from sdr.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -36,7 +37,14 @@ except ImportError:
 
 # Minimum character count for a text block to be considered meaningful.
 # Blocks below this threshold are likely page numbers, headers, or artefacts.
-_MIN_BLOCK_TEXT_LENGTH = 20
+_MIN_BLOCK_TEXT_LENGTH = 10
+
+
+def _min_block_text_length() -> int:
+    try:
+        return max(0, int(getattr(settings, "AI_TSD_MIN_BLOCK_TEXT_LENGTH", _MIN_BLOCK_TEXT_LENGTH)))
+    except (TypeError, ValueError):
+        return _MIN_BLOCK_TEXT_LENGTH
 
 # Minimum image size in bytes — images below this are icons/logos, not diagrams.
 # Keep aligned with the diagram debate vision threshold in agents/vision.py.
@@ -372,7 +380,7 @@ TSDDocument = _CanonicalTSDDocument
 class TSDIngestor:
     def __init__(
         self,
-        min_block_text_length: int = _MIN_BLOCK_TEXT_LENGTH,
+        min_block_text_length: Optional[int] = None,
         min_diagram_bytes: int = _MIN_DIAGRAM_BYTES,
         caption_search_radius: float = _CAPTION_SEARCH_RADIUS_PT,
         heading_font_multiplier: float = _HEADING_FONT_SIZE_MULTIPLIER,
@@ -382,7 +390,9 @@ class TSDIngestor:
                 "TSDIngestor requires PyMuPDF. Install with: pip install pymupdf"
             )
 
-        self.min_block_text_length = min_block_text_length
+        self.min_block_text_length = (
+            min_block_text_length if min_block_text_length is not None else _min_block_text_length()
+        )
         self.min_diagram_bytes = min_diagram_bytes
         self.caption_search_radius = caption_search_radius
         self.heading_font_multiplier = heading_font_multiplier
@@ -819,23 +829,28 @@ class TSDIngestor:
         tsd_page: TSDPage,
         bbox: Tuple[float, float, float, float],
     ) -> Optional[str]:
-        nearby_blocks = tsd_page.get_blocks_near_bbox(
-            bbox=bbox,
-            radius_pt=self.caption_search_radius,
-        )
+        # Captions are usually below the figure, but some templates place
+        # them (or an introductory sentence) above instead — try below
+        # first since it's the dominant convention, then fall back to above.
+        for direction in ("below", "above"):
+            nearby_blocks = tsd_page.get_blocks_near_bbox(
+                bbox=bbox,
+                radius_pt=self.caption_search_radius,
+                direction=direction,
+            )
 
-        for block in nearby_blocks:
-            # Skip headings — a heading below a diagram is a new section,
-            # not a caption
-            if block.is_heading:
-                continue
-            # Captions are short — skip long paragraphs
-            if block.word_count > 20:
-                continue
-            # Must have actual text
-            if not block.text.strip():
-                continue
-            return block.text.strip()
+            for block in nearby_blocks:
+                # Skip headings — a heading near a diagram is a new section,
+                # not a caption
+                if block.is_heading:
+                    continue
+                # Captions are short — skip long paragraphs
+                if block.word_count > 20:
+                    continue
+                # Must have actual text
+                if not block.text.strip():
+                    continue
+                return block.text.strip()
 
         return None
 
@@ -845,14 +860,20 @@ class TSDIngestor:
         bbox: Tuple[float, float, float, float],
     ) -> Optional[str]:
         extended_radius = self.caption_search_radius * 2.0
-        nearby_blocks = tsd_page.get_blocks_near_bbox(
+        above_blocks = tsd_page.get_blocks_near_bbox(
             bbox=bbox,
             radius_pt=extended_radius,
+            direction="above",
+        )
+        below_blocks = tsd_page.get_blocks_near_bbox(
+            bbox=bbox,
+            radius_pt=extended_radius,
+            direction="below",
         )
 
         parts = [
             block.text.strip()
-            for block in nearby_blocks
+            for block in (*above_blocks, *below_blocks)
             if block.text.strip() and not block.is_heading
         ]
 

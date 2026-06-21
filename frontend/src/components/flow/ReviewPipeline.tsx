@@ -22,9 +22,10 @@ const STAGES_ORDER = [
   '2_retrieval',
   '3_asvs_classification',
   '4_parameter_resolution',
-  '5_text_debate',
-  '6_diagram_debate',
-  '7_overview'
+  '5_parent_retrieval',
+  '6_text_debate',
+  '7_diagram_debate',
+  '8_overview'
 ];
 
 function getStageState(reviewStatus: string, currentStage: string | undefined, nodeStageId: string): string {
@@ -79,9 +80,10 @@ export default function ReviewPipeline({ reviewStatus, currentStage }: Props) {
       createNode('n2', '2. Retrieval Indexing', 250, 40, getStageState(reviewStatus, currentStage, '2_retrieval')),
       createNode('n3', '3. ASVS Classification', 500, 40, getStageState(reviewStatus, currentStage, '3_asvs_classification')),
       createNode('n4', '4. Parameter Resolution', 750, 40, getStageState(reviewStatus, currentStage, '4_parameter_resolution')),
-      createNode('n5', '5. Text Multi-Agent Debate Loop', 1000, 40, getStageState(reviewStatus, currentStage, '5_text_debate')),
-      createNode('n6', '6. Diagram Multi-Agent Debate Loop', 1250, 40, getStageState(reviewStatus, currentStage, '6_diagram_debate')),
-      createNode('n7', '7. Generate Overview', 1500, 40, getStageState(reviewStatus, currentStage, '7_overview')),
+      createNode('n5', '5. Parent Retrieval', 1000, 40, getStageState(reviewStatus, currentStage, '5_parent_retrieval')),
+      createNode('n6', '6. Text Multi-Agent Debate Loop', 1250, 40, getStageState(reviewStatus, currentStage, '6_text_debate')),
+      createNode('n7', '7. Diagram Multi-Agent Debate Loop', 1500, 40, getStageState(reviewStatus, currentStage, '7_diagram_debate')),
+      createNode('n8', '8. Generate Overview', 1750, 40, getStageState(reviewStatus, currentStage, '8_overview')),
     ];
 
     const isEdgeActive = (targetStage: string) => {
@@ -106,9 +108,10 @@ export default function ReviewPipeline({ reviewStatus, currentStage }: Props) {
       createEdge('n1', 'n2', isEdgeActive('2_retrieval')),
       createEdge('n2', 'n3', isEdgeActive('3_asvs_classification')),
       createEdge('n3', 'n4', isEdgeActive('4_parameter_resolution')),
-      createEdge('n4', 'n5', isEdgeActive('5_text_debate')),
-      createEdge('n5', 'n6', isEdgeActive('6_diagram_debate')),
-      createEdge('n6', 'n7', isEdgeActive('7_overview')),
+      createEdge('n4', 'n5', isEdgeActive('5_parent_retrieval')),
+      createEdge('n5', 'n6', isEdgeActive('6_text_debate')),
+      createEdge('n6', 'n7', isEdgeActive('7_diagram_debate')),
+      createEdge('n7', 'n8', isEdgeActive('8_overview')),
     ];
 
     return { nodes: ns, edges: es };

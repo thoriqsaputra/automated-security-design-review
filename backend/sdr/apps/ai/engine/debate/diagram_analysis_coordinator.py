@@ -113,22 +113,28 @@ class DiagramAnalysisCoordinator:
             max_workers=self.config.vision_max_concurrency,
             thread_name_prefix="DiagramDebate",
         ) as executor:
-            futures = {
-                executor.submit(
+            futures = {}
+            for diagram in eligible_diagrams:
+                requirements = self.requirement_selector.select_for_diagram(
+                    diagram=diagram,
+                    tsd_document=tsd_document,
+                    category=category,
+                    ingestion_job=ingestion_job,
+                    effective_asvs_level=effective_asvs_level,
+                )
+                self.logger.info(
+                    "DiagramAnalysisCoordinator.run: diagram_id=%s requirements_selected=%d",
+                    diagram.diagram_id,
+                    len(requirements),
+                )
+                future = executor.submit(
                     self.diagram_debate_service.run_diagram_debate,
                     diagram=diagram,
-                    requirements=self.requirement_selector.select_for_diagram(
-                        diagram=diagram,
-                        tsd_document=tsd_document,
-                        category=category,
-                        ingestion_job=ingestion_job,
-                        effective_asvs_level=effective_asvs_level,
-                    ),
+                    requirements=requirements,
                     tsd_context=tsd_context,
                     cancel_check=cancel_check,
-                ): diagram
-                for diagram in eligible_diagrams
-            }
+                )
+                futures[future] = diagram
             for future in as_completed(futures):
                 if callable(cancel_check):
                     try:

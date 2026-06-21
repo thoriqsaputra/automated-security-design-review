@@ -36,6 +36,10 @@ to see that are NOT actually in the diagram.
 - Be strict: visual evidence must be EXPLICIT, not implied.
 - If the image is not architecture/security-relevant, overturn any \
 Hunter "not_met" conclusion and classify the image as "non_architecture".
+- COMPLETENESS REQUIREMENT: for EVERY requirement the Hunter marked "met", \
+you MUST add an entry for it to either "validated_requirements" (if you \
+confirm the evidence) or "invalidated_requirements" (if you reject it). \
+Never leave a Hunter "met" requirement unclassified in both lists.
 """
 
 

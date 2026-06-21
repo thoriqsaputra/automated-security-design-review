@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { Globe, Upload } from 'lucide-react';
 import Card from '../components/ui/Card';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
-import Modal from '../components/ui/Modal';
+import CategoryUploadModal from '../features/standards/components/CategoryUploadModal';
 import { listCategories, createIngestionJob, type StandardCategory } from '../api/standards';
 
 const categoryIcons: Record<string, ReactNode> = {
@@ -46,6 +46,7 @@ export default function StandardsHub() {
       setLevelDefinitionEndPage('');
       // Refresh categories
       listCategories().then(r => setCategories(r.data));
+      navigate(`/standards/${uploadCat}`);
     } finally {
       setUploading(false);
     }
@@ -112,88 +113,23 @@ export default function StandardsHub() {
         ))}
       </div>
 
-      {/* Upload Modal */}
-      <Modal open={showUpload} onClose={() => setShowUpload(false)} title="Ingest Security Standard">
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1.5">Category</label>
-            <select
-              value={uploadCat}
-              onChange={e => setUploadCat(e.target.value)}
-              className="w-full px-3 py-2.5 rounded-lg bg-surface border border-surface-border text-text-primary text-sm focus:outline-none focus:border-crimson transition-colors"
-            >
-              <option value="">Select a category...</option>
-              {categories.map(c => (
-                <option key={c.id} value={c.code}>{c.name}</option>
-              ))}
-            </select>
-          </div>
-          <div>
-            <label className="block text-sm font-medium text-text-secondary mb-1.5">Standard Document (PDF)</label>
-            <input
-              type="file"
-              accept=".pdf"
-              onChange={e => setFile(e.target.files?.[0] || null)}
-              className="w-full text-sm text-text-muted file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-midnight-lighter file:text-text-secondary file:font-medium file:cursor-pointer hover:file:bg-surface-hover file:transition-colors"
-            />
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Parameter Start Page (Optional)</label>
-              <input
-                type="number"
-                min="1"
-                placeholder="e.g. 12"
-                value={startPage}
-                onChange={e => setStartPage(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-text-primary text-sm focus:outline-none focus:border-crimson transition-colors"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Parameter End Page (Optional)</label>
-              <input
-                type="number"
-                min="1"
-                placeholder="e.g. 55"
-                value={endPage}
-                onChange={e => setEndPage(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-text-primary text-sm focus:outline-none focus:border-crimson transition-colors"
-              />
-            </div>
-          </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Level Definition Start Page (Optional)</label>
-              <input
-                type="number"
-                min="1"
-                placeholder="e.g. 8"
-                value={levelDefinitionStartPage}
-                onChange={e => setLevelDefinitionStartPage(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-text-primary text-sm focus:outline-none focus:border-crimson transition-colors"
-              />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-text-secondary mb-1">Level Definition End Page (Optional)</label>
-              <input
-                type="number"
-                min="1"
-                placeholder="e.g. 10"
-                value={levelDefinitionEndPage}
-                onChange={e => setLevelDefinitionEndPage(e.target.value)}
-                className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-text-primary text-sm focus:outline-none focus:border-crimson transition-colors"
-              />
-            </div>
-          </div>
-          <button
-            onClick={handleUpload}
-            disabled={!uploadCat || !file || uploading}
-            className="w-full py-2.5 rounded-xl bg-gradient-to-r from-crimson to-flame text-white text-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed hover:shadow-lg hover:shadow-crimson/30 transition-all"
-          >
-            {uploading ? 'Ingesting...' : 'Start Ingestion'}
-          </button>
-        </div>
-      </Modal>
+      <CategoryUploadModal
+        open={showUpload}
+        title="Ingest Security Standard"
+        uploading={uploading}
+        file={file}
+        startPage={startPage}
+        endPage={endPage}
+        levelDefinitionStartPage={levelDefinitionStartPage}
+        levelDefinitionEndPage={levelDefinitionEndPage}
+        onClose={() => setShowUpload(false)}
+        onFileChange={setFile}
+        onStartPageChange={setStartPage}
+        onEndPageChange={setEndPage}
+        onLevelDefinitionStartPageChange={setLevelDefinitionStartPage}
+        onLevelDefinitionEndPageChange={setLevelDefinitionEndPage}
+        onSubmit={handleUpload}
+      />
     </div>
   );
 }

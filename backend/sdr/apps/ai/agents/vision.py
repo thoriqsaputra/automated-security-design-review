@@ -78,8 +78,8 @@ class VisionAgent(BaseAgent):
         if system_prompt:
             self.system_prompt = system_prompt
         try:
-            response = self._call_llm(
-                user_prompt=user_prompt,
+            response = self._call_llm_with_truncation_retry(
+                user_prompt,
                 image_b64=image_bytes,
                 image_format=image_format,
                 top_p=self.top_p,
@@ -106,7 +106,7 @@ class VisionAgent(BaseAgent):
         if system_prompt:
             self.system_prompt = system_prompt
         try:
-            response = self._call_llm(user_prompt=user_prompt)
+            response = self._call_llm_with_truncation_retry(user_prompt)
         finally:
             self.system_prompt = original_prompt
 
@@ -193,8 +193,16 @@ def _apply_diagram_evidence_policy(
             mediator_result["verdict_policy_source"] = "diagram_hallucinated_evidence"
             verdict = VERDICT_NA
 
+    if assessments:
+        assessments, downgraded = _ground_assessed_requirements_against_critic(assessments, critic_result)
+        if downgraded:
+            mediator_result["assessed_requirements"] = assessments
+            mediator_result["final_verdict"] = _worst_case_diagram_verdict(assessments)
+            mediator_result["verdict_policy_source"] = "diagram_requirement_not_corroborated"
+            verdict = mediator_result["final_verdict"]
+
     validated = critic_result.get("validated_requirements") or []
-    if verdict == VERDICT_MET and not validated:
+    if not assessments and verdict == VERDICT_MET and not validated:
         mediator_result["final_verdict"] = VERDICT_NA
         mediator_result["verdict_policy_source"] = "diagram_met_without_validated_evidence"
         verdict = VERDICT_NA
@@ -211,12 +219,13 @@ def _apply_diagram_evidence_policy(
             str(assessment.get("verdict", "")).strip().lower() == VERDICT_NA
             for assessment in assessments
         ):
-            mediator_result["assessed_requirements"] = _force_assessment_verdicts_na(
-                assessments,
-                default_summary="The requirement is not applicable because the image does not establish security-relevant architecture scope.",
-            )
+            if mediator_result.get("verdict_policy_source") != "diagram_requirement_not_corroborated":
+                mediator_result["assessed_requirements"] = _force_assessment_verdicts_na(
+                    assessments,
+                    default_summary="The requirement is not applicable because the image does not establish security-relevant architecture scope.",
+                )
+                mediator_result["verdict_policy_source"] = "diagram_all_requirements_not_applicable"
             mediator_result["final_verdict"] = VERDICT_NA
-            mediator_result["verdict_policy_source"] = "diagram_all_requirements_not_applicable"
             verdict = VERDICT_NA
         elif verdict == VERDICT_NOT_MET and not applicable_assessments:
             mediator_result["final_verdict"] = VERDICT_NA
@@ -259,7 +268,7 @@ def _calibrate_diagram_confidence(
 
     if verdict == VERDICT_NOT_MET and visual_evidence_count == 0 and not_met_count > 0:
         adjustment -= 0.10
-    elif verdict == VERDICT_MET and visual_evidence_count >= 2:
+    elif verdict == VERDICT_MET and visual_evidence_count >= 2 and not critic_result.get("hallucinated_claims"):
         adjustment += 0.05
 
     adjusted = max(0.0, min(raw_confidence + adjustment, 1.0))
@@ -268,6 +277,48 @@ def _calibrate_diagram_confidence(
 
     mediator_result["confidence"] = round(adjusted, 2)
     return mediator_result
+
+
+def _ground_assessed_requirements_against_critic(
+    assessments: List[Dict[str, Any]],
+    critic_result: Dict[str, Any],
+) -> tuple[List[Dict[str, Any]], bool]:
+    validated_ids = {
+        str(r.get("requirement_id")).strip()
+        for r in (critic_result.get("validated_requirements") or [])
+        if isinstance(r, dict) and r.get("requirement_id")
+    }
+    invalidated_ids = {
+        str(r.get("requirement_id")).strip()
+        for r in (critic_result.get("invalidated_requirements") or [])
+        if isinstance(r, dict) and r.get("requirement_id")
+    }
+
+    grounded: List[Dict[str, Any]] = []
+    downgraded = False
+    for assessment in assessments:
+        item = dict(assessment)
+        req_id = str(item.get("requirement_id", "")).strip()
+        verdict = str(item.get("verdict", "")).strip().lower()
+        if verdict == VERDICT_MET and (req_id not in validated_ids or req_id in invalidated_ids):
+            item["verdict"] = VERDICT_NA
+            item["summary"] = (
+                "Downgraded: Critic did not confirm this requirement's evidence "
+                "(no corroborating validated_requirements entry)."
+            )
+            item["reasoning"] = item["summary"]
+            downgraded = True
+        grounded.append(item)
+    return grounded, downgraded
+
+
+def _worst_case_diagram_verdict(assessments: List[Dict[str, Any]]) -> str:
+    verdicts = {str(a.get("verdict", "")).strip().lower() for a in assessments}
+    if VERDICT_NOT_MET in verdicts:
+        return VERDICT_NOT_MET
+    if VERDICT_NA in verdicts:
+        return VERDICT_NA
+    return VERDICT_MET if verdicts else VERDICT_NA
 
 
 def _normalize_diagram_scope_verdict(value: Any) -> str:

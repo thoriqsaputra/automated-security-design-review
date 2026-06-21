@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import json
 import logging
-import re
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from collections import defaultdict
 from typing import List, Optional, Dict, Any, Tuple, Iterable
 
@@ -31,12 +30,10 @@ from sdr.apps.standards.models import (
     StandardIngestionJob,
 )
 from sdr.apps.standards.utils import build_parameter_analysis_text
-from sdr.apps.ai.engine.dto import RetrievalIndexes
+from sdr.apps.ai.engine.dto import DebatableParameter, RetrievalIndexes
 
 logger = logging.getLogger(__name__)
 
-_TEXT_BLOCK_ID_PATTERN = re.compile(r"^p(?P<page>\d+)_b\d+$")
-_MAX_INFERRED_DIAGRAMS = 3
 _MAX_SCOPE_EVIDENCE_TERMS = 6
 
 
@@ -58,6 +55,21 @@ class RetrievalService:
         self.router = router or HybridRetrievalRouter()
         self.linker = linker or RaptorGraphLinker()
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+
+    def get_retrieve_many_max_concurrency(self, override: Optional[int] = None) -> int:
+        if override is not None:
+            return max(1, int(override))
+        config = getattr(self.router, "advanced_config", None)
+        return max(1, int(getattr(config, "retrieve_many_max_concurrency", 2)))
+
+    def get_parent_retrieval_max_child_snippets(self) -> int:
+        return max(1, int(getattr(settings, "AI_PARENT_RETRIEVAL_MAX_CHILD_SNIPPETS", 4)))
+
+    def get_parent_retrieval_max_child_snippet_chars(self) -> int:
+        return max(80, int(getattr(settings, "AI_PARENT_RETRIEVAL_MAX_CHILD_SNIPPET_CHARS", 240)))
+
+    def get_parent_retrieval_max_context_chunks(self) -> int:
+        return max(1, int(getattr(settings, "AI_PARENT_RETRIEVAL_MAX_CONTEXT_CHUNKS", 6)))
 
     def build_indexes(self, tsd_document: TSDDocument, progress_callbacks: Optional[Dict[str, Any]] = None) -> RetrievalIndexes:
         self.logger.info(
@@ -111,7 +123,7 @@ class RetrievalService:
 
     def retrieve_for_parameter(
         self,
-        parameter: CategoryParameterChild,
+        parameter: DebatableParameter,
         category: StandardCategory,
         ingestion_job: Optional[StandardIngestionJob],
         indexes: RetrievalIndexes,
@@ -210,38 +222,7 @@ class RetrievalService:
                 )
                 result.diagram_block_ids = explicit_diagrams
             if not explicit_diagrams and tsd_document is not None:
-                inferred_diagrams, inferred_skipped = self._infer_diagram_block_ids(
-                    source_block_ids=result.source_block_ids or [],
-                    tsd_document=tsd_document,
-                    max_diagrams=_MAX_INFERRED_DIAGRAMS,
-                )
-                skipped_diagrams.extend(inferred_skipped)
-                if inferred_diagrams:
-                    result.diagram_block_ids = inferred_diagrams
-                    result.evidence_metadata = {
-                        **(result.evidence_metadata or {}),
-                        "diagram_id_source": "inferred",
-                        "diagram_inference": {
-                            "source_page_count": len(self._extract_source_pages(result.source_block_ids or [])),
-                            "inferred_count": len(inferred_diagrams),
-                            "skipped_diagrams": skipped_diagrams,
-                        },
-                    }
-                    self.logger.info(
-                        "RetrievalService.retrieve_for_parameter: inferred %d diagram block id(s) for parameter id=%s",
-                        len(inferred_diagrams),
-                        parameter.id,
-                    )
-                else:
-                    result.evidence_metadata = {
-                        **(result.evidence_metadata or {}),
-                        "diagram_id_source": "none",
-                        "diagram_inference": {
-                            "source_page_count": len(self._extract_source_pages(result.source_block_ids or [])),
-                            "inferred_count": 0,
-                            "skipped_diagrams": skipped_diagrams,
-                        },
-                    }
+                result.diagram_block_ids = []
             elif explicit_diagrams:
                 result.evidence_metadata = {
                     **(result.evidence_metadata or {}),
@@ -252,7 +233,7 @@ class RetrievalService:
                 }
         except Exception:
             self.logger.exception(
-                "RetrievalService.retrieve_for_parameter: diagram inference failed for parameter id=%s",
+                "RetrievalService.retrieve_for_parameter: explicit diagram block handling failed for parameter id=%s",
                 parameter.id,
             )
 
@@ -278,51 +259,73 @@ class RetrievalService:
 
         return result
 
-    def _extract_source_pages(self, source_block_ids: List[str]) -> List[int]:
-        pages = set()
-        for block_id in source_block_ids:
-            if not isinstance(block_id, str):
-                continue
-            match = _TEXT_BLOCK_ID_PATTERN.match(block_id)
-            if not match:
-                continue
-            pages.add(int(match.group("page")))
-        return sorted(pages)
-
-    def _infer_diagram_block_ids(
+    def retrieve_many_for_parameters(
         self,
         *,
-        source_block_ids: List[str],
-        tsd_document: TSDDocument,
-        max_diagrams: int,
-    ) -> Tuple[List[str], List[Dict[str, Any]]]:
-        if max_diagrams <= 0:
-            return [], []
-        source_pages = self._extract_source_pages(source_block_ids)
-        if not source_pages:
-            return [], []
-        diagrams = list(getattr(tsd_document, "all_diagrams", []) or [])
-        if not diagrams:
-            return [], []
+        parameters: List[DebatableParameter],
+        category: StandardCategory,
+        ingestion_job: Optional[StandardIngestionJob],
+        indexes: RetrievalIndexes,
+        tsd_document: Optional[TSDDocument] = None,
+        query_details_by_parameter_id: Optional[Dict[str, Dict[str, Any]]] = None,
+        max_concurrency: Optional[int] = None,
+    ) -> Dict[str, RetrievalResult]:
+        if not parameters:
+            return {}
 
-        ranked: List[tuple[int, int, str]] = []
-        for diagram in diagrams:
-            diagram_id = getattr(diagram, "diagram_id", None)
-            page_number = int(getattr(diagram, "page_number", 0) or 0)
-            if not diagram_id or page_number <= 0:
-                continue
-            nearest = min(abs(page_number - source_page) for source_page in source_pages)
-            if nearest > 1:
-                continue
-            ranked.append((nearest, page_number, diagram_id))
+        concurrency = min(self.get_retrieve_many_max_concurrency(max_concurrency), len(parameters))
+        query_details_by_parameter_id = query_details_by_parameter_id or {}
 
-        ranked.sort(key=lambda item: (item[0], item[1], item[2]))
-        ranked_ids = [diagram_id for _, _, diagram_id in ranked]
-        return self._filter_loadable_diagram_block_ids(
-            ranked_ids,
-            tsd_document=tsd_document,
-            max_diagrams=max_diagrams,
-        )
+        if concurrency <= 1 or len(parameters) <= 1:
+            results: Dict[str, RetrievalResult] = {}
+            for parameter in parameters:
+                parameter_id = str(parameter.id)
+                try:
+                    results[parameter_id] = self.retrieve_for_parameter(
+                        parameter=parameter,
+                        category=category,
+                        ingestion_job=ingestion_job,
+                        indexes=indexes,
+                        tsd_document=tsd_document,
+                        query_details=query_details_by_parameter_id.get(parameter_id),
+                    )
+                except Exception as exc:
+                    self.logger.warning(
+                        "RetrievalService.retrieve_many_for_parameters: retrieval failed for parameter id=%s: %s",
+                        parameter_id,
+                        exc,
+                    )
+                    results[parameter_id] = RetrievalResult(error=str(exc))
+            return results
+
+        results: Dict[str, RetrievalResult] = {}
+        with ThreadPoolExecutor(max_workers=concurrency, thread_name_prefix="RetrieveMany") as executor:
+            future_map = {}
+            for parameter in parameters:
+                parameter_id = str(parameter.id)
+                future = executor.submit(
+                    self.retrieve_for_parameter,
+                    parameter=parameter,
+                    category=category,
+                    ingestion_job=ingestion_job,
+                    indexes=indexes,
+                    tsd_document=tsd_document,
+                    query_details=query_details_by_parameter_id.get(parameter_id),
+                )
+                future_map[future] = parameter_id
+
+            for future in as_completed(future_map):
+                parameter_id = future_map[future]
+                try:
+                    results[parameter_id] = future.result()
+                except Exception as exc:
+                    self.logger.warning(
+                        "RetrievalService.retrieve_many_for_parameters: retrieval failed for parameter id=%s: %s",
+                        parameter_id,
+                        exc,
+                    )
+                    results[parameter_id] = RetrievalResult(error=str(exc))
+        return results
 
     def _filter_loadable_diagram_block_ids(
         self,
@@ -367,12 +370,14 @@ class RetrievalService:
         parent_title = (getattr(parent, "title", "") or "").strip()
         parent_description = (getattr(parent, "description", "") or "").strip()
         child_snippets = []
-        for child in child_parameters[:8]:
+        max_child_snippets = self.get_parent_retrieval_max_child_snippets()
+        max_child_snippet_chars = self.get_parent_retrieval_max_child_snippet_chars()
+        for child in child_parameters[:max_child_snippets]:
             text = (
                 build_parameter_analysis_text(child)
             ).strip()
             if text:
-                child_snippets.append(text[:600])
+                child_snippets.append(text[:max_child_snippet_chars])
 
         details = dict(query_details or {})
         details.update(
@@ -387,7 +392,7 @@ class RetrievalService:
             getattr(parent, "id", None),
             len(child_parameters),
         )
-        return self.retrieve_for_parameter(
+        result = self.retrieve_for_parameter(
             parameter=child_parameters[0],
             category=category,
             ingestion_job=ingestion_job,
@@ -395,6 +400,16 @@ class RetrievalService:
             tsd_document=tsd_document,
             query_details=details,
         )
+        max_context_chunks = self.get_parent_retrieval_max_context_chunks()
+        if len(result.context_chunks or []) > max_context_chunks:
+            result.context_chunks = list(result.context_chunks[:max_context_chunks])
+        self.logger.info(
+            "RetrievalService.retrieve_for_parent_group: parent=%s prompt_child_snippets=%d context_chunks=%d",
+            getattr(parent, "id", None),
+            len(child_snippets),
+            len(result.context_chunks or []),
+        )
+        return result
 
     def _extract_json_payload(self, text: str) -> str:
         text = strip_thinking_block(text)

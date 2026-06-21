@@ -34,7 +34,7 @@ export default function PaginationControls({
   pageSizeOptions,
   onPageSizeChange,
 }: PaginationControlsProps) {
-  if (totalPages <= 0) {
+  if (totalPages <= 1) {
     return null;
   }
 

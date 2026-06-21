@@ -544,14 +544,33 @@ class ControlFamilySummaryExtractionService:
             self.logger.info("ControlFamilySummaryExtractionService.extract: no parameters provided.")
             return []
 
-        # Group by parent id
-        parents_map: Dict[Any, Any] = {}
+        # Build thread-safe snapshots so CFSR extraction does not depend on
+        # ORM relationship state crossing thread boundaries.
+        parameter_snapshots: List[Dict[str, Any]] = []
         for param in parameters:
             parent = getattr(param, "parent", None)
-            parent_id = getattr(parent, "id", None)
+            parent_id = getattr(param, "parent_id", None)
+            if parent_id is None and parent is not None:
+                parent_id = getattr(parent, "id", None)
+            parameter_snapshots.append(
+                {
+                    "parameter_id": getattr(param, "id", None),
+                    "stable_key": getattr(param, "stable_key", ""),
+                    "requirement_text": getattr(param, "requirement_text", "") or "",
+                    "details": getattr(param, "details", "") or "",
+                    "asvs_level": getattr(param, "asvs_level", None),
+                    "parent_id": parent_id,
+                    "parent_title": (getattr(parent, "title", None) or "General") if parent is not None else "General",
+                }
+            )
+
+        # Group by stable scalar FK, not by relationship object.
+        parents_map: Dict[Any, Any] = {}
+        for snapshot in parameter_snapshots:
+            parent_id = snapshot.get("parent_id")
             if parent_id not in parents_map:
-                parents_map[parent_id] = (parent, [])
-            parents_map[parent_id][1].append(param)
+                parents_map[parent_id] = (snapshot.get("parent_title") or "General", [])
+            parents_map[parent_id][1].append(snapshot)
 
         parent_groups = list(parents_map.values())
         total_groups = len(parent_groups)
@@ -562,9 +581,9 @@ class ControlFamilySummaryExtractionService:
         probe = ConcurrencyProbe(max_concurrency=max_concurrency)
         probe.mark_submitted(total_groups)
 
-        def _process_parent_group(group_index: int, parent, children: list) -> tuple:
+        def _process_parent_group(group_index: int, parent_title: str, children: list) -> tuple:
             thread_name = threading.current_thread().name
-            parent_section = getattr(parent, "title", "General") or "General"
+            parent_section = parent_title or "General"
             self.logger.info(
                 "ControlFamilySummaryExtractionService: [GROUP %d/%d] START thread=%s parent='%s' children=%d",
                 group_index + 1,
@@ -576,13 +595,13 @@ class ControlFamilySummaryExtractionService:
 
             param_lines = []
             child_id_to_stable_key: Dict[str, str] = {}
-            for child_index, param in enumerate(children):
-                real_key = getattr(param, "stable_key", "")
+            for child_index, child in enumerate(children):
+                real_key = str(child.get("stable_key", "") or "")
                 prompt_id = f"child-{child_index + 1:03d}"
                 child_id_to_stable_key[prompt_id] = real_key
-                text = getattr(param, "requirement_text", "")
-                details = getattr(param, "details", "") or ""
-                level = getattr(param, "asvs_level", None) or "unknown"
+                text = str(child.get("requirement_text", "") or "")
+                details = str(child.get("details", "") or "")
+                level = child.get("asvs_level", None) or "unknown"
                 line = f"[{prompt_id}] (L{level}) {text}"
                 if details:
                     line += f" | {details[:120]}"
@@ -619,7 +638,16 @@ class ControlFamilySummaryExtractionService:
                 )
                 return group_index, []
 
-            parent_id = getattr(parent, "id", None)
+            parent_id = children[0].get("parent_id") if children else None
+            if parent_id is None:
+                self.logger.error(
+                    "ControlFamilySummaryExtractionService: skipping group %d parent='%s' because parent_id is missing. child_keys=%s child_ids=%s",
+                    group_index,
+                    parent_section,
+                    [child.get("stable_key") for child in children],
+                    [child.get("parameter_id") for child in children],
+                )
+                return group_index, []
             results = []
             ordinal_counters: Dict[Any, int] = {}
             seen_keys_in_group: set = set()

@@ -3,6 +3,7 @@ from __future__ import annotations
 from types import SimpleNamespace
 
 from sdr.apps.ai.engine.classification.asvs_level import classify_tsd_asvs_level
+from sdr.apps.ai.engine.classification.json_utils import parse_json_with_repair
 from sdr.apps.ai.engine.classification.parent_applicability import classify_parent_applicability
 
 
@@ -43,6 +44,44 @@ def test_asvs_level_classification_repairs_malformed_json(monkeypatch):
     assert calls["count"] == 2
 
 
+def test_parse_json_with_repair_sanitizes_newlines_without_llm_repair():
+    calls = {"count": 0}
+
+    def fake_chat_completion(**_kwargs):
+        calls["count"] += 1
+        return SimpleNamespace(content='{"unused": true}', error=None)
+
+    parsed, error = parse_json_with_repair(
+        '{"reasoning": "line 1\nline 2", "evidence": ["scope"]}',
+        component="unit_test",
+        max_tokens=100,
+        chat_completion_fn=fake_chat_completion,
+    )
+
+    assert parsed == {"reasoning": "line 1\nline 2", "evidence": ["scope"]}
+    assert error is None
+    assert calls["count"] == 0
+
+
+def test_parse_json_with_repair_sanitizes_trailing_commas_without_llm_repair():
+    calls = {"count": 0}
+
+    def fake_chat_completion(**_kwargs):
+        calls["count"] += 1
+        return SimpleNamespace(content='{"unused": true}', error=None)
+
+    parsed, error = parse_json_with_repair(
+        '{"level": 2, "evidence": ["tls",],}',
+        component="unit_test",
+        max_tokens=100,
+        chat_completion_fn=fake_chat_completion,
+    )
+
+    assert parsed == {"level": 2, "evidence": ["tls"]}
+    assert error is None
+    assert calls["count"] == 0
+
+
 def test_asvs_level_classification_falls_back_when_repair_still_invalid(monkeypatch):
     calls = {"count": 0}
 
@@ -66,6 +105,30 @@ def test_asvs_level_classification_falls_back_when_repair_still_invalid(monkeypa
     assert result.error is not None
     assert "repair_decode_failed" in result.error
     assert calls["count"] == 2
+
+
+def test_asvs_level_classification_sanitizes_trailing_comma_without_repair(monkeypatch):
+    calls = {"count": 0}
+
+    def fake_chat_completion(**_kwargs):
+        calls["count"] += 1
+        return SimpleNamespace(
+            content='{"level": 2, "confidence": 0.95, "reasoning": "trailing comma fixed", "evidence": ["tls",],}',
+            error=None,
+        )
+
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.classification.asvs_level.chat_completion",
+        fake_chat_completion,
+    )
+
+    result = classify_tsd_asvs_level("Sample TSD text", _levels())
+
+    assert result.level == 2
+    assert result.confidence == 0.95
+    assert result.evidence == ["tls"]
+    assert result.error is None
+    assert calls["count"] == 1
 
 
 def test_parent_applicability_classification_repairs_malformed_json(monkeypatch):
@@ -105,12 +168,47 @@ def test_parent_applicability_classification_repairs_malformed_json(monkeypatch)
     assert calls["count"] == 2
 
 
-def test_parent_applicability_classification_skips_when_context_has_no_family_signal(monkeypatch):
+def test_parent_applicability_classification_sanitizes_multiline_reasoning_without_repair(monkeypatch):
     calls = {"count": 0}
 
     def fake_chat_completion(**_kwargs):
         calls["count"] += 1
-        return SimpleNamespace(content="{}", error=None)
+        return SimpleNamespace(
+            content='{"applicable": false, "confidence": 0.35, "decision_mode": "unclear", "reasoning": "Line one\nLine two", "evidence": ["generic auth mention",],}',
+            error=None,
+        )
+
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.classification.parent_applicability.chat_completion",
+        fake_chat_completion,
+    )
+
+    result = classify_parent_applicability(
+        category_code="web_application",
+        version_label="v1.0",
+        parent_title="Authentication",
+        parent_description="Authentication controls",
+        child_requirements=["Require MFA"],
+        retrieved_context="Authentication is mentioned, but the subsystem scope remains ambiguous.",
+    )
+
+    assert result.applicable is False
+    assert result.confidence == 0.35
+    assert result.decision_mode == "unclear"
+    assert result.evidence == ["generic auth mention"]
+    assert result.error is None
+    assert calls["count"] == 1
+
+
+def test_parent_applicability_classification_consults_llm_when_context_has_no_family_signal(monkeypatch):
+    calls = {"count": 0}
+
+    def fake_chat_completion(**_kwargs):
+        calls["count"] += 1
+        return SimpleNamespace(
+            content='{"applicable": false, "confidence": 0.7, "decision_mode": "negative_match", "reasoning": "No browser session handling described.", "evidence": []}',
+            error=None,
+        )
 
     monkeypatch.setattr(
         "sdr.apps.ai.engine.classification.parent_applicability.chat_completion",
@@ -126,8 +224,8 @@ def test_parent_applicability_classification_skips_when_context_has_no_family_si
         retrieved_context="The service uses API tokens between backend services and has no browser workflow.",
     )
 
+    assert calls["count"] == 1
     assert result.applicable is False
-    assert result.confidence == 0.9
-    assert result.decision_mode == "no_scope_match"
+    assert result.confidence == 0.7
+    assert result.decision_mode == "negative_match"
     assert result.error is None
-    assert calls["count"] == 0

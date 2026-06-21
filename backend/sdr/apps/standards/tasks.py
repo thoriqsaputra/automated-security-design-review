@@ -225,6 +225,7 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
     requirement child.
     """
     from sdr.apps.ai.engine.extraction import (
+        canonicalize_requirement_items,
         detect_asvs_page_ranges,
         extract_asvs_level_definitions_from_document,
         extract_requirements_from_document,
@@ -465,7 +466,9 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                     )
 
                     for section_title in sorted_section_keys:
-                        requirements = requirements_by_section[section_title]
+                        requirements = canonicalize_requirement_items(
+                            requirements_by_section[section_title]
+                        )
                         section_name = (section_title or 'General').strip() or 'General'
                         parent = parents_by_section.get(section_name)
                         

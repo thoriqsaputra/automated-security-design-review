@@ -16,10 +16,15 @@ class AnalysisPipelineConfig:
     batch_debate_soft_confidence_threshold: float = 0.65
     batch_debate_require_citations_for_not_met: bool = True
     batch_debate_ungrounded_not_met_policy: str = "preserve_not_met"
+    debate_context_supplemental_block_limit: int = 12
+    debate_warn_context_chunk_threshold: int = 40
     parent_applicability_enabled: bool = True
     parent_applicability_confidence_threshold: float = 0.7
     parent_applicability_fallback_mode: str = "skip"
     parent_applicability_max_child_texts: int = 8
+    parent_retrieval_max_child_snippets: int = 4
+    parent_retrieval_max_child_snippet_chars: int = 240
+    parent_retrieval_max_context_chunks: int = 6
     vision_diagram_analysis_enabled: bool = True
     vision_enabled: bool = True
     vision_min_diagram_bytes: int = 512
@@ -48,6 +53,14 @@ class AnalysisPipelineConfig:
             batch_debate_ungrounded_not_met_policy=str(
                 getattr(settings, "AI_BATCH_DEBATE_UNGROUNDED_NOT_MET_POLICY", "preserve_not_met") or ""
             ).strip().lower(),
+            debate_context_supplemental_block_limit=max(
+                0,
+                int(getattr(settings, "AI_DEBATE_CONTEXT_SUPPLEMENTAL_BLOCK_LIMIT", 12)),
+            ),
+            debate_warn_context_chunk_threshold=max(
+                1,
+                int(getattr(settings, "AI_DEBATE_WARN_CONTEXT_CHUNK_THRESHOLD", 40)),
+            ),
             parent_applicability_enabled=bool(
                 getattr(settings, "AI_PARENT_APPLICABILITY_ENABLED", True)
             ),
@@ -59,6 +72,15 @@ class AnalysisPipelineConfig:
             ).strip().lower(),
             parent_applicability_max_child_texts=max(
                 1, int(getattr(settings, "AI_PARENT_APPLICABILITY_MAX_CHILD_TEXTS", 8))
+            ),
+            parent_retrieval_max_child_snippets=max(
+                1, int(getattr(settings, "AI_PARENT_RETRIEVAL_MAX_CHILD_SNIPPETS", 4))
+            ),
+            parent_retrieval_max_child_snippet_chars=max(
+                80, int(getattr(settings, "AI_PARENT_RETRIEVAL_MAX_CHILD_SNIPPET_CHARS", 240))
+            ),
+            parent_retrieval_max_context_chunks=max(
+                1, int(getattr(settings, "AI_PARENT_RETRIEVAL_MAX_CONTEXT_CHUNKS", 6))
             ),
             vision_diagram_analysis_enabled=bool(
                 getattr(settings, "AI_VISION_DIAGRAM_ANALYSIS_ENABLED", True)

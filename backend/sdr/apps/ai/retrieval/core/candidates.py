@@ -8,6 +8,11 @@ from typing import Any, Dict, Iterable, List
 
 _NORMALIZE_RE = re.compile(r"\s+")
 
+# Additive score boost when multiple independent searchers agree on the
+# same chunk — capped so agreement alone can't dominate raw relevance.
+_AGREEMENT_BOOST_PER_EXTRA_SOURCE = 0.08
+_AGREEMENT_BOOST_CAP = 0.24
+
 
 @dataclass
 class RetrievalCandidate:
@@ -66,6 +71,14 @@ def dedupe_candidates(candidates: Iterable[RetrievalCandidate]) -> List[Retrieva
         else:
             existing.block_ids = merged_block_ids
             existing.metadata = merged_metadata
+
+    for candidate in deduped.values():
+        agreement_count = len(candidate.metadata.get("merged_sources", [candidate.source_type]))
+        if agreement_count > 1:
+            boost = min(_AGREEMENT_BOOST_PER_EXTRA_SOURCE * (agreement_count - 1), _AGREEMENT_BOOST_CAP)
+            candidate.score = float(candidate.score) + boost
+            candidate.metadata["agreement_count"] = agreement_count
+            candidate.metadata["agreement_boost"] = boost
 
     return [deduped[key] for key in order]
 

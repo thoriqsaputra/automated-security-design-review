@@ -20,6 +20,8 @@ from .normalizers import (
     _extract_logical_id,
     _looks_like_toc_entry,
     _remove_table_of_contents,
+    canonicalize_requirement_items,
+    canonicalize_structured_requirements,
 )
 from .services import (
     ASVSLevelDefinitionExtractionService,
@@ -52,4 +54,6 @@ __all__ = [
     "_clean_asvs_level_definitions",
     "_backfill_requirement_levels",
     "_canonicalize_diagram_requirements",
+    "canonicalize_requirement_items",
+    "canonicalize_structured_requirements",
 ]

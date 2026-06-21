@@ -82,10 +82,15 @@ def test_trigger_review_rejects_running_review(monkeypatch):
 def test_trigger_review_persists_task_id(monkeypatch):
     review = _build_review()
     fake_db = _FakeSession(review=review)
+    reset_calls = []
     monkeypatch.setattr(
         reviews_router_module,
         "dispatch_review_analysis",
         lambda review_id: {"mode": "async", "task_id": f"task-{review_id}"},
+    )
+    monkeypatch.setattr(
+        "sdr.apps.reviews.routers.reviews.review_debate_event_store.reset_review",
+        lambda review_id: reset_calls.append(review_id),
     )
 
     result = reviews_router_module.trigger_review(review.id, db=fake_db)
@@ -93,6 +98,7 @@ def test_trigger_review_persists_task_id(monkeypatch):
     assert result is review
     assert review.celery_task_id == f"task-{review.id}"
     assert review.retrieval_snapshot_json is None
+    assert reset_calls == [review.id]
     assert fake_db.committed is True
     assert fake_db.refreshed == [review]
 
@@ -148,6 +154,7 @@ def test_cancel_review_marks_cancelled_and_revokes_task(monkeypatch):
     review.celery_task_id = "task-7"
     fake_db = _FakeSession(review=review)
     revoke_calls = []
+    cancelled_calls = []
 
     class _Control:
         def revoke(self, task_id, terminate=False, signal=None):
@@ -156,6 +163,10 @@ def test_cancel_review_marks_cancelled_and_revokes_task(monkeypatch):
     monkeypatch.setattr(
         "sdr.celery_app.celery_app.control",
         _Control(),
+    )
+    monkeypatch.setattr(
+        "sdr.apps.reviews.routers.reviews.review_debate_event_store.mark_debates_cancelled",
+        lambda review_id, error_message: cancelled_calls.append((review_id, error_message)),
     )
 
     result = reviews_router_module.cancel_review(review.id, db=fake_db)
@@ -167,6 +178,7 @@ def test_cancel_review_marks_cancelled_and_revokes_task(monkeypatch):
     assert fake_db.committed is True
     assert fake_db.refreshed == [review]
     assert revoke_calls == [("task-7", True, "SIGTERM")]
+    assert cancelled_calls == [(review.id, "Analysis was cancelled by user.")]
 
 
 def test_get_review_retrieval_visualization_returns_pending_when_missing():
@@ -218,3 +230,35 @@ def test_review_progress_exposes_live_debate_and_persistence_counts():
     assert progress["preparation"]["debate"]["total"] == 10
     assert progress["preparation"]["persistence"]["completed"] == 2
     assert progress["preparation"]["skipped_by_parent_applicability"] == 3
+
+
+def test_review_progress_exposes_current_live_requirement(monkeypatch):
+    review = Review(id=21, status=Review.STATUS_RUNNING)
+    review.summary_json = {
+        "debate_total_parameters": 2,
+        "debate_completed_parameters": 1,
+        "debate_remaining_parameters": 1,
+        "persistence_total_parameters": 2,
+        "persistence_completed_parameters": 1,
+        "persistence_remaining_parameters": 1,
+    }
+    monkeypatch.setattr(
+        "sdr.apps.reviews.models.review.review_debate_event_store.load_snapshot",
+        lambda review_id: {
+            "review_id": review_id,
+            "debates": [
+                {
+                    "debate_id": "text:12",
+                    "status": "running",
+                    "requirement_reference": "V1.2.3",
+                    "requirement_text": "Verify boundary protection is documented.",
+                }
+            ],
+        },
+    )
+
+    progress = review.progress
+
+    assert progress is not None
+    assert progress["current_parameter_reference"] == "V1.2.3"
+    assert progress["current_parameter_title"] == "Verify boundary protection is documented."

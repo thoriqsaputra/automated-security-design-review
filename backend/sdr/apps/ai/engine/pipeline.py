@@ -164,7 +164,7 @@ class TSDAnalysisPipeline:
                 killed_assumptions_memory=killed_assumptions_memory,
             )
 
-            self.run_state.update_stage(review, summary, "7_overview")
+            self.run_state.update_stage(review, summary, "8_overview")
             overview = self.overview_generator.generate(review, summary)
             if overview:
                 self.run_state.save_overview(review, overview)
