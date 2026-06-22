@@ -12,6 +12,7 @@ from sdr.apps.ai.prompts.analysis import (
     TSD_SCREENING_SYSTEM_PROMPT,
     build_tsd_screening_prompt,
 )
+from sdr.apps.designs.models import Design
 from sdr.apps.reviews.models import Review
 from sdr.apps.ai.engine.dto import IngestionOutput
 
@@ -287,6 +288,45 @@ class IngestionService:
             )
             return None
 
+    def ingest_design(self, design: Design) -> Optional[IngestionOutput]:
+        self.logger.info(
+            "IngestionService.ingest_design: [ENTRY] design_id=%s design='%s'",
+            design.id,
+            design.name,
+        )
+        try:
+            tsd_document = self._ingest_design_document(
+                design_id=design.id,
+                document_name=design.name,
+                document_field=design.document,
+            )
+            if tsd_document is None:
+                self.logger.error(
+                    "IngestionService.ingest_design: [FATAL] ingestion failed for design_id=%s",
+                    design.id,
+                )
+                return None
+
+            is_valid_tsd, screening_msg = self._screen_tsd(tsd_document)
+            output = IngestionOutput(
+                tsd_document=tsd_document,
+                is_valid_tsd=is_valid_tsd,
+                screening_message=screening_msg,
+            )
+            self.logger.info(
+                "IngestionService.ingest_design: [SUCCESS] design_id=%s is_valid_tsd=%s",
+                design.id,
+                is_valid_tsd,
+            )
+            return output
+        except Exception as exc:
+            self.logger.exception(
+                "IngestionService.ingest_design: [FATAL] design_id=%s: %s",
+                design.id,
+                exc,
+            )
+            return None
+
     def _ingest_tsd(self, review: Review) -> Optional[TSDDocument]:
         """
         Resolves the TSD file path and runs TSDIngestor.ingest().
@@ -302,11 +342,11 @@ class IngestionService:
                 design.name,
             )
 
-            with get_local_file_path(document_field) as tsd_path:
-                tsd_document = self.ingestor.ingest(
-                    file_path=tsd_path,
-                    document_name=design.name,
-                )
+            tsd_document = self._ingest_design_document(
+                design_id=review.id,
+                document_name=design.name,
+                document_field=document_field,
+            )
 
             self.logger.info(
                 "IngestionService._ingest_tsd: [SUCCESS] parsed '%s' — "
@@ -325,6 +365,19 @@ class IngestionService:
                 exc,
             )
             return None
+
+    def _ingest_design_document(
+        self,
+        *,
+        design_id: int,
+        document_name: str,
+        document_field: str,
+    ) -> Optional[TSDDocument]:
+        with get_local_file_path(document_field) as tsd_path:
+            return self.ingestor.ingest(
+                file_path=tsd_path,
+                document_name=document_name,
+            )
 
     def _screen_tsd(self, tsd_document: TSDDocument) -> tuple[bool, Optional[str]]:
         """

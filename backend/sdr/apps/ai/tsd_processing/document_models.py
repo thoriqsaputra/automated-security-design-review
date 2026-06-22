@@ -286,6 +286,116 @@ class TSDDocument:
                     return block
         return None
 
+    def get_block_window(
+        self,
+        block_id: str,
+        *,
+        before: int = 1,
+        after: int = 1,
+        char_budget: int = 2200,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Resolve a single block to a merged paragraph-sized passage by pulling
+        in up to `before`/`after` neighboring blocks on the same page. Neighbors
+        are restricted to the same section_heading (when both blocks have one
+        set) so context doesn't bleed across section boundaries.
+
+        Returns the merged text plus the UNION bbox spanning every block that
+        was actually merged in, so callers that highlight/locate the chunk in
+        the source PDF can draw a region that covers the whole quoted passage
+        instead of just the originally matched block's single line.
+        """
+        target = self.get_block_by_id(block_id)
+        if target is None:
+            return None
+
+        page = next((p for p in self.pages if p.page_number == target.page_number), None)
+        if page is None:
+            return {
+                "text": target.text,
+                "page_number": target.page_number,
+                "bbox": target.bbox,
+                "block_ids": [target.block_id],
+            }
+
+        siblings = page.text_blocks
+        target_idx = next(
+            (idx for idx, block in enumerate(siblings) if block.block_id == block_id),
+            None,
+        )
+        if target_idx is None:
+            return {
+                "text": target.text,
+                "page_number": target.page_number,
+                "bbox": target.bbox,
+                "block_ids": [target.block_id],
+            }
+
+        target_section = target.section_heading
+
+        def _same_section(block: TextBlock) -> bool:
+            if not target_section or not block.section_heading:
+                return True
+            return block.section_heading == target_section
+
+        window_blocks = [target]
+        used_chars = len(target.text)
+
+        before_idx = target_idx - 1
+        taken_before = 0
+        while before_idx >= 0 and taken_before < before:
+            block = siblings[before_idx]
+            if not block.is_valid():
+                before_idx -= 1
+                continue
+            if not _same_section(block):
+                break
+            if used_chars + len(block.text) > char_budget:
+                break
+            window_blocks.insert(0, block)
+            used_chars += len(block.text)
+            taken_before += 1
+            before_idx -= 1
+
+        after_idx = target_idx + 1
+        taken_after = 0
+        while after_idx < len(siblings) and taken_after < after:
+            block = siblings[after_idx]
+            if not block.is_valid():
+                after_idx += 1
+                continue
+            if not _same_section(block):
+                break
+            if used_chars + len(block.text) > char_budget:
+                break
+            window_blocks.append(block)
+            used_chars += len(block.text)
+            taken_after += 1
+            after_idx += 1
+
+        x0 = min(b.bbox_x0 for b in window_blocks)
+        y0 = min(b.bbox_y0 for b in window_blocks)
+        x1 = max(b.bbox_x1 for b in window_blocks)
+        y1 = max(b.bbox_y1 for b in window_blocks)
+
+        return {
+            "text": "\n".join(b.text for b in window_blocks),
+            "page_number": target.page_number,
+            "bbox": (x0, y0, x1, y1),
+            "block_ids": [b.block_id for b in window_blocks],
+        }
+
+    def get_block_window_text(
+        self,
+        block_id: str,
+        *,
+        before: int = 1,
+        after: int = 1,
+        char_budget: int = 2200,
+    ) -> str:
+        window = self.get_block_window(block_id, before=before, after=after, char_budget=char_budget)
+        return window["text"] if window else ""
+
     def get_diagram_by_id(self, diagram_id: str) -> Optional[DiagramBlock]:
         for page in self.pages:
             for diagram in page.diagrams:

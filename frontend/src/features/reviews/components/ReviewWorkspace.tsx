@@ -6,7 +6,6 @@ import { ANALYSIS_MODE_OPTIONS, REVIEW_TABS } from '../utils/reviewPresentation'
 import ReviewDebatePanel from './ReviewDebatePanel';
 import ReviewFindingsPanel from './ReviewFindingsPanel';
 import ReviewOverviewPanel from './ReviewOverviewPanel';
-import ReviewRetrievalPanel from './ReviewRetrievalPanel';
 
 interface BaseProps {
   showControls?: boolean;
@@ -21,7 +20,6 @@ export default function ReviewWorkspace({ reviewId, reviewState, showControls = 
   const {
     review,
     findings,
-    retrievalVisualization,
     loading,
     loadingFindings,
     triggering,
@@ -138,10 +136,6 @@ export default function ReviewWorkspace({ reviewId, reviewState, showControls = 
       </div>
 
       {activeTab === 'overview' && <ReviewOverviewPanel review={review} findingCount={totalFindings} />}
-
-      {activeTab === 'retrieval' && (
-        <ReviewRetrievalPanel review={review} retrievalVisualization={retrievalVisualization} />
-      )}
 
       {activeTab === 'debate' && (
         <ReviewDebatePanel

@@ -22,6 +22,16 @@ export default function DesignsList() {
 
   useEffect(() => { load(); }, []);
 
+  useEffect(() => {
+    if (!designs.some((design) => ['queued', 'running'].includes(design.preparation_status))) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      void load();
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [designs]);
+
   const handleCreate = async () => {
     if (!file) return;
     const finalName = name.trim() || file.name.replace(/\.[^/.]+$/, "");
@@ -47,6 +57,12 @@ export default function DesignsList() {
   if (loading) {
     return <LoadingSpinner />;
   }
+
+  const getPreparationTone = (status: string) => {
+    if (status === 'ready') return 'text-emerald-300 bg-emerald-500/10 border-emerald-500/20';
+    if (status === 'failed' || status === 'stale') return 'text-amber-200 bg-amber-500/10 border-amber-500/20';
+    return 'text-sky-200 bg-sky-500/10 border-sky-500/20';
+  };
 
   return (
     <div className="space-y-6 animate-slide-up">
@@ -89,6 +105,42 @@ export default function DesignsList() {
                   <div>
                     <p className="text-sm font-medium text-text-primary">{d.name}</p>
                     <p className="text-xs text-text-muted">{new Date(d.created_at).toLocaleDateString()}</p>
+                    <p className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${getPreparationTone(d.preparation_status)}`}>
+                      {d.preparation_status === 'ready' ? 'Ready for analysis' : `Preparation ${d.preparation_status}`}
+                    </p>
+                    {['queued', 'running'].includes(d.preparation_status) &&
+                      d.preparation_progress &&
+                      typeof d.preparation_progress === 'object' &&
+                      !Array.isArray(d.preparation_progress) && (
+                        <div className="mt-2 w-48">
+                          <div className="mb-1 flex items-center justify-between text-[11px] text-text-muted">
+                            <span>
+                              {typeof d.preparation_progress.current_step === 'string'
+                                ? d.preparation_progress.current_step
+                                : 'Preparing'}
+                            </span>
+                            <span>
+                              {typeof d.preparation_progress.percentage === 'number'
+                                ? d.preparation_progress.percentage
+                                : Number(d.preparation_progress.percentage || 0)}
+                              %
+                            </span>
+                          </div>
+                          <div className="h-1.5 rounded-full bg-surface-border overflow-hidden">
+                            <div
+                              className="h-full bg-gradient-to-r from-crimson to-flame transition-all duration-500 ease-out"
+                              style={{
+                                width: `${Math.max(
+                                  4,
+                                  typeof d.preparation_progress.percentage === 'number'
+                                    ? d.preparation_progress.percentage
+                                    : Number(d.preparation_progress.percentage || 0),
+                                )}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">

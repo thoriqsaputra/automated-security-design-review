@@ -297,6 +297,7 @@ dependencies = [
     { name = "tiktoken" },
     { name = "uvicorn", extra = ["standard"] },
     { name = "weasyprint" },
+    { name = "zstandard" },
 ]
 
 [package.optional-dependencies]
@@ -356,6 +357,7 @@ requires-dist = [
     { name = "tiktoken", specifier = ">=0.12.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.29.0" },
     { name = "weasyprint", specifier = ">=68.1" },
+    { name = "zstandard", specifier = ">=0.24.0" },
 ]
 provides-extras = ["dev"]
 

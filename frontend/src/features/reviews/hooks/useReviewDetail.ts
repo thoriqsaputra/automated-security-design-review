@@ -2,11 +2,9 @@ import { useCallback, useEffect, useState } from 'react';
 import {
   cancelReview,
   getFindings,
-  getRetrievalVisualization,
   getReview,
   triggerReview,
   type Finding,
-  type RetrievalVisualization,
   type Review,
   type ReviewAnalysisMode,
 } from '../../../api/reviews';
@@ -19,7 +17,6 @@ import {
 export interface UseReviewDetailResult {
   review: Review | null;
   findings: Finding[];
-  retrievalVisualization: RetrievalVisualization | null;
   loading: boolean;
   loadingFindings: boolean;
   triggering: boolean;
@@ -63,7 +60,6 @@ export interface UseReviewDetailResult {
 export function useReviewDetail(reviewId?: string): UseReviewDetailResult {
   const [review, setReview] = useState<Review | null>(null);
   const [findings, setFindings] = useState<Finding[]>([]);
-  const [retrievalVisualization, setRetrievalVisualization] = useState<RetrievalVisualization | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadingFindings, setLoadingFindings] = useState(false);
   const [triggering, setTriggering] = useState(false);
@@ -84,7 +80,6 @@ export function useReviewDetail(reviewId?: string): UseReviewDetailResult {
   useEffect(() => {
     setReview(null);
     setFindings([]);
-    setRetrievalVisualization(null);
     setLoading(Boolean(reviewId));
     setLoadingFindings(false);
     setTriggering(false);
@@ -146,17 +141,13 @@ export function useReviewDetail(reviewId?: string): UseReviewDetailResult {
       setLoading(true);
     }
     try {
-      const [reviewResponse, retrievalResponse] = await Promise.all([
-        getReview(Number(reviewId)),
-        getRetrievalVisualization(Number(reviewId)).catch(() => null),
-      ]);
+      const reviewResponse = await getReview(Number(reviewId));
       const nextReview = {
         ...reviewResponse.data,
         analysis_mode: normalizeAnalysisMode(reviewResponse.data.analysis_mode),
       };
       setReview(nextReview);
       setSelectedAnalysisMode(nextReview.analysis_mode);
-      setRetrievalVisualization(retrievalResponse?.data || null);
     } finally {
       setLoading(false);
     }
@@ -291,7 +282,6 @@ export function useReviewDetail(reviewId?: string): UseReviewDetailResult {
   return {
     review,
     findings,
-    retrievalVisualization,
     loading,
     loadingFindings,
     triggering,

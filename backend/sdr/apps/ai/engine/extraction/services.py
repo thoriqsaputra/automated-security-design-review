@@ -3,6 +3,7 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 import threading
+import time
 from typing import Any, Dict, List, Optional
 
 from sdr.apps.ai.prompts.extraction import (
@@ -82,9 +83,16 @@ def _extract_document_requirements(
 
     if progress_callback:
         progress_callback("Chunking Document", 15)
+    chunking_started_at = time.monotonic()
     chunks = chunk_text_semantically(
         source_doc_text,
         chunk_size=config.standard_extraction_chunk_token_target,
+    )
+    logger.info(
+        "extract_requirements_from_document: [CHUNK] produced %d chunk(s) in %.2fs for standard '%s'.",
+        len(chunks),
+        time.monotonic() - chunking_started_at,
+        source_doc.name,
     )
     if not chunks:
         logger.warning(
@@ -112,18 +120,22 @@ def _extract_document_requirements(
             thread_name,
             token_count,
         )
+        chunk_started_at = time.monotonic()
         try:
             result = structured_extractor.extract(text, source_name=source_doc.name)
         except TypeError:
             result = structured_extractor.extract(text)
+        elapsed = time.monotonic() - chunk_started_at
         logger.info(
-            "extract_requirements_from_document: [MAP %d/%d] FINISHED on thread %s",
+            "extract_requirements_from_document: [MAP %d/%d] FINISHED on thread %s in %.2fs",
             idx,
             total_chunks,
             thread_name,
+            elapsed,
         )
         return result, token_count
 
+    map_reduce_started_at = time.monotonic()
     executor = concurrent.futures.ThreadPoolExecutor(
         max_workers=config.standard_extraction_max_workers,
         thread_name_prefix="ExtractWorker",
@@ -168,8 +180,9 @@ def _extract_document_requirements(
         executor.shutdown(wait=False, cancel_futures=True)
 
     logger.info(
-        "extract_requirements_from_document: ✓ [MAP-REDUCE] complete for standard '%s'. Chunks: %d succeeded, %d failed. Total sections seen=%d, total reqs seen=%d, total tokens=%d. Final merged: %d section(s), %d total requirement(s).",
+        "extract_requirements_from_document: ✓ [MAP-REDUCE] complete for standard '%s' in %.2fs. Chunks: %d succeeded, %d failed. Total sections seen=%d, total reqs seen=%d, total tokens=%d. Final merged: %d section(s), %d total requirement(s).",
         source_doc.name,
+        time.monotonic() - map_reduce_started_at,
         successful_chunks,
         failed_chunks,
         total_sections_seen,
@@ -208,6 +221,7 @@ class StructuredRequirementExtractionService:
                 component="standard_extraction",
                 temperature=0.05,
                 max_tokens=8192,
+                response_format={"type": "json_object"},
             )
 
             response_preview = (response.content or "").replace("\n", " ").replace("\r", " ")

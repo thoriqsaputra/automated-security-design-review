@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Check, ChevronDown, FileText, Play, Search } from 'lucide-react';
-import type { JsonRecord } from '../api/reviews';
+import { ArrowLeft, Check, ChevronDown, FileText, Network, Play, Search, Waypoints } from 'lucide-react';
+import type { JsonRecord, RetrievalVisualization } from '../api/reviews';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import Card from '../components/ui/Card';
 import StatusBadge from '../components/ui/StatusBadge';
-import { getDesign, type DesignDetail } from '../api/designs';
+import GraphRagView from '../components/flow/GraphRagView';
+import RaptorTreeView from '../components/flow/RaptorTreeView';
+import { getDesign, retryDesignPreparation, type DesignDetail } from '../api/designs';
 import { listCategories, type StandardCategory } from '../api/standards';
 import {
   createReview,
   listReviews,
+  triggerReview,
   type Review,
   type ReviewAnalysisMode,
 } from '../api/reviews';
@@ -34,6 +37,28 @@ function formatReviewDate(date: string): string {
   return new Date(date).toLocaleString();
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
+function getStepProgress(
+  progress: Record<string, unknown> | null,
+  key: string,
+): { status: string; progressPercent: number; label: string } | null {
+  if (!progress) return null;
+  const steps = isRecord(progress.steps) ? progress.steps : null;
+  const rawStep = steps && isRecord(steps[key]) ? steps[key] : null;
+  if (!rawStep) return null;
+  return {
+    status: typeof rawStep.status === 'string' ? rawStep.status : 'pending',
+    progressPercent:
+      typeof rawStep.progress_percent === 'number'
+        ? rawStep.progress_percent
+        : Number(rawStep.progress_percent || 0),
+    label: typeof rawStep.label === 'string' ? rawStep.label : key,
+  };
+}
+
 export default function DesignDetailPage() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -46,8 +71,10 @@ export default function DesignDetailPage() {
   const [selectedCat, setSelectedCat] = useState<number | ''>('');
   const [analysisMode, setAnalysisMode] = useState<ReviewAnalysisMode>('default');
   const [creating, setCreating] = useState(false);
+  const [retryingPreparation, setRetryingPreparation] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [reviewSearch, setReviewSearch] = useState('');
+  const [activeTab, setActiveTab] = useState<'prepared_retrieval' | 'review_details'>('review_details');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -59,15 +86,32 @@ export default function DesignDetailPage() {
     ]).finally(() => setLoading(false));
   }, [id]);
 
+  const refreshPreparationStatus = useCallback(async () => {
+    if (!id) return;
+    const response = await getDesign(Number(id));
+    setDesign(response.data);
+  }, [id]);
+
   useEffect(() => {
     void load();
   }, [load]);
 
+  useEffect(() => {
+    if (!design || !['queued', 'running'].includes(design.preparation_status)) {
+      return undefined;
+    }
+    const timer = window.setInterval(() => {
+      void refreshPreparationStatus();
+    }, 4000);
+    return () => window.clearInterval(timer);
+  }, [design, refreshPreparationStatus]);
+
   const handleCreateReview = async () => {
-    if (!selectedCat || !id) return;
+    if (!selectedCat || !id || !design?.can_start_analysis) return;
     setCreating(true);
     try {
       const res = await createReview(Number(id), Number(selectedCat), analysisMode);
+      await triggerReview(res.data.id, analysisMode);
       setShowReviewModal(false);
       setSelectedCat('');
       setAnalysisMode('default');
@@ -77,6 +121,17 @@ export default function DesignDetailPage() {
       setReviewSearch('');
     } finally {
       setCreating(false);
+    }
+  };
+
+  const handleRetryPreparation = async () => {
+    if (!id) return;
+    setRetryingPreparation(true);
+    try {
+      await retryDesignPreparation(Number(id));
+      await load();
+    } finally {
+      setRetryingPreparation(false);
     }
   };
 
@@ -140,6 +195,73 @@ export default function DesignDetailPage() {
       ['pending', 'cancelled', 'failed', 'running'].includes(selectedReviewState.review?.status || '')
   );
 
+  const preparationLabel = useMemo(() => {
+    if (!design) return '';
+    if (design.preparation_status === 'ready') {
+      return design.prepared_at
+        ? `Ready for analysis • prepared ${formatReviewDate(design.prepared_at)}`
+        : 'Ready for analysis';
+    }
+    if (design.preparation_status === 'failed') {
+      return design.preparation_error || 'Preparation failed.';
+    }
+    if (design.preparation_status === 'stale') {
+      return 'Preparation is stale and must be rebuilt.';
+    }
+    return 'Preparing RAPTOR and Graph indexes for debate.';
+  }, [design]);
+
+  const preparationProgress = useMemo(() => {
+    if (!design) {
+      return null;
+    }
+    if (!isRecord(design.preparation_progress)) {
+      return null;
+    }
+    return design.preparation_progress as Record<string, unknown>;
+  }, [design]);
+
+  const overallPreparationPercent = useMemo(() => {
+    if (!preparationProgress) return 0;
+    const raw = preparationProgress.percentage;
+    if (typeof raw === 'number') return raw;
+    return Number(raw || 0);
+  }, [preparationProgress]);
+
+  const preparationCurrentStep = useMemo(() => {
+    if (!preparationProgress) return '';
+    return typeof preparationProgress.current_step === 'string'
+      ? preparationProgress.current_step
+      : '';
+  }, [preparationProgress]);
+
+  const raptorProgress = useMemo(
+    () => getStepProgress(preparationProgress, 'raptor_index'),
+    [preparationProgress],
+  );
+  const graphProgress = useMemo(
+    () => getStepProgress(preparationProgress, 'graph_index'),
+    [preparationProgress],
+  );
+  const preparationSnapshot = useMemo(() => {
+    if (!design) return null;
+    const snapshot = design.preparation_snapshot_json;
+    if (!snapshot || !isRecord(snapshot)) {
+      return null;
+    }
+    return snapshot as RetrievalVisualization;
+  }, [design]);
+
+  useEffect(() => {
+    if (selectedReview) {
+      setActiveTab('review_details');
+      return;
+    }
+    if (design?.preparation_status === 'ready' && preparationSnapshot) {
+      setActiveTab('prepared_retrieval');
+    }
+  }, [design?.preparation_status, preparationSnapshot, selectedReview]);
+
   if (loading || !design) {
     return <LoadingSpinner />;
   }
@@ -158,9 +280,95 @@ export default function DesignDetailPage() {
           <div>
             <h1 className="text-2xl font-bold text-text-primary">{design.name}</h1>
             <p className="text-sm text-text-muted">{new Date(design.created_at).toLocaleDateString()} • {reviews.length} reviews</p>
+            <p className="mt-2 text-sm text-text-muted">{preparationLabel}</p>
           </div>
         </div>
       </div>
+
+      <Card>
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold text-text-primary">Preparation Status</p>
+            <p className="text-sm text-text-muted">
+              {design.preparation_status === 'ready'
+                ? 'The uploaded TSD has been parsed and indexed. You can start a new analysis immediately.'
+                : design.preparation_status === 'failed'
+                  ? 'Preparation failed before debate could start.'
+                  : design.preparation_status === 'stale'
+                    ? 'The uploaded file changed and the preparation needs to be rebuilt.'
+                    : 'The uploaded TSD is being prepared for retrieval and debate.'}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-3">
+            <StatusBadge status={design.preparation_status} />
+            {(design.preparation_status === 'failed' || design.preparation_status === 'stale') && (
+              <button
+                onClick={() => void handleRetryPreparation()}
+                disabled={retryingPreparation}
+                className="rounded-xl border border-surface-border px-4 py-2 text-sm font-semibold text-text-primary transition-colors hover:border-burgundy disabled:opacity-40"
+              >
+                {retryingPreparation ? 'Retrying...' : 'Retry Preparation'}
+              </button>
+            )}
+            <button
+              onClick={() => setShowReviewModal(true)}
+              disabled={!design.can_start_analysis || creating}
+              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-crimson to-flame px-4 py-2.5 text-sm font-semibold text-white transition-all hover:shadow-lg hover:shadow-crimson/30 disabled:opacity-40"
+            >
+              <Play size={16} />
+              Start TSD Analysis
+            </button>
+          </div>
+        </div>
+        {['queued', 'running'].includes(design.preparation_status) && preparationProgress && (
+          <div className="mt-4 space-y-3">
+            <div>
+              <div className="mb-1 flex items-center justify-between text-xs text-text-muted">
+                <span>{preparationCurrentStep || 'Preparing TSD for retrieval and debate'}</span>
+                <span>{overallPreparationPercent}%</span>
+              </div>
+              <div className="h-2 rounded-full bg-surface-border overflow-hidden">
+                <div
+                  className="h-full bg-gradient-to-r from-crimson to-flame transition-all duration-500 ease-out"
+                  style={{ width: `${Math.max(4, overallPreparationPercent)}%` }}
+                />
+              </div>
+            </div>
+            <div className="grid gap-2 md:grid-cols-2">
+              {raptorProgress && (
+                <div className="rounded-xl border border-surface-border bg-surface-base px-3 py-2">
+                  <div className="mb-1 flex items-center justify-between text-xs text-text-muted">
+                    <span>RAPTOR</span>
+                    <span>{raptorProgress.progressPercent}%</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-surface-border overflow-hidden">
+                    <div
+                      className="h-full bg-flame transition-all duration-500 ease-out"
+                      style={{ width: `${Math.max(4, raptorProgress.progressPercent)}%` }}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-text-muted">{raptorProgress.label}</p>
+                </div>
+              )}
+              {graphProgress && (
+                <div className="rounded-xl border border-surface-border bg-surface-base px-3 py-2">
+                  <div className="mb-1 flex items-center justify-between text-xs text-text-muted">
+                    <span>Graph</span>
+                    <span>{graphProgress.progressPercent}%</span>
+                  </div>
+                  <div className="h-1.5 rounded-full bg-surface-border overflow-hidden">
+                    <div
+                      className="h-full bg-burgundy transition-all duration-500 ease-out"
+                      style={{ width: `${Math.max(4, graphProgress.progressPercent)}%` }}
+                    />
+                  </div>
+                  <p className="mt-1 text-xs text-text-muted">{graphProgress.label}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </Card>
 
       <Card className="overflow-visible">
         <div className={`flex flex-col gap-4 ${hasControls ? 'lg:flex-row lg:items-start lg:justify-between' : ''}`}>
@@ -188,7 +396,7 @@ export default function DesignDetailPage() {
                 </div>
                 <button
                   onClick={() => void selectedReviewState.handleTrigger()}
-                  disabled={selectedReviewState.triggering}
+                  disabled={selectedReviewState.triggering || !design.can_start_analysis}
                   className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-crimson to-flame px-4 py-2.5 text-sm font-semibold text-white transition-all hover:shadow-lg hover:shadow-crimson/30 disabled:opacity-40"
                 >
                   <Play size={16} />
@@ -253,12 +461,16 @@ export default function DesignDetailPage() {
                 <div className="space-y-3 border-b border-surface-border p-3">
                   <button
                     onClick={() => {
+                      if (!design.can_start_analysis) {
+                        return;
+                      }
                       setPickerOpen(false);
                       setShowReviewModal(true);
                     }}
+                    disabled={!design.can_start_analysis}
                     className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-crimson to-flame px-4 py-2.5 text-sm font-semibold text-white transition-all hover:shadow-lg hover:shadow-crimson/30"
                   >
-                    <Play size={16} /> New Review
+                    <Play size={16} /> Start TSD Analysis
                   </button>
                   {reviews.length > 0 && (
                     <div className="flex items-center gap-2 rounded-xl border border-surface-border bg-surface-base px-3 py-2.5">
@@ -315,21 +527,108 @@ export default function DesignDetailPage() {
         </div>
       </Card>
 
-      {selectedReview ? (
-        <>
+      <div className="no-scrollbar mb-6 flex gap-6 overflow-x-auto border-b border-surface-border px-2">
+        {design.preparation_status === 'ready' && preparationSnapshot && (
+          <button
+            onClick={() => setActiveTab('prepared_retrieval')}
+            className={`border-b-2 pb-3 text-sm font-semibold whitespace-nowrap transition-colors ${
+              activeTab === 'prepared_retrieval'
+                ? 'border-flame text-flame'
+                : 'border-transparent text-text-muted hover:text-text-primary'
+            }`}
+          >
+            Prepared Retrieval
+          </button>
+        )}
+        <button
+          onClick={() => setActiveTab('review_details')}
+          className={`border-b-2 pb-3 text-sm font-semibold whitespace-nowrap transition-colors ${
+            activeTab === 'review_details'
+              ? 'border-flame text-flame'
+              : 'border-transparent text-text-muted hover:text-text-primary'
+          }`}
+        >
+          Review Details
+        </button>
+      </div>
+
+      {activeTab === 'prepared_retrieval' && design.preparation_status === 'ready' && preparationSnapshot && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-text-primary">Prepared Retrieval Structures</h2>
+              <p className="mt-1 text-sm text-text-muted">
+                Inspect the RAPTOR summary tree and GraphRAG entity network built from this uploaded TSD.
+              </p>
+            </div>
+            {preparationSnapshot.generated_at && (
+              <p className="text-xs text-text-muted">
+                Generated {new Date(preparationSnapshot.generated_at).toLocaleString()}
+              </p>
+            )}
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+            <Card className="flex items-center gap-3">
+              <Network size={18} className="text-flame shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-text-primary">
+                  RAPTOR status: {preparationSnapshot.raptor?.status || 'unknown'}
+                </p>
+                <p className="text-xs text-text-muted">
+                  {preparationSnapshot.raptor?.total_nodes || 0} node(s) ready for visualization
+                </p>
+              </div>
+            </Card>
+            <Card className="flex items-center gap-3">
+              <Waypoints size={18} className="text-flame shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-text-primary">
+                  GraphRAG status: {preparationSnapshot.graph?.status || 'unknown'}
+                </p>
+                <p className="text-xs text-text-muted">
+                  {preparationSnapshot.graph?.total_entities || 0} entity(ies), {preparationSnapshot.graph?.total_relations || 0} relation(s)
+                </p>
+              </div>
+            </Card>
+          </div>
+
+          {preparationSnapshot.raptor?.status === 'ready' ? (
+            <RaptorTreeView snapshot={preparationSnapshot.raptor} />
+          ) : (
+            <Card>
+              <p className="py-4 text-center text-sm text-text-muted">
+                RAPTOR tree was not available for this prepared TSD.
+              </p>
+            </Card>
+          )}
+
+          {preparationSnapshot.graph?.status === 'ready' ? (
+            <GraphRagView snapshot={preparationSnapshot.graph} />
+          ) : (
+            <Card>
+              <p className="py-4 text-center text-sm text-text-muted">
+                GraphRAG network was not available for this prepared TSD.
+              </p>
+            </Card>
+          )}
+        </div>
+      )}
+
+      {activeTab === 'review_details' &&
+        (selectedReview ? (
           <ReviewWorkspace
             key={selectedReview.id}
             reviewState={selectedReviewState}
             showControls={false}
           />
-        </>
-      ) : (
-        <Card>
-          <p className="py-8 text-center text-sm text-text-muted">
-            No reviews yet for this design. Create one to start the analysis workflow.
-          </p>
-        </Card>
-      )}
+        ) : (
+          <Card>
+            <p className="py-8 text-center text-sm text-text-muted">
+              No reviews yet for this design. Start a TSD analysis once preparation is ready.
+            </p>
+          </Card>
+        ))}
 
       <CreateReviewModal
         open={showReviewModal}

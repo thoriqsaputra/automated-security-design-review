@@ -278,16 +278,38 @@ class TextDebateCoordinator:
                     content=f"Running inside shared Hunter batch for {len(batch_parameters)} debate(s).",
                 )
             retrieval_result = parent_context_by_key[getattr(parent, "id", None) or id(parent)]
-            debate_inputs = [
-                self.build_debate_input_for_parameter(
-                    parameter=parameter,
-                    category=category,
-                    retrieval_result=retrieval_result,
-                    tsd_document=tsd_document,
-                    killed_assumptions=killed_snapshot,
+            debate_inputs = []
+            for parameter in batch_parameters:
+                contract = self.debate_input_factory.build_contract(
+                    parameter_text=build_parameter_analysis_text(parameter).strip(),
+                    parameter_section=parameter.parent.title if parameter.parent else "General",
+                    parent_description=(parameter.parent.description if parameter.parent else "") or "",
                 )
-                for parameter in batch_parameters
-            ]
+                retrieval_query_details = self.debate_input_factory.build_retrieval_query_details(
+                    parameter,
+                    contract,
+                )
+                refine_child = getattr(self.retrieval, "refine_parent_result_for_child", None)
+                if callable(refine_child):
+                    refined_retrieval_result = refine_child(
+                        parent_result=retrieval_result,
+                        parameter=parameter,
+                        query_details=retrieval_query_details,
+                        tsd_document=tsd_document,
+                    )
+                else:
+                    refined_retrieval_result = retrieval_result
+                debate_inputs.append(
+                    self.build_debate_input_for_parameter(
+                        parameter=parameter,
+                        category=category,
+                        retrieval_result=refined_retrieval_result,
+                        tsd_document=tsd_document,
+                        killed_assumptions=killed_snapshot,
+                        contract=contract,
+                        retrieval_query_details=retrieval_query_details,
+                    )
+                )
             batch_outputs = self.debate.run_batch_debate(
                 debate_inputs=debate_inputs,
                 retrieval_result=retrieval_result,

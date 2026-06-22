@@ -2,7 +2,7 @@ import type { ReactNode } from 'react';
 import { AlertTriangle, CheckCircle2, Info, XCircle } from 'lucide-react';
 import type { ReviewAnalysisMode } from '../../../api/reviews';
 
-export type ReviewTab = 'overview' | 'retrieval' | 'debate' | 'findings';
+export type ReviewTab = 'overview' | 'debate' | 'findings';
 
 export type DetailItem = {
   label: string;
@@ -49,7 +49,6 @@ export const ANALYSIS_MODE_OPTIONS: Array<{
 
 export const REVIEW_TABS: Array<{ id: ReviewTab; label: string }> = [
   { id: 'overview', label: 'Overview' },
-  { id: 'retrieval', label: 'Retrieval' },
   { id: 'debate', label: 'Multi-Agent Debate' },
   { id: 'findings', label: 'Findings' },
 ];

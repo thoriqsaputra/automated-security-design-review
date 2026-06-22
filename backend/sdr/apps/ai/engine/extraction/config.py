@@ -9,7 +9,7 @@ from sdr.core.config import settings
 class ExtractionConfig:
     standard_extraction_max_workers: int = 3
     diagram_requirement_extraction_max_concurrency: int = 3
-    standard_extraction_chunk_token_target: int = 3200
+    standard_extraction_chunk_token_target: int = 4500
 
     @classmethod
     def from_settings(cls) -> "ExtractionConfig":

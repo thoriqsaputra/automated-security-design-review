@@ -16,6 +16,12 @@ class AnalysisPipelineConfig:
     batch_debate_soft_confidence_threshold: float = 0.65
     batch_debate_require_citations_for_not_met: bool = True
     batch_debate_ungrounded_not_met_policy: str = "preserve_not_met"
+    batch_debate_child_refine_enabled: bool = True
+    batch_debate_child_refine_max_context_chunks: int = 6
+    batch_debate_child_refine_include_source_blocks: bool = True
+    batch_debate_child_refine_source_block_limit: int = 8
+    batch_debate_child_refine_enable_keyword_boost: bool = True
+    batch_debate_child_refine_enable_rerank: bool = True
     debate_context_supplemental_block_limit: int = 12
     debate_warn_context_chunk_threshold: int = 40
     parent_applicability_enabled: bool = True
@@ -55,6 +61,24 @@ class AnalysisPipelineConfig:
             batch_debate_ungrounded_not_met_policy=str(
                 getattr(settings, "AI_BATCH_DEBATE_UNGROUNDED_NOT_MET_POLICY", "preserve_not_met") or ""
             ).strip().lower(),
+            batch_debate_child_refine_enabled=bool(
+                getattr(settings, "AI_BATCH_DEBATE_CHILD_REFINE_ENABLED", True)
+            ),
+            batch_debate_child_refine_max_context_chunks=max(
+                1, int(getattr(settings, "AI_BATCH_DEBATE_CHILD_REFINE_MAX_CONTEXT_CHUNKS", 6))
+            ),
+            batch_debate_child_refine_include_source_blocks=bool(
+                getattr(settings, "AI_BATCH_DEBATE_CHILD_REFINE_INCLUDE_SOURCE_BLOCKS", True)
+            ),
+            batch_debate_child_refine_source_block_limit=max(
+                0, int(getattr(settings, "AI_BATCH_DEBATE_CHILD_REFINE_SOURCE_BLOCK_LIMIT", 8))
+            ),
+            batch_debate_child_refine_enable_keyword_boost=bool(
+                getattr(settings, "AI_BATCH_DEBATE_CHILD_REFINE_ENABLE_KEYWORD_BOOST", True)
+            ),
+            batch_debate_child_refine_enable_rerank=bool(
+                getattr(settings, "AI_BATCH_DEBATE_CHILD_REFINE_ENABLE_RERANK", True)
+            ),
             debate_context_supplemental_block_limit=max(
                 0,
                 int(getattr(settings, "AI_DEBATE_CONTEXT_SUPPLEMENTAL_BLOCK_LIMIT", 12)),

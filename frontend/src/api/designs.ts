@@ -1,4 +1,5 @@
 import api from './client';
+import type { RetrievalVisualization } from './reviews';
 
 export interface Design {
   id: number;
@@ -10,6 +11,15 @@ export interface Design {
   updated_at: string;
   status: string;
   processing_error: string | null;
+  document_sha256: string | null;
+  prepared_document_sha256: string | null;
+  preparation_status: string;
+  preparation_error: string | null;
+  prepared_at: string | null;
+  active_preparation_id: number | null;
+  preparation_snapshot_json: RetrievalVisualization | null;
+  preparation_progress: Record<string, unknown> | null;
+  can_start_analysis: boolean;
 }
 
 export interface DesignDetail extends Design {
@@ -34,3 +44,6 @@ export const createDesign = (name: string, file: File) => {
 };
 
 export const deleteDesign = (id: number) => api.delete(`/designs/${id}`);
+
+export const retryDesignPreparation = (id: number) =>
+  api.post<DesignDetail>(`/designs/${id}/prepare`);

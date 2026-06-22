@@ -1,11 +1,14 @@
+import concurrent.futures
 import logging
 import json
 import threading
+import time
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 
 from celery import shared_task
 from sqlalchemy import delete, select, update
+from sqlalchemy.orm import joinedload
 
 from sdr.core.database import SessionLocal
 from sdr.core.config import settings
@@ -382,11 +385,17 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                     start_page = summary.get("start_page")
                     end_page = summary.get("end_page")
 
+                    extraction_phase_started_at = time.monotonic()
                     requirements_by_section = extract_requirements_from_document(
                         source_doc,
                         start_page=start_page,
                         end_page=end_page,
                         progress_callback=_update_progress
+                    )
+                    logger.info(
+                        "run_standard_ingestion_job_sync: [TIMING] requirement extraction phase took %.2fs for job=%s",
+                        time.monotonic() - extraction_phase_started_at,
+                        job.id,
                     )
                     
                     if not requirements_by_section:
@@ -508,41 +517,73 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
             job_type="standard_ingestion",
             job_id=job.id,
         ):
-            if items_to_embed:
-                try:
-                    generate_and_store_embeddings(items_to_embed, job.id, summary)
-                except Exception as exc:
-                    logger.error("Error generating embeddings: %s", exc)
-                    summary['embeddings_failed'] = len(items_to_embed)
-
-            # Final extraction phase: derive diagram requirements from the raw text requirements.
+            # Pre-fetch diagram-extraction inputs up front (with `parent` eagerly
+            # loaded) so the diagram extraction call below has no further need to
+            # touch the ORM session — this lets it run in a background thread
+            # concurrently with embedding generation without racing on `db`.
             logger.info("Pre-fetching parameters for diagram requirement extraction, job %s", job.id)
             from sqlalchemy.orm.attributes import flag_modified
 
-            summary['detailed_progress'] = {'label': 'Extracting diagram requirements', 'percentage': 95}
+            summary['detailed_progress'] = {'label': 'Embedding & extracting diagram requirements', 'percentage': 95}
             job.summary_json = summary
             flag_modified(job, "summary_json")
             db.commit()
 
             diagram_req_params = db.execute(
                 select(CategoryParameterChild)
+                .options(joinedload(CategoryParameterChild.parent))
                 .join(CategoryParameterParent, CategoryParameterChild.parent_id == CategoryParameterParent.id)
                 .where(CategoryParameterParent.category_id == job.category_id)
                 .where(CategoryParameterParent.ingestion_job_id == job.id)
                 .order_by(CategoryParameterChild.id)
             ).scalars().all()
+            diagram_req_params = list(diagram_req_params)
 
+            # Embedding generation (own DB session) and diagram requirement
+            # extraction (pure LLM calls, no DB access once params are pre-loaded
+            # above) are independent of each other — run them concurrently
+            # instead of back-to-back.
+            embeddings_exc: Optional[Exception] = None
             diagram_reqs: list = []
             diagram_exc: Optional[Exception] = None
-            if diagram_req_params:
-                try:
-                    diagram_reqs = extract_diagram_requirements(
-                        parameters=list(diagram_req_params),
+            concurrent_phase_started_at = time.monotonic()
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=2,
+                thread_name_prefix="EmbedDiagramPhase",
+            ) as phase_executor:
+                embed_future = None
+                if items_to_embed:
+                    embed_future = phase_executor.submit(
+                        generate_and_store_embeddings, items_to_embed, job.id, summary
+                    )
+                diagram_future = None
+                if diagram_req_params:
+                    diagram_future = phase_executor.submit(
+                        extract_diagram_requirements,
+                        parameters=diagram_req_params,
                         category_id=job.category_id,
                         ingestion_job_id=job.id,
                     )
-                except Exception as exc:
-                    diagram_exc = exc
+
+                if embed_future is not None:
+                    try:
+                        embed_future.result()
+                    except Exception as exc:
+                        embeddings_exc = exc
+                if diagram_future is not None:
+                    try:
+                        diagram_reqs = diagram_future.result()
+                    except Exception as exc:
+                        diagram_exc = exc
+            logger.info(
+                "run_standard_ingestion_job_sync: [TIMING] embedding+diagram-extraction concurrent phase took %.2fs for job=%s",
+                time.monotonic() - concurrent_phase_started_at,
+                job.id,
+            )
+
+            if embeddings_exc is not None:
+                logger.error("Error generating embeddings: %s", embeddings_exc)
+                summary['embeddings_failed'] = len(items_to_embed)
 
             # Persist diagram requirements
             logger.info("Persisting diagram requirements for job %s", job.id)

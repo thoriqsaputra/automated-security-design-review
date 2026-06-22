@@ -50,8 +50,18 @@ def list_reviews(
 
 @router.post("/", response_model=ReviewSchema, status_code=status.HTTP_201_CREATED)
 def create_review(payload: ReviewCreateSchema, db: Session = Depends(get_db)):
+    from sdr.apps.designs.models import Design
     from sdr.apps.standards.models import StandardIngestionJob, StandardCategory
     
+    design = db.get(Design, payload.design_id)
+    if not design:
+        raise HTTPException(status_code=400, detail="Design not found.")
+    if not getattr(design, "can_start_analysis", False):
+        raise HTTPException(
+            status_code=409,
+            detail="Design preparation is not ready. Wait for upload preparation to finish before starting analysis.",
+        )
+
     # Check category active job
     category = db.get(StandardCategory, payload.category_id)
     if not category:
@@ -69,7 +79,7 @@ def create_review(payload: ReviewCreateSchema, db: Session = Depends(get_db)):
         )
 
     review = Review(
-        design_id=payload.design_id,
+        design_id=design.id,
         category_id=category.id,
         ingestion_job_id=job.id,
         status=Review.STATUS_PENDING,
@@ -263,6 +273,11 @@ def trigger_review(
         
     if review.status in [Review.STATUS_RUNNING, Review.STATUS_COMPLETED_CLEAN, Review.STATUS_COMPLETED_WITH_FINDINGS]:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Review cannot be triggered in its current state")
+    if not getattr(review.design, "can_start_analysis", False):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Design preparation is not ready. Retry once the design is prepared.",
+        )
         
     try:
         # Clear old state if re-triggering a cancelled or failed review

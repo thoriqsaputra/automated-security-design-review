@@ -179,10 +179,35 @@ class DebateInputFactory:
                     continue
                 source_location = self.resolve_chunk_source_location(block_id, tsd_document)
                 text = ""
-                provenance = block_source_map.get(block_id) if isinstance(block_source_map, dict) else {}
+                provenance = (block_source_map.get(block_id) if isinstance(block_source_map, dict) else None) or {}
                 try:
-                    block = tsd_document.get_block_by_id(block_id) if tsd_document is not None else None
-                    text = getattr(block, "text", "") or ""
+                    if tsd_document is not None and hasattr(tsd_document, "get_block_window"):
+                        window = tsd_document.get_block_window(
+                            block_id,
+                            before=int(getattr(settings, "AI_DEBATE_SUPPLEMENTAL_BLOCK_WINDOW_BEFORE", 1)),
+                            after=int(getattr(settings, "AI_DEBATE_SUPPLEMENTAL_BLOCK_WINDOW_AFTER", 1)),
+                            char_budget=int(getattr(settings, "AI_DEBATE_SUPPLEMENTAL_BLOCK_CHAR_BUDGET", 2200)),
+                        )
+                        if window:
+                            text = window["text"]
+                            wx0, wy0, wx1, wy1 = window["bbox"]
+                            # Override with the UNION bbox spanning every merged
+                            # block, not just the originally matched block's single
+                            # line — otherwise the PDF viewer highlights only one
+                            # line of a multi-sentence quoted passage.
+                            source_location = {
+                                **source_location,
+                                "page": window["page_number"],
+                                "page_number": window["page_number"],
+                                "bbox": {"x0": wx0, "y0": wy0, "x1": wx1, "y1": wy1},
+                                "bbox_x0": wx0,
+                                "bbox_y0": wy0,
+                                "bbox_x1": wx1,
+                                "bbox_y1": wy1,
+                            }
+                    elif tsd_document is not None:
+                        block = tsd_document.get_block_by_id(block_id)
+                        text = getattr(block, "text", "") or ""
                 except Exception:
                     logger.warning(
                         "DebateInputFactory.build_context_chunk_map: failed to resolve block_id=%s",

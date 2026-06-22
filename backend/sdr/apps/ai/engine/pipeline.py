@@ -29,8 +29,14 @@ from sdr.apps.ai.engine.preparation.ingestion_service import IngestionService
 from sdr.apps.ai.engine.preparation.retrieval_service import RetrievalService
 from sdr.apps.ai.engine.reporting.overview_generator import OverviewGenerator
 from sdr.apps.ai.engine.reporting.retrieval_snapshot_builder import RetrievalSnapshotBuilder
+from sdr.apps.designs.preparation_store import (
+    DesignPreparationStore,
+    PreparationArtifactError,
+    PreparationNotReadyError,
+)
 from sdr.apps.reviews.models import Review
 from sdr.apps.reviews.models.choices import ReviewStatus
+from sdr.core.database import SessionLocal
 
 logger = logging.getLogger(__name__)
 
@@ -65,6 +71,10 @@ class TSDAnalysisPipeline:
         self.mediator_agent_factory = mediator_agent_factory or self._default_mediator_agent_factory
         self.run_state = ReviewRunStateService(workflow_repository=self.workflow_repository)
         self.snapshot_builder = RetrievalSnapshotBuilder(workflow_repository=self.workflow_repository)
+        self.preparation_store = DesignPreparationStore(
+            ingestion_service=self.ingestion,
+            retrieval_service=self.retrieval,
+        )
         self.diagram_analysis = DiagramAnalysisCoordinator(
             config=self.config,
             workflow_repository=self.workflow_repository,
@@ -122,23 +132,44 @@ class TSDAnalysisPipeline:
 
         try:
             self.run_state.update_stage(review, summary, "1_ingestion")
-            ingestion_output = self.ingestion.ingest(review)
-            if ingestion_output is None:
-                self.run_state.fail_review(review, "Failed to ingest TSD document.")
-                return summary
+            tsd_document = None
+            indexes = None
+            if getattr(getattr(review, "design", None), "can_start_analysis", False):
+                try:
+                    with SessionLocal() as db:
+                        _preparation, tsd_document, indexes = self.preparation_store.load_prepared_assets(
+                            db,
+                            review.design,
+                        )
+                    self.run_state.update_stage(review, summary, "2_retrieval")
+                    self.snapshot_builder.save(review, indexes)
+                except (PreparationNotReadyError, PreparationArtifactError) as exc:
+                    self.logger.error(
+                        "TSDAnalysisPipeline.run: preparation unavailable for review_id=%s: %s",
+                        review.id,
+                        exc,
+                    )
+                    self.run_state.fail_review(review, str(exc))
+                    return summary
 
-            tsd_document = ingestion_output.tsd_document
-            if not ingestion_output.is_valid_tsd:
-                summary.screened_out = True
-                self.run_state.fail_review(
-                    review,
-                    "Document failed TSD screening — does not appear to be a Technical Software Document.",
-                )
-                return summary
+            if tsd_document is None or indexes is None:
+                ingestion_output = self.ingestion.ingest(review)
+                if ingestion_output is None:
+                    self.run_state.fail_review(review, "Failed to ingest TSD document.")
+                    return summary
 
-            self.run_state.update_stage(review, summary, "2_retrieval")
-            indexes = self.retrieval.build_indexes(tsd_document)
-            self.snapshot_builder.save(review, indexes)
+                tsd_document = ingestion_output.tsd_document
+                if not ingestion_output.is_valid_tsd:
+                    summary.screened_out = True
+                    self.run_state.fail_review(
+                        review,
+                        "Document failed TSD screening — does not appear to be a Technical Software Document.",
+                    )
+                    return summary
+
+                self.run_state.update_stage(review, summary, "2_retrieval")
+                indexes = self.retrieval.build_indexes(tsd_document)
+                self.snapshot_builder.save(review, indexes)
 
             category = review.category or (review.ingestion_job.category if review.ingestion_job else None)
             if not category:

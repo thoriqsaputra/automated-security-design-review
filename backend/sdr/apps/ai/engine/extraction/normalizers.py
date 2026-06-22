@@ -121,6 +121,7 @@ def parse_json_with_repair(raw_text: str, *, llm_client, max_tokens: int) -> Any
             return json.loads(_sanitize_json_payload(content))
         except json.JSONDecodeError:
             pass
+        logger.warning("parse_json_with_repair: initial JSON parse failed, issuing repair LLM call.")
         repair_prompt = build_json_repair_prompt(content)
         repair_resp = llm_client.repair_json(user_prompt=repair_prompt, max_tokens=max_tokens)
         if repair_resp.error:

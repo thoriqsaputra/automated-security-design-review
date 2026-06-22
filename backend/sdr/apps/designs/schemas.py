@@ -14,6 +14,15 @@ class DesignSchema(BaseModel):
     updated_at: datetime
     status: str
     processing_error: Optional[str] = None
+    document_sha256: Optional[str] = None
+    prepared_document_sha256: Optional[str] = None
+    preparation_status: str = Field(default="queued")
+    preparation_error: Optional[str] = None
+    prepared_at: Optional[datetime] = None
+    active_preparation_id: Optional[int] = None
+    preparation_snapshot_json: Optional[dict] = None
+    preparation_progress: Optional[dict] = None
+    can_start_analysis: bool = False
 
     model_config = ConfigDict(from_attributes=True)
 
