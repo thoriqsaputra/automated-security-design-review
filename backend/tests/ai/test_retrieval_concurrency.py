@@ -127,49 +127,6 @@ def test_retrieve_many_returns_results_and_per_parameter_errors():
     assert results["1"].context_chunks == ["ctx-1"]
     assert results["2"].error == "backend down"
 
-
-def test_rag_gate_children_uses_retrieve_many_and_preserves_error_routing():
-    persisted = []
-    debated = []
-    coordinator = CategoryAnalysisCoordinator(
-        config=SimpleNamespace(batch_debate_enabled=True),
-        workflow_repository=SimpleNamespace(),
-        progress_service=SimpleNamespace(),
-        run_state_service=SimpleNamespace(),
-        text_debate_coordinator=SimpleNamespace(
-            retrieval=SimpleNamespace(
-                retrieve_many_for_parameters=lambda **kwargs: {
-                    "1": RetrievalResult(context_chunks=[]),
-                    "2": RetrievalResult(error="timeout"),
-                }
-            ),
-            run_batched_analysis_for_category=lambda **kwargs: debated.extend(
-                parameter.id for parameter in kwargs["parameters"]
-            ),
-        ),
-        diagram_analysis_coordinator=SimpleNamespace(),
-    )
-    coordinator._persist_rag_gate_not_met = lambda **kwargs: persisted.append(kwargs["child"].id)
-    coordinator.workflow_repository.list_control_summary_requirements = lambda **kwargs: []
-
-    coordinator._rag_gate_children(
-        review=SimpleNamespace(id=1),
-        category=SimpleNamespace(id=7, code="web_application"),
-        ingestion_job=SimpleNamespace(id=11),
-        applicable_cfsrs=[],
-        raw_parameters=[_parameter(1), _parameter(2)],
-        indexes=SimpleNamespace(),
-        tsd_document=SimpleNamespace(),
-        summary=AnalysisSummary(),
-        category_code="web_application",
-        killed_assumptions_memory=deque(),
-        parent_context_cache={},
-    )
-
-    assert persisted == [1]
-    assert debated == [2]
-
-
 def test_parent_applicability_gate_prefetches_without_changing_outcome(monkeypatch):
     from sdr.apps.ai.engine.debate import text_debate_coordinator as text_debate_module
 

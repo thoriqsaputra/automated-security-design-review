@@ -5,7 +5,6 @@ from collections import deque
 from typing import Any, Callable, Dict, List, Optional
 
 from sdr.apps.ai.client.session import build_tsd_analysis_session_id, job_session_context
-from sdr.apps.ai.engine.classification.asvs_level import classify_tsd_asvs_level
 from sdr.apps.ai.engine.classification.parent_applicability import classify_parent_applicability
 from sdr.apps.ai.engine.config import AnalysisPipelineConfig
 from sdr.apps.ai.engine.debate.category_analysis_coordinator import CategoryAnalysisCoordinator
@@ -54,7 +53,9 @@ class TSDAnalysisPipeline:
         self.ingestion = ingestion_service or IngestionService()
         self.retrieval = retrieval_service or RetrievalService()
         self.debate = debate_service or DebateService()
-        self.persistence = persistence_service or PersistenceService()
+        self.persistence = persistence_service or PersistenceService(
+            recommendation_generator=self._generate_not_met_recommendation,
+        )
         self.diagram_debate_service = diagram_debate_service or DiagramDebateService()
         self.workflow_repository = workflow_repository or SqlAlchemyReviewWorkflowRepository()
         self.overview_generator = overview_generator or OverviewGenerator()
@@ -96,6 +97,13 @@ class TSDAnalysisPipeline:
 
         return MediatorAgent()
 
+    def _generate_not_met_recommendation(self, **kwargs):
+        mediator = self.mediator_agent_factory()
+        generator = getattr(mediator, "generate_recommendation_for_not_met", None)
+        if not callable(generator):
+            return None
+        return generator(**kwargs)
+
     def run(self, review: Review) -> AnalysisSummary:
         self.logger.info(
             "TSDAnalysisPipeline.run: [START] review_id=%s design='%s'",
@@ -132,21 +140,6 @@ class TSDAnalysisPipeline:
             indexes = self.retrieval.build_indexes(tsd_document)
             self.snapshot_builder.save(review, indexes)
 
-            asvs_classification = self._classify_review_asvs_level(review, tsd_document)
-            effective_asvs_level = self._resolve_effective_asvs_level(review, asvs_classification)
-            summary.asvs = {
-                "classified_level": asvs_classification.get("level"),
-                "classification_confidence": asvs_classification.get("confidence"),
-                "classification_reasoning": asvs_classification.get("reasoning"),
-                "classification_evidence": asvs_classification.get("evidence", []),
-                "classification_error": asvs_classification.get("error"),
-                "definition_source": asvs_classification.get("definition_source"),
-                "definition_count": asvs_classification.get("definition_count"),
-                "override_level": getattr(review, "asvs_level_override", None),
-                "effective_level": effective_asvs_level,
-                "categories": {},
-            }
-
             category = review.category or (review.ingestion_job.category if review.ingestion_job else None)
             if not category:
                 self.run_state.complete_review(review, summary)
@@ -160,7 +153,6 @@ class TSDAnalysisPipeline:
                 indexes=indexes,
                 tsd_document=tsd_document,
                 summary=summary,
-                effective_asvs_level=effective_asvs_level,
                 killed_assumptions_memory=killed_assumptions_memory,
             )
 
@@ -185,61 +177,6 @@ class TSDAnalysisPipeline:
         finally:
             if "tsd_document" in locals():
                 tsd_document.cleanup_temporary_artifacts()
-
-    def _classify_review_asvs_level(self, review: Review, tsd_document) -> Dict[str, Any]:
-        try:
-            levels = []
-            definition_source = "missing"
-            ingestion_job_id = getattr(review, "ingestion_job_id", None)
-            if ingestion_job_id is None and getattr(review, "ingestion_job", None):
-                ingestion_job_id = getattr(review.ingestion_job, "id", None)
-            if ingestion_job_id is not None:
-                levels = self.workflow_repository.list_asvs_level_definitions(ingestion_job_id)
-                if levels:
-                    definition_source = "standard_document"
-            if not levels:
-                levels = [
-                    type("StaticLevel", (), {"level": 1, "code": "L1", "name": "Opportunistic", "description": "Baseline application security verification for common web applications.", "classification_guidance": "Use L1 when the TSD describes a standard application without high-value assets, regulated data, strong adversary assumptions, or extensive defense-in-depth controls."}),
-                    type("StaticLevel", (), {"level": 2, "code": "L2", "name": "Standard", "description": "Security verification for applications containing sensitive data or requiring meaningful assurance.", "classification_guidance": "Use L2 when the TSD describes sensitive data, authenticated business workflows, role-based access, payment or personal data processing, or a need for stronger control coverage than an opportunistic baseline."}),
-                    type("StaticLevel", (), {"level": 3, "code": "L3", "name": "Advanced", "description": "High-assurance verification for critical applications and high-value targets.", "classification_guidance": "Use L3 when the TSD describes critical systems, high-value assets, safety or mission impact, strong threat actors, strict regulatory obligations, or explicit high-assurance security architecture."}),
-                ]
-                definition_source = "static_fallback"
-            classification = classify_tsd_asvs_level(getattr(tsd_document, "full_text", "") or "", levels)
-            result = classification.to_dict()
-            result["definition_source"] = definition_source
-            result["definition_count"] = len(levels)
-            return result
-        except Exception as exc:
-            self.logger.exception(
-                "TSDAnalysisPipeline._classify_review_asvs_level: failed for review_id=%s",
-                getattr(review, "id", None),
-            )
-            return {
-                "level": 1,
-                "confidence": 0.0,
-                "reasoning": "ASVS classification failed; defaulted to L1.",
-                "evidence": [],
-                "error": str(exc),
-                "definition_source": "error",
-                "definition_count": 0,
-            }
-
-    def _resolve_effective_asvs_level(self, review: Review, classification: Dict[str, Any]) -> int:
-        override = getattr(review, "asvs_level_override", None)
-        try:
-            override_int = int(override) if override is not None else None
-        except (TypeError, ValueError):
-            override_int = None
-        if override_int in (1, 2, 3):
-            return override_int
-        level = classification.get("level")
-        try:
-            level_int = int(level) if level is not None else None
-        except (TypeError, ValueError):
-            level_int = None
-        if level_int in (1, 2, 3):
-            return level_int
-        return 1
 
     def _resolve_parameters(self, review: Review) -> tuple:
         category = review.category or (review.ingestion_job.category if review.ingestion_job else None)

@@ -220,6 +220,11 @@ export default function ReviewFindingsPanel(props: ReviewFindingsPanelProps) {
                               Jump to citation
                             </button>
                           )}
+                          {finding.confidence_score !== null && (
+                            <span className="text-[11px] font-medium text-text-muted px-2 py-0.5 rounded-full border border-surface-border/50 bg-midnight">
+                              {(finding.confidence_score * 100).toFixed(0)}% Conf.
+                            </span>
+                          )}
                           {finding.severity && (
                             <span className={`text-xs font-medium px-2 py-0.5 rounded-full border ${severityColors[finding.severity] || severityColors.info}`}>
                               {finding.severity}

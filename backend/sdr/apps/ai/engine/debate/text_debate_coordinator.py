@@ -81,7 +81,7 @@ class TextDebateCoordinator:
             parameters=parameters,
             execution_mode="single",
         )
-        category_stats = summary.asvs.setdefault("categories", {}).setdefault(category_code, {})
+        category_stats = summary.category_stats.setdefault(category_code, {})
         if int(category_stats.get("analysis_total_count") or 0) == 0 and parameters:
             self.progress_service.initialize_category_progress(
                 summary=summary,
@@ -204,7 +204,7 @@ class TextDebateCoordinator:
             parameters=parameters,
             execution_mode="batch",
         )
-        category_stats = summary.asvs.setdefault("categories", {}).setdefault(category_code, {})
+        category_stats = summary.category_stats.setdefault(category_code, {})
         if int(category_stats.get("analysis_total_count") or 0) == 0 and parameters:
             self.progress_service.initialize_category_progress(
                 summary=summary,
@@ -870,12 +870,18 @@ class TextDebateCoordinator:
             secondary_domains = classification.secondary_domains
             matched_domain_terms = classification.matched_terms
             classification_reason = classification.reason
-        domain_keywords.extend(DOMAIN_KEYWORDS.get(primary_domain, DOMAIN_KEYWORDS["general"]))
+        # The 5-bucket domain classifier only covers a handful of standard categories;
+        # most parents land in "general" with no real signal. Only inject the curated
+        # domain keywords when a domain was actually matched — for "general" parents,
+        # rely on the (now all-children) family scope terms below as the primary
+        # query-augmentation signal instead of the generic ["security", "control"] filler.
+        if primary_domain != "general":
+            domain_keywords.extend(DOMAIN_KEYWORDS.get(primary_domain, []))
         family_scope_terms = []
         raw_scope_parts = [
             (getattr(parent, "title", "") or "").strip(),
             (getattr(parent, "description", "") or "").strip(),
-            "\n".join(child_requirements[:4]),
+            "\n".join(child_requirements),
         ]
         for part in raw_scope_parts:
             family_scope_terms.extend(re.findall(r"[A-Za-z][A-Za-z0-9_-]{2,}", part))
@@ -894,7 +900,7 @@ class TextDebateCoordinator:
             "domain_classification_reason": classification_reason,
             "matched_domain_terms": matched_domain_terms,
             "generated_domain_keywords": list(dict.fromkeys(domain_keywords)),
-            "family_scope_terms": list(dict.fromkeys(family_scope_terms))[:12],
+            "family_scope_terms": list(dict.fromkeys(family_scope_terms))[:20],
             "retry_queries": [],
         }
 
@@ -978,6 +984,43 @@ class TextDebateCoordinator:
                 retrieved_context="\n\n".join(retrieval_result.context_chunks or []),
                 query_details=query_details,
             )
+
+            # Three-tier confidence policy: a single deterministic call with a
+            # narrow retrieval window must not be allowed to silently default
+            # uncertainty to "applicable" (the gate's previous behavior). Only the
+            # genuinely-ambiguous middle band gets a second chance with materially
+            # more retrieved context before any fallback applies.
+            retry_attempted = False
+            retry_floor = getattr(self.config, "parent_applicability_retry_confidence_floor", 0.35)
+            if (
+                not applicability.applicable
+                and retry_floor <= applicability.confidence < confidence_threshold
+                and hasattr(self.retrieval, "retrieve_for_parent_group")
+                and hasattr(self.retrieval, "get_parent_retrieval_retry_max_context_chunks")
+            ):
+                retry_attempted = True
+                self.run_state.raise_if_cancelled(review, phase="parent_applicability.retry")
+                expanded_retrieval_result = self.retrieval.retrieve_for_parent_group(
+                    parent=parent,
+                    child_parameters=child_parameters,
+                    category=category,
+                    ingestion_job=ingestion_job,
+                    indexes=indexes,
+                    tsd_document=tsd_document,
+                    query_details=query_details,
+                    max_context_chunks_override=self.retrieval.get_parent_retrieval_retry_max_context_chunks(),
+                )
+                applicability = classify_parent_applicability(
+                    category_code=category_code,
+                    version_label=version_label,
+                    parent_title=(getattr(parent, "title", "") or "").strip(),
+                    parent_description=(getattr(parent, "description", "") or "").strip(),
+                    child_requirements=child_requirement_texts,
+                    retrieved_context="\n\n".join(expanded_retrieval_result.context_chunks or []),
+                    query_details=query_details,
+                )
+                retrieval_result = expanded_retrieval_result
+
             parent_payload = {
                 "parent_id": getattr(parent, "id", None),
                 "parent_title": (getattr(parent, "title", "") or "").strip(),
@@ -988,6 +1031,13 @@ class TextDebateCoordinator:
                 "decision_mode": applicability.decision_mode,
                 "error": applicability.error,
                 "child_count": len(child_parameters),
+                "retry_attempted": retry_attempted,
+                "retrieved_chunk_ids": list(retrieval_result.source_block_ids or [])[:50],
+                "retrieval_query_details": {
+                    "parent_title": query_details.get("parent_title"),
+                    "primary_domain": query_details.get("primary_domain"),
+                    "family_scope_terms": query_details.get("family_scope_terms"),
+                },
             }
             summary.applicability["parents"].append(parent_payload)
 

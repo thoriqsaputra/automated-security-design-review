@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import type { CitationAnchor, Finding } from '../../../api/reviews';
+import type { CitationAnchor, Finding, FindingEvidenceSource } from '../../../api/reviews';
 import {
   formatLabel,
   formatValue,
@@ -211,6 +211,9 @@ interface FindingDetailsProps {
 
 export function FindingDetails({ finding, activeCitationId = null, onCitationSelect }: FindingDetailsProps) {
   const [activeAgentAudit, setActiveAgentAudit] = useState<string | null>('Hunter');
+  const evidenceSources = (finding.evidence_sources || []).filter(
+    (source): source is FindingEvidenceSource => Boolean(source?.key && source?.label),
+  );
 
   const auditItems = [
     { label: 'Finding ID', value: finding.id },
@@ -222,21 +225,26 @@ export function FindingDetails({ finding, activeCitationId = null, onCitationSel
   return (
     <div className="mt-4 space-y-4 border-t border-surface-border pt-4 md:pl-9">
       <TextBlock title="Description">{finding.description}</TextBlock>
-      <FieldGrid
-        items={[
-          { label: 'Met Status', value: finding.met_status ? formatLabel(finding.met_status) : null },
-          { label: 'Severity', value: finding.severity ? formatLabel(finding.severity) : null },
-          {
-            label: 'Confidence',
-            value: finding.confidence_score !== null ? `${(finding.confidence_score * 100).toFixed(0)}%` : null,
-          },
-          { label: 'Severity Score', value: finding.severity_score !== null ? finding.severity_score.toFixed(1) : null },
-          { label: 'Finding Type', value: formatLabel(finding.finding_type) },
-        ]}
-      />
 
       <TextBlock title="Reason">{finding.reason}</TextBlock>
       <TextBlock title="Recommendation">{finding.recommendation}</TextBlock>
+
+      {evidenceSources.length > 0 && (
+        <section className="space-y-3 rounded-xl border border-surface-border bg-surface-base/50 p-4">
+          <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Evidence Sources</p>
+          <div className="flex flex-wrap gap-2">
+            {evidenceSources.map((source) => (
+              <span
+                key={source.key}
+                className="inline-flex items-center gap-2 rounded-full border border-surface-border bg-midnight px-3 py-1 text-xs text-text-secondary"
+              >
+                <span className="font-semibold text-text-primary">{source.label}</span>
+                {source.count > 0 && <span className="opacity-70">{source.count}</span>}
+              </span>
+            ))}
+          </div>
+        </section>
+      )}
 
       <section className="space-y-3 rounded-xl border border-surface-border bg-surface-base/50 p-4">
         <FieldGrid
@@ -362,6 +370,9 @@ export function FindingDetails({ finding, activeCitationId = null, onCitationSel
                   <p className="text-[10px] font-mono text-text-muted mb-1 flex flex-wrap items-center gap-2">
                     <span className="bg-midnight px-1.5 py-0.5 rounded">Page {citation.page_number}</span>
                     <span className="bg-midnight px-1.5 py-0.5 rounded">{citation.anchor_type}</span>
+                    {citation.retrieval_origin_label && (
+                      <span className="bg-midnight px-1.5 py-0.5 rounded">{citation.retrieval_origin_label}</span>
+                    )}
                     <span className="opacity-70 break-all">{citation.block_id}</span>
                   </p>
                   {citation.quoted_text && (

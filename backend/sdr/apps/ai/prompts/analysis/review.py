@@ -200,40 +200,6 @@ RETRIEVED TSD CONTEXT:
 
 
 # ---------------------------------------------------------------------------
-# ASVS Level Classification
-# ---------------------------------------------------------------------------
-
-ASVS_LEVEL_CLASSIFICATION_SYSTEM_PROMPT = (
-    "You classify application technical design documents against OWASP ASVS "
-    "levels. Prefer the lowest level that fits the documented risk and assurance "
-    "needs. Return strict JSON only."
-)
-
-
-def build_asvs_level_classification_prompt(
-    definitions: str,
-    sample_text: str,
-) -> str:
-    return f"""\
-Classify this Technical Software Document into exactly one OWASP ASVS verification level.
-
-Use these level definitions:
-{definitions}
-
-Return only valid JSON:
-{{
-  "level": 1 | 2 | 3,
-  "confidence": 0.0,
-  "reasoning": "short explanation",
-  "evidence": ["short quote or signal", "..."]
-}}
-
-TSD SAMPLE:
-{sample_text}
-"""
-
-
-# ---------------------------------------------------------------------------
 # Contract Synthesis
 # ---------------------------------------------------------------------------
 
@@ -275,13 +241,11 @@ __all__ = [
     "TSD_SCREENING_SYSTEM_PROMPT",
     "SEVERITY_JUSTIFICATION_SYSTEM_PROMPT",
     "PARENT_APPLICABILITY_SYSTEM_PROMPT",
-    "ASVS_LEVEL_CLASSIFICATION_SYSTEM_PROMPT",
     "CONTRACT_SYNTHESIS_SYSTEM_PROMPT",
     # Prompt builders
     "build_tsd_screening_prompt",
     "build_severity_justification_prompt",
     "build_parent_applicability_prompt",
-    "build_asvs_level_classification_prompt",
     "build_contract_synthesis_prompt",
     "build_contract_repair_prompt",
 ]

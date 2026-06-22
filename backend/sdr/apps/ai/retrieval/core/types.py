@@ -53,6 +53,7 @@ class AdvancedRetrievalConfig:
 class RetrievalResult:
     context_chunks: List[str] = field(default_factory=list)
     source_block_ids: List[str] = field(default_factory=list)
+    block_source_map: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     diagram_block_ids: List[str] = field(default_factory=list)
     strategy_used: RetrievalStrategy = RetrievalStrategy.VECTOR_ONLY
     query_embedding: List[float] = field(default_factory=list)

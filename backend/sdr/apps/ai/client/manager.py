@@ -47,9 +47,7 @@ class AIServiceManager:
             'embedding': getattr(settings, 'AI_MODEL_EMBEDDING', 'nvidia/nv-embedqa-e5-v5'),
             'fallback': getattr(settings, 'AI_MODEL_FALLBACK', 'meta/llama-3.1-8b-instruct'),
             'long_context': getattr(settings, 'AI_MODEL_LONG_CONTEXT', 'meta/llama-3.1-70b-instruct'),
-            'tsd_asvs_level_classification': getattr(settings, 'AI_MODEL_TSD_ASVS_LEVEL_CLASSIFICATION', 'meta/llama-3.1-8b-instruct'),
             'parent_applicability': getattr(settings, 'AI_MODEL_PARENT_APPLICABILITY', 'meta/llama-3.1-8b-instruct'),
-            'cfsr_extraction': getattr(settings, 'AI_MODEL_CFSR_EXTRACTION', 'meta/llama-3.1-8b-instruct'),
         }
         return models.get(component)
 

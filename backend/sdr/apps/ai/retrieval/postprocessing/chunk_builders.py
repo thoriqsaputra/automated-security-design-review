@@ -95,7 +95,7 @@ def graph_response_to_candidates(graph_response: GraphSearchResponse) -> List[Re
         candidates.append(
             RetrievalCandidate(
                 id=f"graph:{entity.entity_id}:{idx}",
-                source_type="raptor",
+                source_type="graph",
                 text=text,
                 score=float(result.relevance_score),
                 block_ids=list(result.source_block_ids),

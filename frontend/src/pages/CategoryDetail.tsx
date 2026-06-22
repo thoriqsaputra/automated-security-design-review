@@ -2,7 +2,6 @@ import { ArrowLeft, Upload } from 'lucide-react';
 import { useNavigate, useParams } from 'react-router-dom';
 import Card from '../components/ui/Card';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
-import AsvsDefinitionsModal from '../features/standards/components/AsvsDefinitionsModal';
 import CategoryJobsSection from '../features/standards/components/CategoryJobsSection';
 import CategoryParametersPanel from '../features/standards/components/CategoryParametersPanel';
 import CategoryUploadModal from '../features/standards/components/CategoryUploadModal';
@@ -26,14 +25,7 @@ export default function CategoryDetail() {
     setStartPage,
     endPage,
     setEndPage,
-    levelDefinitionStartPage,
-    setLevelDefinitionStartPage,
-    levelDefinitionEndPage,
-    setLevelDefinitionEndPage,
     uploading,
-    definitionsJob,
-    definitions,
-    definitionsLoading,
     activeTab,
     setActiveTab,
     pageSize,
@@ -49,15 +41,11 @@ export default function CategoryDetail() {
     setSearchInput,
     commitSearch,
     clearFilters,
-    filterAsvsLevel,
-    setFilterAsvsLevel,
     feedback,
     handleActivate,
     handleUpload,
     handleDeleteJob,
     handleCancelJob,
-    openDefinitions,
-    closeDefinitions,
     handleDeleteParent,
     handleDeleteChild,
     filteredParameters,
@@ -115,7 +103,6 @@ export default function CategoryDetail() {
         onActivate={(jobId) => void handleActivate(jobId)}
         onDelete={(jobId) => void handleDeleteJob(jobId)}
         onCancel={(jobId) => void handleCancelJob(jobId)}
-        onOpenDefinitions={(job) => void openDefinitions(job)}
       />
 
       <CategoryParametersPanel
@@ -126,8 +113,6 @@ export default function CategoryDetail() {
         searchInput={searchInput}
         onSearchInputChange={setSearchInput}
         onSearchCommit={commitSearch}
-        filterAsvsLevel={filterAsvsLevel}
-        onFilterAsvsLevelChange={setFilterAsvsLevel}
         onClearFilters={clearFilters}
         parameters={parameters}
         filteredParameters={filteredParameters}
@@ -158,22 +143,11 @@ export default function CategoryDetail() {
         file={file}
         startPage={startPage}
         endPage={endPage}
-        levelDefinitionStartPage={levelDefinitionStartPage}
-        levelDefinitionEndPage={levelDefinitionEndPage}
         onClose={() => setShowUpload(false)}
         onFileChange={setFile}
         onStartPageChange={setStartPage}
         onEndPageChange={setEndPage}
-        onLevelDefinitionStartPageChange={setLevelDefinitionStartPage}
-        onLevelDefinitionEndPageChange={setLevelDefinitionEndPage}
         onSubmit={() => void handleUpload()}
-      />
-
-      <AsvsDefinitionsModal
-        definitionsJob={definitionsJob}
-        definitions={definitions}
-        loading={definitionsLoading}
-        onClose={closeDefinitions}
       />
     </div>
   );

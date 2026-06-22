@@ -3,15 +3,10 @@ from __future__ import annotations
 import concurrent.futures
 import logging
 import threading
-from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional
 
 from sdr.apps.ai.prompts.extraction import (
-    ASVS_LEVEL_DEFINITIONS_EXTRACTION_SYSTEM_PROMPT,
-    CFSR_EXTRACTION_SYSTEM_PROMPT,
     DIAGRAM_REQ_EXTRACTION_SYSTEM_PROMPT,
-    build_asvs_level_definitions_extraction_prompt,
-    build_cfsr_extraction_prompt,
     build_diagram_req_extraction_prompt,
     build_hierarchical_extraction_prompt,
 )
@@ -22,12 +17,8 @@ from sdr.apps.standards.models import StandardSourceDocument
 from .config import ExtractionConfig
 from .document_reader import StandardDocumentReader
 from .llm_client import ExtractionLLMClient
-from .page_detection import ASVSPageRangeDetectionService, ASVSRequirementLevelDetectionService
 from .normalizers import (
-    _backfill_requirement_levels,
     _canonicalize_diagram_requirements,
-    _clean_asvs_level_definitions,
-    _coerce_asvs_level,
     _count_tokens,
     _remove_table_of_contents,
     clean_structured_requirements,
@@ -43,7 +34,7 @@ def _extract_document_requirements(
     *,
     document_reader: StandardDocumentReader,
     structured_extractor: "StructuredRequirementExtractionService",
-    requirement_level_detector: Optional[ASVSRequirementLevelDetectionService],
+    requirement_level_detector: Optional[Any],
     config: ExtractionConfig,
     source_doc: StandardSourceDocument,
     start_page: Optional[int] = None,
@@ -188,89 +179,7 @@ def _extract_document_requirements(
         sum(len(v) for v in merged.values()),
     )
 
-    if requirement_level_detector and merged:
-        detected = requirement_level_detector.detect(
-            source_doc,
-            start_page=start_page,
-            end_page=end_page,
-        )
-        backfilled = _backfill_requirement_levels(merged, detected.levels)
-        logger.info(
-            "extract_requirements_from_document: backfilled %d ASVS level(s) from deterministic PDF parsing. indexed_rows=%d matched_pages=%d source=%s",
-            backfilled,
-            len(detected.levels),
-            detected.matched_pages,
-            detected.source,
-        )
     return merged
-
-
-class ASVSLevelDefinitionExtractionService:
-    def __init__(
-        self,
-        *,
-        document_reader: StandardDocumentReader,
-        llm_client: ExtractionLLMClient,
-    ) -> None:
-        self.document_reader = document_reader
-        self.llm_client = llm_client
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-
-    def extract(
-        self,
-        source_doc: StandardSourceDocument,
-        *,
-        start_page: Optional[int] = None,
-        end_page: Optional[int] = None,
-    ) -> List[Dict[str, Any]]:
-        self.logger.info(
-            "extract_asvs_level_definitions_from_document: [ENTRY] standard_id=%s name='%s' pages=%s-%s",
-            source_doc.id,
-            source_doc.name,
-            start_page,
-            end_page,
-        )
-        try:
-            content = self.document_reader.read_source_document(
-                source_doc,
-                start_page=start_page,
-                end_page=end_page,
-            )
-            source_doc_text = (content or {}).get("text") or ""
-        except Exception as exc:
-            self.logger.exception("extract_asvs_level_definitions_from_document: failed to read document: %s", exc)
-            return []
-
-        source_doc_text = _remove_table_of_contents(source_doc_text)
-        if not source_doc_text.strip():
-            self.logger.warning("extract_asvs_level_definitions_from_document: no text extracted")
-            return []
-
-        prompt = build_asvs_level_definitions_extraction_prompt(source_doc_text)
-        try:
-            response = self.llm_client.complete_json(
-                system_prompt=ASVS_LEVEL_DEFINITIONS_EXTRACTION_SYSTEM_PROMPT,
-                user_prompt=prompt,
-                component="standard_extraction",
-                temperature=0.0,
-                max_tokens=1800,
-                response_format={"type": "json_object"},
-            )
-            if response.error or not response.content:
-                self.logger.warning(
-                    "extract_asvs_level_definitions_from_document: LLM error=%s",
-                    response.error,
-                )
-                return []
-            parsed = parse_json_with_repair(
-                response.content or "{}",
-                llm_client=self.llm_client,
-                max_tokens=1800,
-            )
-            return _clean_asvs_level_definitions(parsed)
-        except Exception as exc:
-            self.logger.exception("extract_asvs_level_definitions_from_document: failed: %s", exc)
-            return []
 
 
 class StructuredRequirementExtractionService:
@@ -335,7 +244,7 @@ class RequirementDocumentExtractionService:
         *,
         document_reader: StandardDocumentReader,
         structured_extractor: StructuredRequirementExtractionService,
-        requirement_level_detector: Optional[ASVSRequirementLevelDetectionService] = None,
+        requirement_level_detector: Optional[Any] = None,
         config: ExtractionConfig,
         ) -> None:
         self.document_reader = document_reader
@@ -392,9 +301,8 @@ class DiagramRequirementExtractionService:
             stable_key_val = getattr(param, "stable_key", "")
             req_text = getattr(param, "requirement_text", "")
             details = getattr(param, "details", "") or ""
-            level = getattr(param, "asvs_level", None) or "unknown"
             parent_title = getattr(getattr(param, "parent", None), "title", "") or ""
-            line = f"[{stable_key_val}] (L{level}) [{parent_title}] {req_text}"
+            line = f"[{stable_key_val}] [{parent_title}] {req_text}"
             if details:
                 line += f" | {details[:120]}"
             param_lines.append(line)
@@ -462,7 +370,6 @@ class DiagramRequirementExtractionService:
                         "source_requirement_key": str(item.get("source_requirement_id", "composite")).strip(),
                         "requirement_text": req_text[:200],
                         "verification_hint": str(item.get("verification_hint", "")).strip(),
-                        "asvs_level": _coerce_asvs_level(item.get("asvs_level")),
                         "parent_section": str(item.get("parent_section", "General")).strip()[:255],
                     }
                 )
@@ -503,357 +410,14 @@ class DiagramRequirementExtractionService:
             all_results.extend(ordered_results.get(batch_index, []))
         all_results = _canonicalize_diagram_requirements(all_results)
 
-        ordinal_counters = {}
-        for item in all_results:
-            level = item.get("asvs_level") or 0
-            ordinal_counters[level] = ordinal_counters.get(level, 0) + 1
-            item["ordinal"] = ordinal_counters[level]
+        for ordinal, item in enumerate(all_results, start=1):
+            item["ordinal"] = ordinal
 
         self.logger.info("extract_diagram_requirements: concurrency=%s", probe.snapshot().to_dict())
         self.logger.info(
             "extract_diagram_requirements: generated %d diagram requirements from %d text parameters (category_id=%s, job_id=%s)",
             len(all_results),
             len(parameters),
-            category_id,
-            ingestion_job_id,
-        )
-        return all_results
-
-
-class ControlFamilySummaryExtractionService:
-    """
-    Distills raw CategoryParameterChild records into 3-5 per-family summary
-    requirements (CFSRs) per ASVS level, optimised for text-based TSD debate.
-
-    Groups parameters by parent (control family), calls the LLM once per group,
-    and returns a list of dicts ready for DB insertion.
-    """
-
-    def __init__(
-        self,
-        *,
-        llm_client: ExtractionLLMClient,
-        config: ExtractionConfig,
-    ) -> None:
-        self.llm_client = llm_client
-        self.config = config
-        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-
-    def extract(self, *, parameters: list, category_id: int, ingestion_job_id: int) -> list:
-        if not parameters:
-            self.logger.info("ControlFamilySummaryExtractionService.extract: no parameters provided.")
-            return []
-
-        # Build thread-safe snapshots so CFSR extraction does not depend on
-        # ORM relationship state crossing thread boundaries.
-        parameter_snapshots: List[Dict[str, Any]] = []
-        for param in parameters:
-            parent = getattr(param, "parent", None)
-            parent_id = getattr(param, "parent_id", None)
-            if parent_id is None and parent is not None:
-                parent_id = getattr(parent, "id", None)
-            parameter_snapshots.append(
-                {
-                    "parameter_id": getattr(param, "id", None),
-                    "stable_key": getattr(param, "stable_key", ""),
-                    "requirement_text": getattr(param, "requirement_text", "") or "",
-                    "details": getattr(param, "details", "") or "",
-                    "asvs_level": getattr(param, "asvs_level", None),
-                    "parent_id": parent_id,
-                    "parent_title": (getattr(parent, "title", None) or "General") if parent is not None else "General",
-                }
-            )
-
-        # Group by stable scalar FK, not by relationship object.
-        parents_map: Dict[Any, Any] = {}
-        for snapshot in parameter_snapshots:
-            parent_id = snapshot.get("parent_id")
-            if parent_id not in parents_map:
-                parents_map[parent_id] = (snapshot.get("parent_title") or "General", [])
-            parents_map[parent_id][1].append(snapshot)
-
-        parent_groups = list(parents_map.values())
-        total_groups = len(parent_groups)
-        max_concurrency = max(
-            1,
-            min(self.config.cfsr_extraction_max_concurrency, total_groups),
-        )
-        probe = ConcurrencyProbe(max_concurrency=max_concurrency)
-        probe.mark_submitted(total_groups)
-
-        def _process_parent_group(group_index: int, parent_title: str, children: list) -> tuple:
-            thread_name = threading.current_thread().name
-            parent_section = parent_title or "General"
-            self.logger.info(
-                "ControlFamilySummaryExtractionService: [GROUP %d/%d] START thread=%s parent='%s' children=%d",
-                group_index + 1,
-                total_groups,
-                thread_name,
-                parent_section,
-                len(children),
-            )
-
-            param_lines = []
-            child_id_to_stable_key: Dict[str, str] = {}
-            for child_index, child in enumerate(children):
-                real_key = str(child.get("stable_key", "") or "")
-                prompt_id = f"child-{child_index + 1:03d}"
-                child_id_to_stable_key[prompt_id] = real_key
-                text = str(child.get("requirement_text", "") or "")
-                details = str(child.get("details", "") or "")
-                level = child.get("asvs_level", None) or "unknown"
-                line = f"[{prompt_id}] (L{level}) {text}"
-                if details:
-                    line += f" | {details[:120]}"
-                param_lines.append(line)
-
-            requirements_text = "\n".join(param_lines)
-            response = self.llm_client.complete_json(
-                system_prompt=CFSR_EXTRACTION_SYSTEM_PROMPT,
-                user_prompt=build_cfsr_extraction_prompt(
-                    requirements_text=requirements_text,
-                    parent_section=parent_section,
-                    max_count=self.config.cfsr_max_per_parent,
-                ),
-                component="cfsr_extraction",
-                temperature=0.0,
-                max_tokens=4096,
-                response_format={"type": "json_object"},
-            )
-            if response.error:
-                self.logger.error(
-                    "ControlFamilySummaryExtractionService: LLM error for group %d parent='%s': %s",
-                    group_index,
-                    parent_section,
-                    response.error,
-                )
-                return group_index, []
-            try:
-                parsed = parse_json_response(response.content or "{}")
-            except Exception as exc:
-                self.logger.error(
-                    "ControlFamilySummaryExtractionService: JSON parse error for group %d: %s",
-                    group_index,
-                    exc,
-                )
-                return group_index, []
-
-            parent_id = children[0].get("parent_id") if children else None
-            if parent_id is None:
-                self.logger.error(
-                    "ControlFamilySummaryExtractionService: skipping group %d parent='%s' because parent_id is missing. child_keys=%s child_ids=%s",
-                    group_index,
-                    parent_section,
-                    [child.get("stable_key") for child in children],
-                    [child.get("parameter_id") for child in children],
-                )
-                return group_index, []
-            results = []
-            ordinal_counters: Dict[Any, int] = {}
-            seen_keys_in_group: set = set()
-            for item in parsed.get("summary_requirements") or []:
-                if not isinstance(item, dict):
-                    continue
-                req_text = str(item.get("requirement_text", "")).strip()
-                if not req_text:
-                    continue
-                level = _coerce_asvs_level(item.get("asvs_level"))
-                ordinal_counters[level] = ordinal_counters.get(level, 0) + 1
-                # Always include group_index so keys from different parent groups
-                # never collide even if the LLM produces the same raw stable_key.
-                raw_key = str(item.get("stable_key", "")).strip() or f"cfsr-L{level}-{ordinal_counters[level]}"
-                stable_key_val = f"job{ingestion_job_id}-g{group_index}-{raw_key}"
-                # Deduplicate within a group in case the LLM emits the same key twice
-                if stable_key_val in seen_keys_in_group:
-                    stable_key_val = f"{stable_key_val}-dup{ordinal_counters[level]}"
-                seen_keys_in_group.add(stable_key_val)
-                covered_raw = item.get("covered_child_keys")
-                if not isinstance(covered_raw, list):
-                    covered_raw = []
-                covered = []
-                for ck in covered_raw:
-                    ck_str = str(ck).strip()
-                    resolved = child_id_to_stable_key.get(ck_str)
-                    if resolved:
-                        covered.append(resolved)
-                    elif ck_str in child_id_to_stable_key.values():
-                        covered.append(ck_str)
-                    else:
-                        self.logger.debug(
-                            "ControlFamilySummaryExtractionService: group %d parent='%s' "
-                            "covered_child_keys entry '%s' did not resolve to any known child id",
-                            group_index,
-                            parent_section,
-                            ck_str,
-                        )
-                results.append({
-                    "category_id": category_id,
-                    "ingestion_job_id": ingestion_job_id,
-                    "parent_id": parent_id,
-                    "asvs_level": level,
-                    "stable_key": stable_key_val,
-                    "requirement_text": req_text[:200],
-                    "analysis_hint": str(item.get("analysis_hint", "")).strip(),
-                    "covered_child_keys": covered,
-                    "ordinal": ordinal_counters.get(level, 1),
-                })
-
-            # Pass A: merge near-duplicate CFSRs (same security concept, different wording)
-            # Runs BEFORE the cfsr_max_per_parent cap so two near-duplicates that
-            # straddle the cutoff get folded into one (combining their
-            # covered_child_keys) instead of one being truncated away unmerged.
-            _DEDUP_THRESHOLD = 0.65
-            merged: list = []
-            for r in results:
-                matched = False
-                for existing in merged:
-                    ratio = SequenceMatcher(
-                        None,
-                        r["requirement_text"].lower(),
-                        existing["requirement_text"].lower(),
-                    ).ratio()
-                    if ratio >= _DEDUP_THRESHOLD:
-                        for ck in r["covered_child_keys"]:
-                            if ck not in existing["covered_child_keys"]:
-                                existing["covered_child_keys"].append(ck)
-                        self.logger.info(
-                            "ControlFamilySummaryExtractionService: group %d merged near-duplicate CFSR "
-                            "(ratio=%.2f): '%s' → '%s'",
-                            group_index,
-                            ratio,
-                            r["requirement_text"][:60],
-                            existing["requirement_text"][:60],
-                        )
-                        matched = True
-                        break
-                if not matched:
-                    merged.append(r)
-            results = merged
-
-            cap = getattr(self.config, "cfsr_max_per_parent", 5)
-            if len(results) > cap:
-                self.logger.warning(
-                    "ControlFamilySummaryExtractionService: group %d parent='%s' produced %d CFSRs "
-                    "after dedup, capping to %d",
-                    group_index,
-                    parent_section,
-                    len(results),
-                    cap,
-                )
-                results = results[:cap]
-
-            # Pass B: enforce covered_child_keys exclusivity (each child in exactly one CFSR)
-            _seen_child_keys: set = set()
-            for r in results:
-                unique = [ck for ck in r["covered_child_keys"] if ck not in _seen_child_keys]
-                if len(unique) < len(r["covered_child_keys"]):
-                    self.logger.debug(
-                        "ControlFamilySummaryExtractionService: group %d removed %d overlapping child keys from cfsr=%s",
-                        group_index,
-                        len(r["covered_child_keys"]) - len(unique),
-                        r.get("stable_key"),
-                    )
-                r["covered_child_keys"] = unique
-                _seen_child_keys.update(unique)
-
-            # Orphan coverage guarantee: assign any child the LLM missed to the closest CFSR
-            if results:
-                all_assigned: set = set()
-                for r in results:
-                    all_assigned.update(r.get("covered_child_keys", []))
-                orphan_real_keys = [
-                    real_key
-                    for real_key in child_id_to_stable_key.values()
-                    if real_key not in all_assigned
-                ]
-                if orphan_real_keys:
-                    child_text_by_key = {
-                        getattr(p, "stable_key", ""): getattr(p, "requirement_text", "")
-                        for p in children
-                    }
-                    cfsr_texts = [r.get("requirement_text", "") for r in results]
-                    for orphan_key in orphan_real_keys:
-                        orphan_text = child_text_by_key.get(orphan_key, "")
-                        best_idx = max(
-                            range(len(cfsr_texts)),
-                            key=lambda i: SequenceMatcher(None, orphan_text, cfsr_texts[i]).ratio(),
-                        )
-                        results[best_idx]["covered_child_keys"].append(orphan_key)
-                        self.logger.debug(
-                            "ControlFamilySummaryExtractionService: orphan child=%s reassigned to cfsr=%s",
-                            orphan_key,
-                            results[best_idx].get("stable_key"),
-                        )
-                    self.logger.info(
-                        "ControlFamilySummaryExtractionService: group %d reassigned %d orphan children to existing CFSRs",
-                        group_index,
-                        len(orphan_real_keys),
-                    )
-
-            # Drop any CFSR that still covers nothing after orphan reassignment had
-            # its chance to backfill coverage — these are pure LLM hallucinations.
-            zero_coverage = [r for r in results if not r["covered_child_keys"]]
-            if zero_coverage:
-                self.logger.warning(
-                    "ControlFamilySummaryExtractionService: group %d parent='%s' dropping %d CFSR(s) "
-                    "with zero covered children: %s",
-                    group_index,
-                    parent_section,
-                    len(zero_coverage),
-                    [r.get("stable_key") for r in zero_coverage],
-                )
-                results = [r for r in results if r["covered_child_keys"]]
-
-            self.logger.info(
-                "ControlFamilySummaryExtractionService: [GROUP %d/%d] FINISH thread=%s generated=%d",
-                group_index + 1,
-                total_groups,
-                thread_name,
-                len(results),
-            )
-            return group_index, results
-
-        ordered_results: Dict[int, list] = {}
-        wrapped = probe.wrap(_process_parent_group)
-        with concurrent.futures.ThreadPoolExecutor(
-            max_workers=max_concurrency,
-            thread_name_prefix="CFSRExtract",
-        ) as executor:
-            future_map = {
-                executor.submit(wrapped, idx, parent, children): idx
-                for idx, (parent, children) in enumerate(parent_groups)
-            }
-            for future in concurrent.futures.as_completed(future_map):
-                idx = future_map[future]
-                try:
-                    completed_idx, results = future.result()
-                except Exception as exc:
-                    self.logger.exception(
-                        "ControlFamilySummaryExtractionService: failed group %d: %s",
-                        idx,
-                        exc,
-                    )
-                    continue
-                ordered_results[completed_idx] = results
-
-        all_results = []
-        seen_keys_global: set = set()
-        for idx in range(total_groups):
-            for item in ordered_results.get(idx, []):
-                key = item["stable_key"]
-                if key in seen_keys_global:
-                    # Should not happen with group_index prefix, but guard defensively
-                    self.logger.warning(
-                        "ControlFamilySummaryExtractionService: duplicate stable_key '%s' dropped", key
-                    )
-                    continue
-                seen_keys_global.add(key)
-                all_results.append(item)
-
-        self.logger.info(
-            "ControlFamilySummaryExtractionService: generated %d CFSRs from %d parent groups (category_id=%s, job_id=%s)",
-            len(all_results),
-            total_groups,
             category_id,
             ingestion_job_id,
         )

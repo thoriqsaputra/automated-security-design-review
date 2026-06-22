@@ -1,18 +1,15 @@
 from types import SimpleNamespace
-from contextlib import nullcontext
 from unittest.mock import patch
 
 from sdr.apps.ai.engine.extraction import (
     _canonicalize_diagram_requirements,
     _remove_table_of_contents,
     canonicalize_requirement_items,
-    extract_asvs_level_definitions_from_document,
     extract_diagram_requirements,
     extract_structured_requirements,
 )
 from sdr.apps.standards.schemas import CategoryParameterChildSchema
 from sdr.apps.standards.tasks import _coerce_requirement_details, _coerce_requirement_text
-from sdr.apps.standards.tasks import _coerce_asvs_level
 from sdr.apps.standards.utils import (
     build_diagram_requirement_analysis_text,
     build_parameter_analysis_text,
@@ -69,13 +66,6 @@ def test_coerce_requirement_text_and_details_from_structured_item():
     assert _coerce_requirement_details(item) == "HTTP method, headers, and body must be validated."
 
 
-def test_coerce_asvs_level_from_structured_item():
-    assert _coerce_asvs_level({"asvs_level": 2}) == 2
-    assert _coerce_asvs_level({"asvs_level": "L3"}) == 3
-    assert _coerce_asvs_level({"asvs_level": None}) is None
-    assert _coerce_asvs_level({"asvs_level": "unknown"}) is None
-
-
 def test_coerce_requirement_details_defaults_blank_for_legacy_string():
     assert _coerce_requirement_text("Use MFA") == "Use MFA"
     assert _coerce_requirement_details("Use MFA") == ""
@@ -125,8 +115,7 @@ def test_extract_structured_requirements_preserves_details():
               "requirement": "5.4.1 Generic Web Service Security",
               "details": "All APIs must document interfaces and validate input/output.",
               "verbatim_quote": "a. semua API mendefinisikan ...",
-              "context_marker": "Section 5.4.1",
-              "asvs_level": 2
+              "context_marker": "Section 5.4.1"
             }
           ]
         }
@@ -141,7 +130,6 @@ def test_extract_structured_requirements_preserves_details():
     assert item["details"] == "All APIs must document interfaces and validate input/output."
     assert item["verbatim_quote"] == "a. semua API mendefinisikan ..."
     assert item["context_marker"] == "Section 5.4.1"
-    assert item["asvs_level"] == 2
 
 
 def test_extract_structured_requirements_filters_note_paragraphs():
@@ -163,8 +151,7 @@ def test_extract_structured_requirements_filters_note_paragraphs():
               "requirement": "5.3.4 SQL queries must separate data values from query structure",
               "details": "Applications must treat identifiers and sort clauses as trusted-only inputs.",
               "verbatim_quote": "Verify that parameterized queries separate data values from query structure.",
-              "context_marker": "V5.3.4",
-              "asvs_level": 2
+              "context_marker": "V5.3.4"
             }
           ]
         }
@@ -179,7 +166,7 @@ def test_extract_structured_requirements_filters_note_paragraphs():
     ]
 
 
-def test_extract_structured_requirements_filters_owasp_subsection_heading_only_items():
+def test_extract_structured_requirements_filters_heading_only_items():
     response = SimpleNamespace(
         error=None,
         model="mock-model",
@@ -198,8 +185,7 @@ def test_extract_structured_requirements_filters_owasp_subsection_heading_only_i
               "requirement": "V2.1 - 2.1.1 Verify user set passwords are at least 12 characters in length",
               "details": "Applications must enforce a minimum password length for user-chosen passwords.",
               "verbatim_quote": "2.1.1 Verify user set passwords are at least 12 characters in length.",
-              "context_marker": "V2.1",
-              "asvs_level": 1
+              "context_marker": "V2.1"
             }
           ]
         }
@@ -221,14 +207,12 @@ def test_canonicalize_requirement_items_dedupes_same_control_id_and_keeps_richer
             "details": "",
             "verbatim_quote": "",
             "context_marker": "V1.1",
-            "asvs_level": None,
         },
         {
             "requirement": "1.1.1 Verify the use of a secure SDLC",
             "details": "Security activities must be defined across the lifecycle.",
             "verbatim_quote": "1.1.1 Verify the use of a secure SDLC",
             "context_marker": "V1.1",
-            "asvs_level": 1,
         },
     ]
 
@@ -237,7 +221,6 @@ def test_canonicalize_requirement_items_dedupes_same_control_id_and_keeps_richer
     assert len(result) == 1
     assert result[0]["requirement"] == "1.1.1 Verify the use of a secure SDLC"
     assert result[0]["details"] == "Security activities must be defined across the lifecycle."
-    assert result[0]["asvs_level"] == 1
 
 
 def test_canonicalize_requirement_items_drops_deleted_placeholder_rows():
@@ -247,14 +230,12 @@ def test_canonicalize_requirement_items_drops_deleted_placeholder_rows():
             "details": "",
             "verbatim_quote": "",
             "context_marker": "V6.1",
-            "asvs_level": 2,
         },
         {
             "requirement": "[DELETED, DUPLICATE OF 6.1.1]",
             "details": "",
             "verbatim_quote": "[DELETED, DUPLICATE OF 6.1.1]",
             "context_marker": "V6.1",
-            "asvs_level": 2,
         },
     ]
 
@@ -264,86 +245,10 @@ def test_canonicalize_requirement_items_drops_deleted_placeholder_rows():
     assert result[0]["requirement"] == "6.1.1 Verify passwords are hashed using a memory-hard algorithm."
 
 
-def test_extract_asvs_level_definitions_from_document():
-    source_doc = SimpleNamespace(id=1, name="OWASP ASVS.pdf", document="standards/asvs.pdf")
-    response = SimpleNamespace(
-        error=None,
-        content="""
-        {
-          "levels": [
-            {
-              "level": "L1",
-              "name": "Opportunistic",
-              "description": "Baseline verification",
-              "classification_guidance": "Use L1 for ordinary applications.",
-              "source_quote": "Level 1 is for ordinary applications.",
-              "context_marker": "Section 1.3"
-            },
-            {
-              "level": 2,
-              "name": "Standard",
-              "description": "Sensitive data verification",
-              "classification_guidance": "Use L2 for applications with sensitive data.",
-              "source_quote": "Level 2 is for sensitive data.",
-              "context_marker": "Section 1.3"
-            }
-          ]
-        }
-        """,
-    )
-
-    with (
-        patch("sdr.apps.ai.engine.extraction.api.get_local_file_path", return_value=nullcontext("/tmp/asvs.pdf")),
-        patch(
-            "sdr.apps.ai.engine.extraction.api.get_document_content",
-            return_value={"text": "ASVS Level 1 and Level 2 definitions"},
-        ),
-        patch("sdr.apps.ai.engine.extraction.api.chat_completion", return_value=response),
-    ):
-        result = extract_asvs_level_definitions_from_document(source_doc, start_page=8, end_page=10)
-
-    assert [item["level"] for item in result] == [1, 2]
-    assert result[0]["code"] == "L1"
-    assert result[1]["classification_guidance"] == "Use L2 for applications with sensitive data."
-
-
-def test_extract_asvs_level_definitions_from_document_repairs_trailing_comma_json():
-    source_doc = SimpleNamespace(id=1, name="OWASP ASVS.pdf", document="standards/asvs.pdf")
-    response = SimpleNamespace(
-        error=None,
-        content="""
-        {
-          "levels": [
-            {
-              "level": "L1",
-              "name": "Opportunistic",
-              "description": "Baseline verification",
-              "classification_guidance": "Use L1 for ordinary applications.",
-            }
-          ]
-        }
-        """,
-    )
-
-    with (
-        patch("sdr.apps.ai.engine.extraction.api.get_local_file_path", return_value=nullcontext("/tmp/asvs.pdf")),
-        patch(
-            "sdr.apps.ai.engine.extraction.api.get_document_content",
-            return_value={"text": "ASVS Level 1 definitions"},
-        ),
-        patch("sdr.apps.ai.engine.extraction.api.chat_completion", return_value=response),
-    ):
-        result = extract_asvs_level_definitions_from_document(source_doc, start_page=8, end_page=10)
-
-    assert [item["level"] for item in result] == [1]
-    assert result[0]["classification_guidance"] == "Use L1 for ordinary applications."
-
-
 def test_category_parameter_child_schema_includes_details():
     child = SimpleNamespace(
         id=1,
         stable_key="child-key",
-        asvs_level=2,
         requirement_text="5.4.1 Generic Web Service Security",
         details="All APIs must document interfaces.",
         requirement_text_normalized="5.4.1 generic web service security all apis must document interfaces.",
@@ -353,7 +258,6 @@ def test_category_parameter_child_schema_includes_details():
     data = CategoryParameterChildSchema.model_validate(child).model_dump()
 
     assert data["details"] == "All APIs must document interfaces."
-    assert data["asvs_level"] == 2
 
 
 def test_canonicalize_diagram_requirements_suffixes_duplicate_stable_keys():
@@ -363,7 +267,6 @@ def test_canonicalize_diagram_requirements_suffixes_duplicate_stable_keys():
             "source_requirement_key": "child-1",
             "requirement_text": "Show trust boundary",
             "verification_hint": "Boundary visible",
-            "asvs_level": 1,
             "parent_section": "V1 Architecture",
         },
         {
@@ -371,7 +274,6 @@ def test_canonicalize_diagram_requirements_suffixes_duplicate_stable_keys():
             "source_requirement_key": "child-2",
             "requirement_text": "Show auth boundary",
             "verification_hint": "Auth visible",
-            "asvs_level": 1,
             "parent_section": "V1 Architecture",
         },
     ]
@@ -391,7 +293,6 @@ def test_canonicalize_diagram_requirements_drops_exact_duplicates():
             "source_requirement_key": "child-1",
             "requirement_text": "Show trust boundary",
             "verification_hint": "Boundary visible",
-            "asvs_level": 1,
             "parent_section": "V1 Architecture",
         },
         {
@@ -399,7 +300,6 @@ def test_canonicalize_diagram_requirements_drops_exact_duplicates():
             "source_requirement_key": "child-1",
             "requirement_text": "Show trust boundary",
             "verification_hint": "Boundary visible",
-            "asvs_level": 1,
             "parent_section": "V1 Architecture",
         },
     ]
@@ -417,7 +317,6 @@ def test_canonicalize_diagram_requirements_avoids_collision_with_pre_suffixed_ke
             "source_requirement_key": "child-1",
             "requirement_text": "Show control A",
             "verification_hint": "A visible",
-            "asvs_level": 3,
             "parent_section": "V3 Session Management",
         },
         {
@@ -425,7 +324,6 @@ def test_canonicalize_diagram_requirements_avoids_collision_with_pre_suffixed_ke
             "source_requirement_key": "child-2",
             "requirement_text": "Show control B",
             "verification_hint": "B visible",
-            "asvs_level": 3,
             "parent_section": "V3 Session Management",
         },
         {
@@ -433,7 +331,6 @@ def test_canonicalize_diagram_requirements_avoids_collision_with_pre_suffixed_ke
             "source_requirement_key": "child-3",
             "requirement_text": "Show control C",
             "verification_hint": "C visible",
-            "asvs_level": 3,
             "parent_section": "V3 Session Management",
         },
     ]
@@ -453,14 +350,12 @@ def test_extract_diagram_requirements_canonicalizes_duplicate_llm_keys():
             stable_key="child-1",
             requirement_text="Trust boundary",
             details="Show zone split",
-            asvs_level=1,
             parent=SimpleNamespace(title="V1 Architecture"),
         ),
         SimpleNamespace(
             stable_key="child-2",
             requirement_text="Authentication path",
             details="Show auth flow",
-            asvs_level=1,
             parent=SimpleNamespace(title="V1 Architecture"),
         ),
     ]
@@ -474,7 +369,6 @@ def test_extract_diagram_requirements_canonicalizes_duplicate_llm_keys():
               "source_requirement_id": "child-1",
               "requirement_text": "Show trust boundary",
               "verification_hint": "Boundary visible",
-              "asvs_level": 1,
               "parent_section": "V1 Architecture"
             },
             {
@@ -482,7 +376,6 @@ def test_extract_diagram_requirements_canonicalizes_duplicate_llm_keys():
               "source_requirement_id": "child-2",
               "requirement_text": "Show authentication path",
               "verification_hint": "Auth visible",
-              "asvs_level": 1,
               "parent_section": "V1 Architecture"
             }
           ]

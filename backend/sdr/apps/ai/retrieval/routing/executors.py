@@ -29,6 +29,69 @@ def _bounded_pool_size(configured_max: int, branch_count: int) -> int:
     return max(1, min(max(1, int(configured_max)), max(1, int(branch_count))))
 
 
+def _canonical_source_type(source_type: Optional[str]) -> str:
+    normalized = str(source_type or "").strip().lower()
+    if normalized in {"raptor", "bm25"}:
+        return "raptor"
+    if normalized in {"graph"}:
+        return "graph"
+    if normalized in {"dense", "vector"}:
+        return "vector"
+    return normalized or "unknown"
+
+
+def _source_descriptor_for_keys(source_keys: Set[str]) -> Dict[str, Any]:
+    normalized = {key for key in (_canonical_source_type(item) for item in source_keys) if key}
+    if normalized == {"graph"}:
+        return {"key": "graph", "label": "Graph"}
+    if normalized == {"raptor"}:
+        return {"key": "raptor", "label": "RAPTOR"}
+    if normalized == {"vector"}:
+        return {"key": "vector", "label": "Vector"}
+    if "graph" in normalized and "raptor" in normalized:
+        return {"key": "hybrid_agreement", "label": "Hybrid Agreement"}
+    if len(normalized) == 1:
+        key = next(iter(normalized))
+        return {"key": key, "label": key.replace("_", " ").title()}
+    ordered = sorted(normalized)
+    return {"key": "+".join(ordered), "label": " + ".join(item.replace("_", " ").title() for item in ordered)}
+
+
+def _merge_block_source_entry(block_source_map: Dict[str, Dict[str, Any]], block_id: str, source_type: str) -> None:
+    if not block_id:
+        return
+    canonical = _canonical_source_type(source_type)
+    existing = dict(block_source_map.get(block_id) or {})
+    source_keys = set(existing.get("source_keys") or [])
+    if existing.get("retrieval_origin"):
+        source_keys.add(str(existing["retrieval_origin"]))
+    if canonical:
+        source_keys.add(canonical)
+    descriptor = _source_descriptor_for_keys(source_keys)
+    block_source_map[block_id] = {
+        "retrieval_origin": descriptor["key"],
+        "retrieval_origin_label": descriptor["label"],
+        "source_keys": sorted(source_keys),
+    }
+
+
+def _build_uniform_block_source_map(block_ids: List[str], source_type: str) -> Dict[str, Dict[str, Any]]:
+    block_source_map: Dict[str, Dict[str, Any]] = {}
+    for block_id in block_ids or []:
+        _merge_block_source_entry(block_source_map, block_id, source_type)
+    return block_source_map
+
+
+def _build_block_source_map_from_candidates(candidates: List[RetrievalCandidate]) -> Dict[str, Dict[str, Any]]:
+    block_source_map: Dict[str, Dict[str, Any]] = {}
+    for candidate in candidates or []:
+        merged_sources = candidate.metadata.get("merged_sources", [candidate.source_type]) if isinstance(candidate.metadata, dict) else [candidate.source_type]
+        for block_id in candidate.block_ids or []:
+            for source_type in merged_sources:
+                _merge_block_source_entry(block_source_map, block_id, str(source_type))
+    return block_source_map
+
+
 class RetrievalRouteExecutor:
     def execute_vector_only(
         self,
@@ -51,6 +114,7 @@ class RetrievalRouteExecutor:
         return RetrievalResult(
             context_chunks=context_chunks[: router.max_context_chunks],
             source_block_ids=source_block_ids,
+            block_source_map={},
             strategy_used=RetrievalStrategy.VECTOR_ONLY,
             query_embedding=query_embedding,
             vector_response=vector_response,
@@ -74,6 +138,10 @@ class RetrievalRouteExecutor:
         return RetrievalResult(
             context_chunks=raptor_response.get_context_chunks()[: router.max_context_chunks],
             source_block_ids=raptor_response.all_source_block_ids,
+            block_source_map=_build_uniform_block_source_map(
+                raptor_response.all_source_block_ids,
+                "raptor",
+            ),
             strategy_used=RetrievalStrategy.RAPTOR_LOW,
             query_embedding=query_embedding,
             raptor_response=raptor_response,
@@ -97,6 +165,10 @@ class RetrievalRouteExecutor:
         return RetrievalResult(
             context_chunks=raptor_response.get_context_chunks()[: router.max_context_chunks],
             source_block_ids=raptor_response.all_source_block_ids,
+            block_source_map=_build_uniform_block_source_map(
+                raptor_response.all_source_block_ids,
+                "raptor",
+            ),
             strategy_used=RetrievalStrategy.RAPTOR_HIGH,
             query_embedding=query_embedding,
             raptor_response=raptor_response,
@@ -124,6 +196,7 @@ class RetrievalRouteExecutor:
             return router._execute_raptor_low(query_text=query_text, raptor_tree=raptor_tree, query_embedding=query_embedding)
         context_chunks = router._build_chunks_from_graph(graph_response)
         source_block_ids = graph_response.all_source_block_ids
+        block_source_map = _build_uniform_block_source_map(source_block_ids, "graph")
         if raptor_tree and not raptor_tree.is_empty() and source_block_ids:
             raptor_response = router._raptor_searcher.search(
                 query_text=query_text,
@@ -135,6 +208,7 @@ class RetrievalRouteExecutor:
             if not raptor_response.is_empty:
                 context_chunks.extend(raptor_response.get_context_chunks())
                 for bid in raptor_response.all_source_block_ids:
+                    _merge_block_source_entry(block_source_map, bid, "raptor")
                     if bid not in source_block_ids:
                         source_block_ids.append(bid)
         else:
@@ -142,11 +216,13 @@ class RetrievalRouteExecutor:
         return RetrievalResult(
             context_chunks=context_chunks[: router.max_context_chunks],
             source_block_ids=source_block_ids,
+            block_source_map=block_source_map,
             strategy_used=RetrievalStrategy.GRAPH_TRAVERSE,
             query_embedding=query_embedding,
             raptor_response=raptor_response if raptor_tree else None,
             graph_response=graph_response,
             evidence_metadata={
+                "block_source_map": block_source_map,
                 "graph_embedding_rerank_applied": bool(query_embedding),
                 "graph_embedding_stats": getattr(graph, "embedding_stats", {}),
                 "graph_result_count": len(graph_response.results),
@@ -219,14 +295,19 @@ class RetrievalRouteExecutor:
         reranked = router._reranker.rerank(query=query_text, candidates=evidence_filtered, top_k=router.max_context_chunks)
         merged_chunks = [c.text for c in reranked if c.text]
         all_source_block_ids = router._collect_candidate_block_ids(reranked)
+        block_source_map = _build_block_source_map_from_candidates(reranked)
         return RetrievalResult(
             context_chunks=merged_chunks[: router.max_context_chunks],
             source_block_ids=all_source_block_ids,
+            block_source_map=block_source_map,
             strategy_used=RetrievalStrategy.HYBRID,
             query_embedding=query_embedding,
             vector_response=vector_response,
             raptor_response=raptor_response,
-            evidence_metadata=evidence_metadata,
+            evidence_metadata={
+                **evidence_metadata,
+                "block_source_map": block_source_map,
+            },
         )
 
     def execute_graph_local(
@@ -310,9 +391,11 @@ class RetrievalRouteExecutor:
         reranked = router._reranker.rerank(query=query_text, candidates=evidence_filtered, top_k=router.max_context_chunks)
         chunks = [c.text for c in reranked if c.text]
         block_ids = router._collect_candidate_block_ids(reranked)
+        block_source_map = _build_block_source_map_from_candidates(reranked)
         return RetrievalResult(
             context_chunks=chunks[: router.max_context_chunks],
             source_block_ids=block_ids,
+            block_source_map=block_source_map,
             strategy_used=RetrievalStrategy.GRAPH_LOCAL,
             query_embedding=query_embedding,
             vector_response=vector_response,
@@ -322,6 +405,7 @@ class RetrievalRouteExecutor:
             grounded_texts=list(graph_response.grounded_texts),
             evidence_metadata={
                 **evidence_metadata,
+                "block_source_map": block_source_map,
                 "query_entities": query_entities,
                 "graph_node_ids": graph_response.graph_node_ids,
                 "graph_edge_ids": graph_response.graph_edge_ids,

@@ -4,7 +4,7 @@ import base64
 import binascii
 import logging
 import re
-from typing import Any, Optional, List
+from typing import Any, Callable, Optional, List
 
 from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
@@ -14,7 +14,7 @@ from sdr.apps.reviews.models import Finding, Review, CitationAnchor
 from sdr.apps.reviews.models.choices import FindingType, AnchorType
 from sdr.apps.workspace.services.storage import storage_service
 from sdr.apps.ai.agents.base import Citation
-from sdr.apps.standards.models import CategoryControlSummaryRequirement, CategoryParameterChild
+from sdr.apps.standards.models import CategoryParameterChild
 from sdr.apps.standards.utils import build_parameter_analysis_text
 from sdr.apps.ai.engine.dto import PersistenceInput, AnalysisSummary
 from sdr.apps.ai.engine.classification.severity import calculate_deterministic_severity
@@ -38,8 +38,12 @@ _DIAGRAM_IMAGE_CONTENT_TYPES = {
 
 
 class PersistenceService:
-    def __init__(self) -> None:
+    def __init__(
+        self,
+        recommendation_generator: Optional[Callable[..., Optional[str]]] = None,
+    ) -> None:
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.recommendation_generator = recommendation_generator
 
     def persist_finding(
         self,
@@ -106,6 +110,10 @@ class PersistenceService:
                         anchorable_citations,
                         source_map,
                     ),
+                    "evidence_sources": self._build_evidence_source_summary(
+                        anchorable_citations,
+                        source_map,
+                    ),
                     **self._build_requirement_provenance(debate_output.analysis_trace or {}),
                 }
             )
@@ -126,20 +134,29 @@ class PersistenceService:
                 sanitized_recommendation,
                 persisted_met_status,
             )
+            sanitized_recommendation = self._ensure_not_met_recommendation(
+                finding_type=FindingType.REQUIREMENT.value,
+                met_status=persisted_met_status,
+                recommendation=sanitized_recommendation,
+                parameter_section=parameter.parent.title if parameter.parent else "General",
+                parameter_text=requirement_text,
+                finding_description=sanitized_description,
+                reasoning=sanitized_reasoning,
+                severity=severity_payload["severity"],
+                source=self._resolve_recommendation_source(debate_output.analysis_trace or {}),
+                source_map=source_map,
+            )
             finding_title = self._build_finding_title(parameter, mediator)
             
             with SessionLocal() as db:
                 try:
-                    # CFSRs are not CategoryParameterChild rows — use None for the FK
-                    # so the nullable column is set correctly and no FK violation occurs.
-                    is_cfsr = isinstance(parameter, CategoryControlSummaryRequirement)
                     finding = Finding(
                         review_id=review.id,
                         category_id=(
                             parameter.parent.category_id if parameter.parent else None
                         ),
                         parent_parameter_id=parameter.parent.id if parameter.parent else None,
-                        child_parameter_id=None if is_cfsr else parameter.id,
+                        child_parameter_id=parameter.id,
                         finding_type=FindingType.REQUIREMENT.value,
                         title=finding_title,
                         description=sanitized_description,
@@ -303,6 +320,13 @@ class PersistenceService:
                         "critic_result": critic_result,
                         "mediator_result": mediator_result,
                     },
+                    "evidence_sources": [
+                        {
+                            "key": "diagram_debate",
+                            "label": "Diagram Debate",
+                            "count": 0,
+                        }
+                    ],
                 })
 
                 if not finding:
@@ -326,6 +350,22 @@ class PersistenceService:
                 finding.severity_score = severity_payload["severity_score"]
                 finding.severity_analysis = severity_payload["severity_analysis"]
                 finding.recommendation = self._strip_null_bytes(mediator_result.get("recommendation"))
+                finding.recommendation = self._normalize_recommendation(
+                    finding.recommendation,
+                    met_status,
+                )
+                finding.recommendation = self._ensure_not_met_recommendation(
+                    finding_type=finding_type_val,
+                    met_status=met_status,
+                    recommendation=finding.recommendation,
+                    parameter_section=getattr(category, "name", None) or getattr(category, "code", None) or "Diagram Analysis",
+                    parameter_text=self._build_diagram_requirement_text(assessed_requirements),
+                    finding_description=finding.description or "",
+                    reasoning=self._strip_null_bytes(mediator_result.get("reasoning") or "") or "",
+                    severity=severity_payload["severity"],
+                    source="diagram_debate",
+                    source_map={},
+                )
                 finding.reason = self._strip_null_bytes(mediator_result.get("reasoning"))
                 finding.diagram_caption = self._strip_null_bytes(diagram_display["caption"])
                 finding.vision_reasoning = self._strip_null_bytes(hunter_result.get("reasoning"))
@@ -404,9 +444,7 @@ class PersistenceService:
         retrieval_metadata = retrieval_query_details.get("retrieval_evidence_metadata") or {}
         outcome_source = "debate"
         synth_mode = (trace.get("contract") or {}).get("synth_mode", "")
-        if synth_mode == "cfsr_cascade":
-            outcome_source = "cfsr_cascade"
-        elif evidence_gate_outcome in {
+        if evidence_gate_outcome in {
             "downgraded_to_na_missing_citations",
             "downgraded_to_na_applicability_not_established",
             "downgraded_to_na_no_applicability_signal",
@@ -427,6 +465,79 @@ class PersistenceService:
             "downgrade_reason": trace.get("downgrade_reason"),
             "retrieval_evidence_quality": retrieval_metadata.get("evidence_quality"),
         }
+
+    def _resolve_recommendation_source(self, analysis_trace: dict) -> str:
+        trace = dict(analysis_trace or {})
+        synth_mode = str((trace.get("contract") or {}).get("synth_mode") or "").strip()
+        if synth_mode == "rag_gate_no_evidence":
+            return "rag_gate_no_evidence"
+        if trace.get("evidence_gate_outcome"):
+            return f"evidence_gate:{trace.get('evidence_gate_outcome')}"
+        if trace.get("parent_applicability"):
+            return "parent_applicability_gate"
+        return "text_debate"
+
+    def _ensure_not_met_recommendation(
+        self,
+        *,
+        finding_type: str,
+        met_status: Optional[str],
+        recommendation: Optional[str],
+        parameter_section: str,
+        parameter_text: str,
+        finding_description: str,
+        reasoning: str,
+        severity: Optional[str],
+        source: str,
+        source_map: dict,
+    ) -> Optional[str]:
+        if met_status != "not_met":
+            return None
+        cleaned = (recommendation or "").strip()
+        if cleaned:
+            return cleaned
+        generated = None
+        if self.recommendation_generator is not None:
+            try:
+                generated = self.recommendation_generator(
+                    finding_type=finding_type,
+                    parameter_section=parameter_section,
+                    parameter_text=parameter_text,
+                    finding_description=finding_description,
+                    reasoning=reasoning,
+                    severity=severity,
+                    source=source,
+                )
+            except Exception:
+                self.logger.exception(
+                    "PersistenceService._ensure_not_met_recommendation: recommendation generator failed"
+                )
+        generated = self._strip_null_bytes(generated or "")
+        if generated and generated.strip():
+            return self._sanitize_user_facing_text(generated.strip(), source_map)
+        return self._build_default_recommendation(
+            finding_type=finding_type,
+            parameter_section=parameter_section,
+            parameter_text=parameter_text,
+        )
+
+    def _build_default_recommendation(
+        self,
+        *,
+        finding_type: str,
+        parameter_section: str,
+        parameter_text: str,
+    ) -> str:
+        snippet = (parameter_text or "").strip()[:220]
+        if finding_type == FindingType.DIAGRAM.value:
+            return (
+                f"Update the TSD and diagrams for '{parameter_section}' to explicitly show the components, trust boundaries, "
+                f"and security behavior needed to satisfy this control: {snippet}"
+            )
+        return (
+            f"Update the TSD for '{parameter_section}' to explicitly describe the design, enforcement points, and component behavior "
+            f"needed to satisfy this control: {snippet}"
+        )
 
     def _build_diagram_image_metadata(self, *, review_id: int, diagram_input) -> dict:
         image_format = str(getattr(diagram_input, "image_format", "png") or "png").lower()
@@ -511,6 +622,8 @@ class PersistenceService:
                 "page": page,
                 "heading": source_payload.get("heading"),
                 "source_path": source_payload.get("source_path"),
+                "retrieval_origin": source_payload.get("retrieval_origin"),
+                "retrieval_origin_label": source_payload.get("retrieval_origin_label"),
             }
         return source_map
 
@@ -528,9 +641,28 @@ class PersistenceService:
                 "page": citation.page_number,
                 "heading": None,
                 "source_path": None,
+                "retrieval_origin": None,
+                "retrieval_origin_label": None,
             }
             output.append(payload)
         return output
+
+    def _build_evidence_source_summary(self, citations: List[Citation], source_map: dict) -> List[dict]:
+        counts: dict[str, dict[str, Any]] = {}
+        for citation in citations or []:
+            payload = source_map.get(citation.block_id) or {}
+            key = str(payload.get("retrieval_origin") or "").strip()
+            label = str(payload.get("retrieval_origin_label") or "").strip()
+            if not key or not label:
+                continue
+            if key not in counts:
+                counts[key] = {
+                    "key": key,
+                    "label": label,
+                    "count": 0,
+                }
+            counts[key]["count"] += 1
+        return list(counts.values())
 
     def _build_citation_anchors(
         self,

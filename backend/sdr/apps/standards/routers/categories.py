@@ -5,7 +5,6 @@ from sqlalchemy import select, delete, func
 
 from sdr.core.database import get_db
 from ..models import (
-    CategoryControlSummaryRequirement,
     CategoryParameterChild,
     CategoryParameterParent,
     StandardCategory,
@@ -102,8 +101,7 @@ def get_category_parameters(
     parents = db.execute(
         select(CategoryParameterParent)
         .options(
-            selectinload(CategoryParameterParent.children),
-            selectinload(CategoryParameterParent.control_summary_requirements)
+            selectinload(CategoryParameterParent.children)
         )
         .where(
             CategoryParameterParent.category_id == category.id,
@@ -134,11 +132,6 @@ def delete_parameter_parent(parent_id: int, db: Session = Depends(get_db)):
     if not parent:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent parameter not found.")
 
-    db.execute(
-        delete(CategoryControlSummaryRequirement).where(
-            CategoryControlSummaryRequirement.parent_id == parent_id
-        )
-    )
     db.delete(parent)
     db.commit()
     return None

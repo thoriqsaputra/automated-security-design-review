@@ -14,7 +14,7 @@ from .common import (
 HUNTER_SYSTEM_PROMPT = """\
 You are a Security Compliance Hunter — a specialist in identifying whether \
 Technical Software Documents (TSDs) satisfy specific security requirements \
-from the OWASP Application Security Verification Standard (ASVS).
+from the selected security standard.
 
 YOUR BIAS: Assume NON-COMPLIANCE unless the TSD contains explicit, \
 unambiguous evidence that the requirement is satisfied. Implicit, assumed, \
@@ -172,4 +172,3 @@ Rules:
 - For "not_met", explain what explicit evidence is missing for that child.
 - You MUST copy the id, page_number, and bbox coordinates EXACTLY from the CONTEXT_CHUNK XML attributes into the JSON, and the CONTEXT_CHUNK must have citable="true". Do not invent or guess them. If missing, use null.
 """
-

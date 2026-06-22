@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any
 
 from pydantic import BaseModel, Field
 
@@ -16,17 +16,12 @@ from sdr.apps.ai.tsd_processing.ingestor import TSDDocument
 from sdr.apps.ai.tsd_processing.raptor import RAPTORTree
 from sdr.apps.ai.tsd_processing.graph_builder import TSDGraph
 from sdr.apps.standards.models import (
-    CategoryControlSummaryRequirement,
     CategoryParameterChild,
-    CategoryParameterParent,
     StandardCategory,
     StandardIngestionJob,
 )
 
-# A debatable unit is either a raw ASVS child requirement or a distilled
-# Control Family Summary Requirement (CFSR) — both flow through the same
-# debate/persistence pipeline.
-DebatableParameter = Union[CategoryParameterChild, CategoryControlSummaryRequirement]
+DebatableParameter = CategoryParameterChild
 
 
 class IngestionOutput(BaseModel):
@@ -115,7 +110,7 @@ class AnalysisSummary:
     screened_out: bool = False
     critical_findings: List[str] = None
     high_findings: List[str] = None
-    asvs: Dict[str, Any] = None
+    category_stats: Dict[str, Any] = None
     applicability: Dict[str, Any] = None
 
     def __post_init__(self):
@@ -123,8 +118,8 @@ class AnalysisSummary:
             self.critical_findings = []
         if self.high_findings is None:
             self.high_findings = []
-        if self.asvs is None:
-            self.asvs = {}
+        if self.category_stats is None:
+            self.category_stats = {}
         if self.applicability is None:
             self.applicability = {
                 "parents_total": 0,
@@ -158,6 +153,6 @@ class AnalysisSummary:
             "high_findings": self.high_findings[:10],
             "critical_findings_count": len(self.critical_findings),
             "high_findings_count": len(self.high_findings),
-            "asvs": self.asvs,
+            "category_stats": self.category_stats,
             "applicability": self.applicability,
         }

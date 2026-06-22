@@ -882,7 +882,6 @@ def test_category_analysis_coordinator_skips_diagrams_in_text_only_mode(monkeypa
 
     coordinator.workflow_repository.get_latest_active_ingestion_job = lambda _category_id: SimpleNamespace(id=11)
     coordinator.workflow_repository.list_category_parameters = lambda **_kwargs: [parameter]
-    coordinator.workflow_repository.list_control_summary_requirements = lambda **_kwargs: []
     coordinator.progress_service.prepare_category_stats = lambda **_kwargs: None
     coordinator.progress_service.initialize_category_progress = lambda **_kwargs: None
     coordinator.progress_service.sync_analysis_aliases = lambda **_kwargs: None
@@ -900,7 +899,6 @@ def test_category_analysis_coordinator_skips_diagrams_in_text_only_mode(monkeypa
         indexes=None,
         tsd_document=None,
         summary=summary,
-        effective_asvs_level=2,
         killed_assumptions_memory=deque(),
     )
 
@@ -919,7 +917,6 @@ def test_category_analysis_coordinator_skips_text_path_in_diagram_only_mode(monk
 
     coordinator.workflow_repository.get_latest_active_ingestion_job = lambda _category_id: SimpleNamespace(id=11)
     coordinator.workflow_repository.list_category_parameters = lambda **_kwargs: [parameter]
-    coordinator.workflow_repository.list_control_summary_requirements = lambda **_kwargs: []
     coordinator.progress_service.prepare_category_stats = lambda **_kwargs: None
     coordinator.progress_service.initialize_category_progress = lambda **_kwargs: None
     coordinator.progress_service.sync_analysis_aliases = lambda **_kwargs: None
@@ -937,7 +934,6 @@ def test_category_analysis_coordinator_skips_text_path_in_diagram_only_mode(monk
         indexes=None,
         tsd_document=None,
         summary=summary,
-        effective_asvs_level=2,
         killed_assumptions_memory=deque(),
     )
 

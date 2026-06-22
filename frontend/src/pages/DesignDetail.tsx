@@ -67,7 +67,7 @@ export default function DesignDetailPage() {
     if (!selectedCat || !id) return;
     setCreating(true);
     try {
-      const res = await createReview(Number(id), Number(selectedCat), null, analysisMode);
+      const res = await createReview(Number(id), Number(selectedCat), analysisMode);
       setShowReviewModal(false);
       setSelectedCat('');
       setAnalysisMode('default');
@@ -283,7 +283,7 @@ export default function DesignDetailPage() {
                     </div>
                   ) : (
                     filteredReviews.map((review) => {
-                      const isActive = selectedReview.id === review.id;
+                      const isActive = selectedReview?.id === review.id;
                       return (
                         <button
                           key={review.id}

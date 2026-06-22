@@ -24,6 +24,8 @@ class CitationAnchorSchema(BaseModel):
     anchor_type: str
     block_id: str
     page_number: int
+    retrieval_origin: Optional[str] = None
+    retrieval_origin_label: Optional[str] = None
     quoted_text: Optional[str] = None
     bbox_x0: Optional[float] = None
     bbox_y0: Optional[float] = None
@@ -98,6 +100,7 @@ class FindingSchema(BaseModel):
     is_actionable: bool = False
     has_citations: bool = False
     citation_count: int = 0
+    evidence_sources: List[Dict[str, Any]] = Field(default_factory=list)
     
     # Click-to-source
     citations: List[CitationAnchorSchema] = Field(default_factory=list)
@@ -115,7 +118,6 @@ class FindingSchema(BaseModel):
 class ReviewCreateSchema(BaseModel):
     design_id: int
     category_id: int
-    asvs_level_override: Optional[int] = Field(default=None, ge=1, le=3)
     analysis_mode: ReviewAnalysisMode = Field(default=ReviewAnalysisMode.DEFAULT)
 
 
@@ -160,7 +162,6 @@ class ReviewSchema(BaseModel):
     summary_json: Dict[str, Any] = Field(default_factory=dict)
     retrieval_snapshot_json: Optional[Dict[str, Any]] = None
     overview: Optional[str] = None
-    asvs_level_override: Optional[int] = None
     analysis_mode: str = ReviewAnalysisMode.DEFAULT.value
     
     finding_counts: Dict[str, int] = Field(default_factory=dict)

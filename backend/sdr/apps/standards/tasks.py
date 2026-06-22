@@ -1,7 +1,6 @@
 import logging
 import json
 import threading
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 
@@ -29,8 +28,6 @@ from sdr.apps.ai.utils.embedding import (
     generate_and_store_embeddings,
 )
 from .models import (
-    ASVSLevelDefinition,
-    CategoryControlSummaryRequirement,
     CategoryParameterChild,
     CategoryParameterParent,
     CategoryDiagramRequirement,
@@ -160,22 +157,6 @@ def _coerce_requirement_details(requirement_item: Any) -> str:
     return ""
 
 
-def _coerce_asvs_level(requirement_item: Any) -> Optional[int]:
-    if not isinstance(requirement_item, dict):
-        return None
-    raw_level = requirement_item.get("asvs_level")
-    if raw_level is None:
-        return None
-    if isinstance(raw_level, int) and raw_level in (1, 2, 3):
-        return raw_level
-    text = str(raw_level).strip().upper()
-    if text.startswith("L"):
-        text = text[1:].strip()
-    if text in {"1", "2", "3"}:
-        return int(text)
-    return None
-
-
 def _resolve_detected_page_ranges(
     detected_ranges: Optional[Dict[str, Any]],
     requested_ranges: Optional[Dict[str, Any]],
@@ -218,6 +199,17 @@ def _resolve_detected_page_ranges(
     }
 
 
+def _should_auto_detect_asvs_page_ranges(source_doc: StandardSourceDocument) -> bool:
+    candidate = " ".join(
+        part for part in (
+            getattr(source_doc, "name", None),
+            getattr(source_doc, "document", None),
+        )
+        if part
+    ).lower()
+    return "asvs" in candidate or "application security verification standard" in candidate
+
+
 def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] = None) -> Dict[str, Any]:
     """
     Ingests all StandardSourceDocuments attached to an ingestion job and
@@ -227,10 +219,8 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
     from sdr.apps.ai.engine.extraction import (
         canonicalize_requirement_items,
         detect_asvs_page_ranges,
-        extract_asvs_level_definitions_from_document,
         extract_requirements_from_document,
         extract_diagram_requirements,
-        extract_control_family_summary_requirements,
     )
     
     with SessionLocal() as db:
@@ -263,9 +253,6 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
             'diagram_requirements': 0,
             'diagram_extraction_status': 'pending',
             'diagram_extraction_error': None,
-            'cfsr_requirements': 0,
-            'cfsr_extraction_status': 'pending',
-            'cfsr_extraction_error': None,
             'mode': mode,
             'resolved_categories': {job.category.code if job.category else "unknown": 0},
             'version_no': getattr(job, 'version_no', 1),
@@ -279,11 +266,6 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                 'detected': {},
                 'requested_overrides': requested_ranges,
                 'field_sources': {},
-            },
-            'asvs_level_definitions': {
-                'status': 'pending',
-                'count': 0,
-                'source': 'not_started',
             },
         }
         if celery_task_id:
@@ -304,7 +286,7 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
         db.commit()
 
         # Make reruns/retries idempotent for the same ingestion job. A previous
-        # partial run may have already inserted parents/children/ASVS rows.
+        # partial run may have already inserted parents/children/generated rows.
         stale_parent_ids = db.execute(
             select(CategoryParameterParent.id)
             .where(CategoryParameterParent.ingestion_job_id == job.id)
@@ -318,14 +300,6 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
         db.execute(
             delete(CategoryDiagramRequirement)
             .where(CategoryDiagramRequirement.ingestion_job_id == job.id)
-        )
-        db.execute(
-            delete(CategoryControlSummaryRequirement)
-            .where(CategoryControlSummaryRequirement.ingestion_job_id == job.id)
-        )
-        db.execute(
-            delete(ASVSLevelDefinition)
-            .where(ASVSLevelDefinition.ingestion_job_id == job.id)
         )
         if stale_parent_ids:
             db.execute(
@@ -383,8 +357,21 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                         flag_modified(job, "summary_json")
                         db.commit()
 
-                    detected_ranges = detect_asvs_page_ranges(source_doc)
-                    resolved_ranges = _resolve_detected_page_ranges(detected_ranges, requested_ranges)
+                    if _should_auto_detect_asvs_page_ranges(source_doc):
+                        detected_ranges = detect_asvs_page_ranges(source_doc)
+                        resolved_ranges = _resolve_detected_page_ranges(detected_ranges, requested_ranges)
+                    else:
+                        resolved_ranges = _resolve_detected_page_ranges(
+                            {
+                                "source": "skipped_non_asvs",
+                                "matched_anchors": {},
+                                "start_page": None,
+                                "end_page": None,
+                                "level_definition_start_page": None,
+                                "level_definition_end_page": None,
+                            },
+                            requested_ranges,
+                        )
                     summary.update(resolved_ranges["effective"])
                     summary["page_detection"] = resolved_ranges["page_detection"]
                     job.summary_json = summary
@@ -394,49 +381,6 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
 
                     start_page = summary.get("start_page")
                     end_page = summary.get("end_page")
-                    level_definition_start_page = summary.get("level_definition_start_page")
-                    level_definition_end_page = summary.get("level_definition_end_page")
-
-                    if level_definition_start_page or level_definition_end_page:
-                        _update_progress("Extracting ASVS level definitions", 10)
-                        level_definitions = extract_asvs_level_definitions_from_document(
-                            source_doc,
-                            start_page=level_definition_start_page,
-                            end_page=level_definition_end_page,
-                        )
-                        db.execute(
-                            delete(ASVSLevelDefinition)
-                            .where(ASVSLevelDefinition.ingestion_job_id == job.id)
-                        )
-                        for item in level_definitions:
-                            db.add(
-                                ASVSLevelDefinition(
-                                    ingestion_job_id=job.id,
-                                    level=item["level"],
-                                    code=item["code"],
-                                    name=item["name"],
-                                    description=item["description"],
-                                    classification_guidance=item["classification_guidance"],
-                                    source_quote=item.get("source_quote") or None,
-                                    context_marker=item.get("context_marker") or None,
-                                )
-                            )
-                        summary['asvs_level_definitions'] = {
-                            'status': 'extracted' if level_definitions else 'fallback',
-                            'count': len(level_definitions),
-                            'source': 'standard_document' if level_definitions else 'static_fallback',
-                            'reason': None if level_definitions else 'No ASVS level definitions extracted from selected page range.',
-                        }
-                        job.summary_json = summary
-                        flag_modified(job, "summary_json")
-                        db.commit()
-                    else:
-                        summary['asvs_level_definitions'] = {
-                            'status': 'fallback',
-                            'count': 0,
-                            'source': 'static_fallback',
-                            'reason': 'ASVS level definition pages could not be detected.',
-                        }
 
                     requirements_by_section = extract_requirements_from_document(
                         source_doc,
@@ -513,7 +457,6 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                             if _BARE_SECTION_ID_RE.match(raw_text) and len(details) > 15:
                                 raw_text = details
                                 details = ""
-                            asvs_level = _coerce_asvs_level(req)
                             analysis_text = build_parameter_analysis_text(raw_text, details)
                             normalized = normalize_requirement_text(analysis_text)
                             
@@ -528,7 +471,6 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                             child = CategoryParameterChild(
                                 parent_id=parent.id,
                                 stable_key=child_key,
-                                asvs_level=asvs_level,
                                 requirement_text=raw_text,
                                 details=details,
                                 requirement_text_normalized=normalized,
@@ -573,14 +515,11 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                     logger.error("Error generating embeddings: %s", exc)
                     summary['embeddings_failed'] = len(items_to_embed)
 
-            # Steps 3.5 + 3.7 — Diagram requirement and CFSR extraction (parallel)
-            # Both phases need the same child params from Phase 1 and are independent of each other.
-            # Pre-fetch both DB queries sequentially (fast), then run LLM extraction in parallel.
-            logger.info("Pre-fetching parameters for parallel diagram + CFSR extraction, job %s", job.id)
+            # Final extraction phase: derive diagram requirements from the raw text requirements.
+            logger.info("Pre-fetching parameters for diagram requirement extraction, job %s", job.id)
             from sqlalchemy.orm.attributes import flag_modified
-            from sqlalchemy.orm import joinedload as _joinedload_cfsr
 
-            summary['detailed_progress'] = {'label': 'Extracting diagram requirements and control family summaries', 'percentage': 95}
+            summary['detailed_progress'] = {'label': 'Extracting diagram requirements', 'percentage': 95}
             job.summary_json = summary
             flag_modified(job, "summary_json")
             db.commit()
@@ -593,48 +532,17 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                 .order_by(CategoryParameterChild.id)
             ).scalars().all()
 
-            cfsr_params = db.execute(
-                select(CategoryParameterChild)
-                .options(_joinedload_cfsr(CategoryParameterChild.parent))
-                .join(CategoryParameterParent, CategoryParameterChild.parent_id == CategoryParameterParent.id)
-                .where(CategoryParameterParent.category_id == job.category_id)
-                .where(CategoryParameterParent.ingestion_job_id == job.id)
-                .order_by(CategoryParameterChild.parent_id, CategoryParameterChild.ordinal)
-            ).scalars().all()
-
-            # Run both LLM extraction calls in parallel (they don't touch the DB)
             diagram_reqs: list = []
-            cfsrs: list = []
             diagram_exc: Optional[Exception] = None
-            cfsr_exc: Optional[Exception] = None
-
-            parallel_futures: Dict[str, Any] = {}
-            with ThreadPoolExecutor(max_workers=2, thread_name_prefix="ParallelExtract") as _pool:
-                if diagram_req_params:
-                    parallel_futures["diagram"] = _pool.submit(
-                        extract_diagram_requirements,
+            if diagram_req_params:
+                try:
+                    diagram_reqs = extract_diagram_requirements(
                         parameters=list(diagram_req_params),
                         category_id=job.category_id,
                         ingestion_job_id=job.id,
                     )
-                if cfsr_params:
-                    parallel_futures["cfsr"] = _pool.submit(
-                        extract_control_family_summary_requirements,
-                        parameters=list(cfsr_params),
-                        category_id=job.category_id,
-                        ingestion_job_id=job.id,
-                    )
-
-            if "diagram" in parallel_futures:
-                try:
-                    diagram_reqs = parallel_futures["diagram"].result()
                 except Exception as exc:
                     diagram_exc = exc
-            if "cfsr" in parallel_futures:
-                try:
-                    cfsrs = parallel_futures["cfsr"].result()
-                except Exception as exc:
-                    cfsr_exc = exc
 
             # Persist diagram requirements
             logger.info("Persisting diagram requirements for job %s", job.id)
@@ -662,7 +570,6 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                             source_requirement_key=dreq["source_requirement_key"],
                             requirement_text=dreq["requirement_text"],
                             verification_hint=dreq["verification_hint"],
-                            asvs_level=dreq.get("asvs_level"),
                             parent_section=dreq["parent_section"],
                             ordinal=dreq.get("ordinal", 0),
                         )
@@ -720,51 +627,6 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                 summary['diagram_extraction_status'] = 'failed'
                 summary['diagram_extraction_error'] = str(exc)
                 summary['errors'] += 1
-
-            # Persist CFSR results (non-fatal: failure falls back to raw children at review time)
-            logger.info("Persisting CFSR results for job %s", job.id)
-            try:
-                if cfsr_exc:
-                    raise cfsr_exc
-
-                if cfsr_params:
-                    db.execute(
-                        delete(CategoryControlSummaryRequirement)
-                        .where(CategoryControlSummaryRequirement.ingestion_job_id == job.id)
-                    )
-                    for cfsr in cfsrs:
-                        db.add(CategoryControlSummaryRequirement(
-                            category_id=cfsr["category_id"],
-                            ingestion_job_id=cfsr["ingestion_job_id"],
-                            parent_id=cfsr["parent_id"],
-                            asvs_level=cfsr["asvs_level"],
-                            stable_key=cfsr["stable_key"],
-                            requirement_text=cfsr["requirement_text"],
-                            analysis_hint=cfsr["analysis_hint"],
-                            covered_child_keys=cfsr["covered_child_keys"],
-                            ordinal=cfsr["ordinal"],
-                        ))
-                    db.commit()
-                    summary['cfsr_requirements'] = len(cfsrs)
-                    summary['cfsr_extraction_status'] = 'completed'
-                    summary['cfsr_extraction_error'] = None
-                    logger.info(
-                        "run_standard_ingestion_job_sync: extracted %d CFSRs from %d parameters",
-                        len(cfsrs),
-                        len(cfsr_params),
-                    )
-                else:
-                    summary['cfsr_requirements'] = 0
-                    summary['cfsr_extraction_status'] = 'completed'
-                    summary['cfsr_extraction_error'] = None
-            except Exception as exc:
-                db.rollback()
-                logger.exception("Error extracting CFSRs (non-fatal): %s", exc)
-                summary['cfsr_requirements'] = 0
-                summary['cfsr_extraction_status'] = 'failed'
-                summary['cfsr_extraction_error'] = str(exc)
-                # Deliberately NOT incrementing summary['errors'] — CFSR failure is non-fatal.
-                # The review pipeline falls back to raw children if CFSRs are absent.
 
         # Step 3 — Finalise the job row only after diagram extraction has completed
         job_status_new = (

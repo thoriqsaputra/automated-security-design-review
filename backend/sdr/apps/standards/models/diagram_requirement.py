@@ -1,6 +1,6 @@
 from typing import Optional
 
-from sqlalchemy import String, Integer, ForeignKey, UniqueConstraint, CheckConstraint
+from sqlalchemy import String, Integer, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship, backref
 
 from sdr.core.database import Base
@@ -16,9 +16,7 @@ class CategoryDiagramRequirement(Base, StandardsBigIntBase):
     — they describe security controls that CAN be seen in an architecture
     diagram.
 
-    Organized by ASVS level with a fixed budget (~6 items per level).
-    Loaded cumulatively at analysis time: a TSD classified as L2 gets
-    L1+L2 items; L3 gets all levels.
+    Generated from text requirements for visual verification during review.
     """
 
     __tablename__ = "standards_categorydiagramrequirement"
@@ -33,12 +31,6 @@ class CategoryDiagramRequirement(Base, StandardsBigIntBase):
         nullable=True,
         index=True,
     )
-    asvs_level: Mapped[Optional[int]] = mapped_column(
-        Integer,
-        nullable=True,
-        index=True,
-    )
-
     # Unique identifier for this diagram requirement (e.g. "D-V1")
     stable_key: Mapped[str] = mapped_column(String(255), index=True)
 
@@ -57,7 +49,7 @@ class CategoryDiagramRequirement(Base, StandardsBigIntBase):
     # Parent section title (e.g. "V1 Architecture")
     parent_section: Mapped[str] = mapped_column(String(255))
 
-    # Ordering within a level
+    # Ordering within the category baseline
     ordinal: Mapped[int] = mapped_column(Integer, default=0)
 
     # Relationships
@@ -74,11 +66,7 @@ class CategoryDiagramRequirement(Base, StandardsBigIntBase):
             "stable_key",
             name="unique_diagram_req_key_per_category",
         ),
-        CheckConstraint(
-            "asvs_level IN (1, 2, 3)",
-            name="ck_diagram_req_asvs_level_range",
-        ),
     )
 
     def __str__(self):
-        return f"[D-L{self.asvs_level}] {self.requirement_text[:80]}"
+        return f"[D] {self.requirement_text[:80]}"

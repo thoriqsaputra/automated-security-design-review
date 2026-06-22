@@ -156,6 +156,7 @@ class DebateInputFactory:
     ) -> dict:
         chunk_map = {}
         evidence_quality = (retrieval_metadata or {}).get("evidence_quality") or {}
+        block_source_map = (retrieval_metadata or {}).get("block_source_map") or {}
         for idx, chunk in enumerate(context_chunks, start=1):
             evidence_kind = self.classify_context_chunk_text(chunk)
             chunk_id = f"graph_summary_{idx}" if evidence_kind == "graph_summary" else f"chunk_{idx}"
@@ -178,6 +179,7 @@ class DebateInputFactory:
                     continue
                 source_location = self.resolve_chunk_source_location(block_id, tsd_document)
                 text = ""
+                provenance = block_source_map.get(block_id) if isinstance(block_source_map, dict) else {}
                 try:
                     block = tsd_document.get_block_by_id(block_id) if tsd_document is not None else None
                     text = getattr(block, "text", "") or ""
@@ -197,6 +199,8 @@ class DebateInputFactory:
                     "evidence_kind": "grounded_text_block",
                     "citation_grade": True,
                     "evidence_quality": evidence_quality,
+                    "retrieval_origin": provenance.get("retrieval_origin"),
+                    "retrieval_origin_label": provenance.get("retrieval_origin_label"),
                     **source_location,
                 }
                 supplemental_added += 1

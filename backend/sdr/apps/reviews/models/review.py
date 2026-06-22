@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Optional, Dict, Any
 
-from sqlalchemy import String, Integer, ForeignKey, DateTime, Index, func, Table, Column, CheckConstraint
+from sqlalchemy import String, ForeignKey, DateTime, Index, func, Table, Column, CheckConstraint
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship, backref
 
@@ -48,7 +48,6 @@ class Review(Base):
         nullable=False,
     )
     overview: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    asvs_level_override: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
 
     celery_task_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -66,7 +65,6 @@ class Review(Base):
 
     __table_args__ = (
         Index("idx_review_design_status", "design_id", "status"),
-        CheckConstraint("asvs_level_override IS NULL OR asvs_level_override IN (1, 2, 3)", name="ck_review_asvs_level_override_range"),
         CheckConstraint(
             "analysis_mode IN ('default', 'text_only', 'diagram_only')",
             name="ck_review_analysis_mode_valid",
@@ -159,6 +157,6 @@ class Review(Base):
                     "remaining": persistence_remaining,
                 },
                 "skipped_by_parent_applicability": skipped_by_parent,
-                "categories": summary.get("asvs", {}).get("categories", {}) if isinstance(summary.get("asvs"), dict) else {},
+                "categories": summary.get("category_stats", {}) if isinstance(summary.get("category_stats"), dict) else {},
             },
         }

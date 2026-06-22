@@ -37,7 +37,6 @@ class DiagramAnalysisCoordinator:
         tsd_document,
         category,
         ingestion_job,
-        effective_asvs_level: int,
         summary,
         cancel_check=None,
     ) -> None:
@@ -97,13 +96,11 @@ class DiagramAnalysisCoordinator:
         diagram_reqs = self.workflow_repository.list_diagram_requirements(
             category_id=category.id,
             ingestion_job_id=ingestion_job.id,
-            effective_asvs_level=effective_asvs_level,
         )
         if not diagram_reqs:
             self.logger.info(
-                "DiagramAnalysisCoordinator.run: no diagram requirements for category=%s at L%s — skipping",
+                "DiagramAnalysisCoordinator.run: no diagram requirements for category=%s — skipping",
                 getattr(category, "code", None),
-                effective_asvs_level,
             )
             return
         tsd_context = tsd_document.full_text[:3000] if hasattr(tsd_document, "full_text") else ""
@@ -120,7 +117,6 @@ class DiagramAnalysisCoordinator:
                     tsd_document=tsd_document,
                     category=category,
                     ingestion_job=ingestion_job,
-                    effective_asvs_level=effective_asvs_level,
                 )
                 self.logger.info(
                     "DiagramAnalysisCoordinator.run: diagram_id=%s requirements_selected=%d",

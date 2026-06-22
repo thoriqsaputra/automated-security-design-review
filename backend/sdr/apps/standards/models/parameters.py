@@ -1,7 +1,6 @@
-from typing import Optional, Dict, Any
+from typing import Optional
 
-from sqlalchemy import String, Integer, ForeignKey, UniqueConstraint, CheckConstraint
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy import Integer, String, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship, backref
 
 from sdr.core.database import Base
@@ -34,39 +33,12 @@ class CategoryParameterParent(Base, StandardsBigIntBase):
         cat_name = getattr(self.category, "name", "Category") if self.category else "Category"
         return f"{cat_name}: {self.title}"
 
-
-
-class ASVSLevelDefinition(Base, StandardsBigIntBase):
-    __tablename__ = "standards_asvsleveldefinition"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    ingestion_job_id: Mapped[int] = mapped_column(ForeignKey("standards_standingestionjob.id", ondelete="CASCADE"), index=True)
-    level: Mapped[int] = mapped_column(Integer)
-    code: Mapped[str] = mapped_column(String(16))
-    name: Mapped[str] = mapped_column(String(128))
-    description: Mapped[str] = mapped_column(String)
-    classification_guidance: Mapped[str] = mapped_column(String)
-    source_quote: Mapped[Optional[str]] = mapped_column(String, nullable=True)
-    context_marker: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-
-    ingestion_job = relationship("StandardIngestionJob", backref=backref("asvs_level_definitions", cascade="all, delete-orphan"))
-
-    __table_args__ = (
-        CheckConstraint("level IN (1, 2, 3)", name="ck_asvs_level_definition_range"),
-        UniqueConstraint("ingestion_job_id", "level", name="unique_asvs_level_definition_per_job"),
-    )
-
-    def __str__(self):
-        return f"{self.code}: {self.name}"
-
-
 class CategoryParameterChild(Base, StandardsBigIntBase):
     __tablename__ = "standards_categoryparameterchild"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     parent_id: Mapped[int] = mapped_column(ForeignKey("standards_categoryparameterparent.id", ondelete="CASCADE"), index=True)
-    asvs_level: Mapped[Optional[int]] = mapped_column(Integer, nullable=True, index=True)
-    
+
     stable_key: Mapped[str] = mapped_column(String(255), index=True)
     requirement_text: Mapped[str] = mapped_column(String)
     details: Mapped[str] = mapped_column(String, default="")

@@ -71,6 +71,9 @@ class RetrievalService:
     def get_parent_retrieval_max_context_chunks(self) -> int:
         return max(1, int(getattr(settings, "AI_PARENT_RETRIEVAL_MAX_CONTEXT_CHUNKS", 6)))
 
+    def get_parent_retrieval_retry_max_context_chunks(self) -> int:
+        return max(1, int(getattr(settings, "AI_PARENT_RETRIEVAL_RETRY_MAX_CONTEXT_CHUNKS", 14)))
+
     def build_indexes(self, tsd_document: TSDDocument, progress_callbacks: Optional[Dict[str, Any]] = None) -> RetrievalIndexes:
         self.logger.info(
             "RetrievalService.build_indexes: building for '%s'",
@@ -363,6 +366,7 @@ class RetrievalService:
         indexes: RetrievalIndexes,
         tsd_document: Optional[TSDDocument] = None,
         query_details: Optional[Dict[str, Any]] = None,
+        max_context_chunks_override: Optional[int] = None,
     ) -> RetrievalResult:
         if not child_parameters:
             return RetrievalResult(error="No child parameters supplied for parent retrieval.")
@@ -372,7 +376,18 @@ class RetrievalService:
         child_snippets = []
         max_child_snippets = self.get_parent_retrieval_max_child_snippets()
         max_child_snippet_chars = self.get_parent_retrieval_max_child_snippet_chars()
-        for child in child_parameters[:max_child_snippets]:
+        # Sample evenly across ALL children rather than taking the first N, so a
+        # family with more children than the snippet cap still gets query coverage
+        # representative of the whole family, not just its first few entries.
+        if len(child_parameters) <= max_child_snippets:
+            sampled_children = child_parameters
+        else:
+            step = len(child_parameters) / max_child_snippets
+            sampled_children = [
+                child_parameters[min(int(idx * step), len(child_parameters) - 1)]
+                for idx in range(max_child_snippets)
+            ]
+        for child in sampled_children:
             text = (
                 build_parameter_analysis_text(child)
             ).strip()
@@ -400,7 +415,11 @@ class RetrievalService:
             tsd_document=tsd_document,
             query_details=details,
         )
-        max_context_chunks = self.get_parent_retrieval_max_context_chunks()
+        max_context_chunks = (
+            max(1, int(max_context_chunks_override))
+            if max_context_chunks_override is not None
+            else self.get_parent_retrieval_max_context_chunks()
+        )
         if len(result.context_chunks or []) > max_context_chunks:
             result.context_chunks = list(result.context_chunks[:max_context_chunks])
         self.logger.info(

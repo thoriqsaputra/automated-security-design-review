@@ -5,9 +5,11 @@ import json
 from typing import Callable, Dict, List, Optional
 
 from sdr.apps.ai.prompts.agents import (
+    MEDIATOR_RECOMMENDATION_SYSTEM_PROMPT,
     MEDIATOR_SYSTEM_PROMPT,
     build_mediator_prompt,
     build_batch_mediator_prompt,
+    build_mediator_recommendation_prompt,
 )
 from .base import (
     BaseAgent,
@@ -833,6 +835,57 @@ class MediatorAgent(BaseAgent):
 
         recommendation = raw.strip()
         return recommendation if recommendation else None
+
+    def generate_recommendation_for_not_met(
+        self,
+        *,
+        finding_type: str,
+        parameter_section: str,
+        parameter_text: str,
+        finding_description: str,
+        reasoning: str,
+        severity: Optional[str] = None,
+        source: str = "persistence_fallback",
+    ) -> Optional[str]:
+        prompt = build_mediator_recommendation_prompt(
+            finding_type=finding_type,
+            parameter_section=parameter_section,
+            parameter_text=parameter_text,
+            finding_description=finding_description,
+            reasoning=reasoning,
+            severity=severity,
+            source=source,
+        )
+        try:
+            response = self._call_llm_with_truncation_retry(
+                prompt,
+                max_tokens=400,
+            )
+            if response.error or self._response_was_truncated(response):
+                self.logger.warning(
+                    "MediatorAgent.generate_recommendation_for_not_met: recommendation generation failed error=%s finish_reason=%s",
+                    response.error,
+                    getattr(response, "finish_reason", None),
+                )
+                return None
+            parsed = self._parse_json_response(response)
+            if not isinstance(parsed, dict):
+                self.logger.warning(
+                    "MediatorAgent.generate_recommendation_for_not_met: response was not a JSON object"
+                )
+                return None
+            recommendation = self._extract_text_field(
+                parsed,
+                "recommendation",
+                default="",
+                max_chars=500,
+            ).strip()
+            return recommendation or None
+        except Exception:
+            self.logger.exception(
+                "MediatorAgent.generate_recommendation_for_not_met: failed"
+            )
+            return None
 
 
 

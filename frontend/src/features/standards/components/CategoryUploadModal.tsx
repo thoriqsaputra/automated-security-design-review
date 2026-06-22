@@ -7,14 +7,10 @@ interface CategoryUploadModalProps {
   file: File | null;
   startPage: string;
   endPage: string;
-  levelDefinitionStartPage: string;
-  levelDefinitionEndPage: string;
   onClose: () => void;
   onFileChange: (file: File | null) => void;
   onStartPageChange: (value: string) => void;
   onEndPageChange: (value: string) => void;
-  onLevelDefinitionStartPageChange: (value: string) => void;
-  onLevelDefinitionEndPageChange: (value: string) => void;
   onSubmit: () => void;
 }
 
@@ -26,14 +22,10 @@ export default function CategoryUploadModal(props: CategoryUploadModalProps) {
     file,
     startPage,
     endPage,
-    levelDefinitionStartPage,
-    levelDefinitionEndPage,
     onClose,
     onFileChange,
     onStartPageChange,
     onEndPageChange,
-    onLevelDefinitionStartPageChange,
-    onLevelDefinitionEndPageChange,
     onSubmit,
   } = props;
 
@@ -49,7 +41,7 @@ export default function CategoryUploadModal(props: CategoryUploadModalProps) {
             className="w-full text-sm text-text-muted file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:bg-midnight-lighter file:text-text-secondary file:font-medium file:cursor-pointer hover:file:bg-surface-hover file:transition-colors"
           />
         </div>
-        {/* <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-4">
           <div>
             <label className="block text-xs font-medium text-text-secondary mb-1">Parameter Start Page (Optional)</label>
             <input
@@ -73,30 +65,6 @@ export default function CategoryUploadModal(props: CategoryUploadModalProps) {
             />
           </div>
         </div>
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">Level Definition Start Page (Optional)</label>
-            <input
-              type="number"
-              min="1"
-              placeholder="e.g. 8"
-              value={levelDefinitionStartPage}
-              onChange={(event) => onLevelDefinitionStartPageChange(event.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-text-primary text-sm focus:outline-none focus:border-crimson transition-colors"
-            />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-text-secondary mb-1">Level Definition End Page (Optional)</label>
-            <input
-              type="number"
-              min="1"
-              placeholder="e.g. 10"
-              value={levelDefinitionEndPage}
-              onChange={(event) => onLevelDefinitionEndPageChange(event.target.value)}
-              className="w-full px-3 py-2 rounded-lg bg-surface border border-surface-border text-text-primary text-sm focus:outline-none focus:border-crimson transition-colors"
-            />
-          </div>
-        </div> */}
         <button
           onClick={onSubmit}
           disabled={!file || uploading}

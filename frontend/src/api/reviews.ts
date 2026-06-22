@@ -16,12 +16,20 @@ export interface CitationAnchor {
   anchor_type: string;
   block_id: string;
   page_number: number;
+  retrieval_origin: string | null;
+  retrieval_origin_label: string | null;
   quoted_text: string | null;
   bbox_x0: number | null;
   bbox_y0: number | null;
   bbox_x1: number | null;
   bbox_y1: number | null;
   created_at: string;
+}
+
+export interface FindingEvidenceSource {
+  key: string;
+  label: string;
+  count: number;
 }
 
 export interface Finding {
@@ -62,6 +70,7 @@ export interface Finding {
   is_actionable: boolean;
   has_citations: boolean;
   citation_count: number;
+  evidence_sources: FindingEvidenceSource[];
   citations: CitationAnchor[];
   created_at: string;
   updated_at: string;
@@ -146,7 +155,6 @@ export interface Review {
   summary_json: JsonRecord;
   retrieval_snapshot_json?: RetrievalVisualization | null;
   overview: string | null;
-  asvs_level_override: number | null;
   analysis_mode: ReviewAnalysisMode;
   document_url?: string | null;
   finding_counts: Record<string, number>;
@@ -225,13 +233,11 @@ export const getReview = (id: number) => api.get<Review>(`/reviews/${id}`);
 export const createReview = (
   designId: number,
   categoryId: number,
-  asvsLevelOverride?: number | null,
   analysisMode: ReviewAnalysisMode = 'default',
 ) =>
   api.post<Review>('/reviews/', {
     design_id: designId,
     category_id: categoryId,
-    asvs_level_override: asvsLevelOverride ?? null,
     analysis_mode: analysisMode,
   });
 

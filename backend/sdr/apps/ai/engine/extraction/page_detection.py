@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 from contextlib import AbstractContextManager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import logging
 import re
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Callable, Dict, List, Optional, Sequence, Set, Tuple
 
 import fitz
 
@@ -523,76 +523,52 @@ class ASVSRequirementLevelDetectionService:
         lines: Sequence[PositionedLine],
         schema: RequirementTableSchema,
     ) -> Dict[str, int]:
-        row_starts: List[Tuple[str, float]] = []
-        for line in lines:
-            for span in line.spans:
-                if span.x0 > 150:
-                    continue
-                if _REQ_TABLE_RE.fullmatch(span.text):
-                    row_starts.append((span.text, span.y0))
-                    break
-        if not row_starts:
-            return {}
-
         levels: Dict[str, int] = {}
-        all_spans = [span for line in lines for span in line.spans]
-        for index, (logical_id, y0) in enumerate(row_starts):
-            next_y = row_starts[index + 1][1] - 1.0 if index + 1 < len(row_starts) else y0 + 120.0
-            row_spans = [
-                span
-                for span in all_spans
-                if (y0 - 3.0) <= span.y0 < next_y
-            ]
-            if schema.mode == "numeric":
-                level = self._extract_numeric_row_level(row_spans, schema)
-            else:
-                level = self._extract_matrix_row_level(row_spans, schema)
+        for line in lines:
+            logical_id = self._extract_requirement_id(line.text)
+            if not logical_id:
+                continue
+            level = self._infer_level_from_line(line, schema)
             if level is not None:
                 levels[logical_id] = level
         return levels
 
-    def _extract_numeric_row_level(
-        self,
-        row_spans: Sequence[TextSpanInfo],
-        schema: RequirementTableSchema,
-    ) -> Optional[int]:
-        if schema.level_x0 is None:
-            return None
-        for span in row_spans:
-            if span.x0 < (schema.level_x0 - 20.0):
-                continue
-            if _NUMERIC_LEVEL_RE.fullmatch(span.text):
-                return int(span.text)
-        return None
+    def _extract_requirement_id(self, text: str) -> Optional[str]:
+        first_token = (text or "").strip().split(" ", 1)[0]
+        return first_token if _REQ_TABLE_RE.match(first_token) else None
 
-    def _extract_matrix_row_level(
+    def _infer_level_from_line(
         self,
-        row_spans: Sequence[TextSpanInfo],
+        line: PositionedLine,
         schema: RequirementTableSchema,
     ) -> Optional[int]:
-        if None in (schema.l1_x0, schema.l2_x0, schema.l3_x0):
+        if schema.mode == "numeric":
+            if schema.level_x0 is None:
+                return None
+            for span in line.spans:
+                if span.x0 + 2.0 < schema.level_x0:
+                    continue
+                if _NUMERIC_LEVEL_RE.match(span.text):
+                    return int(span.text)
             return None
-        boundaries = [
-            (1, schema.l1_x0 - 4.0, schema.l2_x0 - 4.0),
-            (2, schema.l2_x0 - 4.0, schema.l3_x0 - 4.0),
-            (3, schema.l3_x0 - 4.0, (schema.after_l3_x0 or schema.l3_x0 + 40.0) - 4.0),
-        ]
-        optional_columns: List[int] = []
-        for level, start_x, end_x in boundaries:
-            texts = [
-                span.text
-                for span in row_spans
-                if start_x <= span.x0 < end_x
-            ]
-            if not texts:
-                continue
-            meaningful = [text for text in texts if text.upper() not in {"L1", "L2", "L3"}]
-            if not meaningful:
-                continue
-            if all(_OPTIONAL_MARK_RE.fullmatch(text) for text in meaningful):
-                optional_columns.append(level)
-                continue
-            return level
-        if optional_columns:
-            return optional_columns[0]
-        return None
+
+        marks: Set[int] = set()
+        for span in line.spans:
+            if _OPTIONAL_MARK_RE.match(span.text):
+                if schema.l1_x0 is not None and schema.l2_x0 is not None and schema.l1_x0 - 6.0 <= span.x0 < schema.l2_x0 - 6.0:
+                    marks.add(1)
+                elif schema.l2_x0 is not None and schema.l3_x0 is not None and schema.l2_x0 - 6.0 <= span.x0 < schema.l3_x0 - 6.0:
+                    marks.add(2)
+                elif schema.l3_x0 is not None:
+                    upper_bound = schema.after_l3_x0 if schema.after_l3_x0 is not None else schema.l3_x0 + 40.0
+                    if schema.l3_x0 - 6.0 <= span.x0 < upper_bound:
+                        marks.add(3)
+        return max(marks) if marks else None
+
+
+__all__ = [
+    "ASVSPageDetectionResult",
+    "ASVSPageRangeDetectionService",
+    "ASVSRequirementLevelDetectionResult",
+    "ASVSRequirementLevelDetectionService",
+]

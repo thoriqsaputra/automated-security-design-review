@@ -24,8 +24,6 @@ export default function StandardsHub() {
   const [file, setFile] = useState<File | null>(null);
   const [startPage, setStartPage] = useState('');
   const [endPage, setEndPage] = useState('');
-  const [levelDefinitionStartPage, setLevelDefinitionStartPage] = useState('');
-  const [levelDefinitionEndPage, setLevelDefinitionEndPage] = useState('');
   const [uploading, setUploading] = useState(false);
 
   useEffect(() => {
@@ -36,14 +34,12 @@ export default function StandardsHub() {
     if (!uploadCat || !file) return;
     setUploading(true);
     try {
-      await createIngestionJob(uploadCat, file, startPage, endPage, levelDefinitionStartPage, levelDefinitionEndPage);
+      await createIngestionJob(uploadCat, file, startPage, endPage);
       setShowUpload(false);
       setFile(null);
       setUploadCat('');
       setStartPage('');
       setEndPage('');
-      setLevelDefinitionStartPage('');
-      setLevelDefinitionEndPage('');
       // Refresh categories
       listCategories().then(r => setCategories(r.data));
       navigate(`/standards/${uploadCat}`);
@@ -120,14 +116,10 @@ export default function StandardsHub() {
         file={file}
         startPage={startPage}
         endPage={endPage}
-        levelDefinitionStartPage={levelDefinitionStartPage}
-        levelDefinitionEndPage={levelDefinitionEndPage}
         onClose={() => setShowUpload(false)}
         onFileChange={setFile}
         onStartPageChange={setStartPage}
         onEndPageChange={setEndPage}
-        onLevelDefinitionStartPageChange={setLevelDefinitionStartPage}
-        onLevelDefinitionEndPageChange={setLevelDefinitionEndPage}
         onSubmit={handleUpload}
       />
     </div>

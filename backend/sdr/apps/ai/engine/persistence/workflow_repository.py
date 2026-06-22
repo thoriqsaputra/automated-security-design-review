@@ -9,8 +9,6 @@ from sqlalchemy.orm import joinedload
 
 from sdr.apps.reviews.models import Review
 from sdr.apps.standards.models import (
-    ASVSLevelDefinition,
-    CategoryControlSummaryRequirement,
     CategoryDiagramRequirementEmbedding,
     CategoryDiagramRequirement,
     CategoryParameterChild,
@@ -64,10 +62,6 @@ class ReviewWorkflowRepository(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def list_asvs_level_definitions(self, ingestion_job_id: Any) -> List[Any]:
-        raise NotImplementedError
-
-    @abstractmethod
     def get_latest_active_ingestion_job(self, category_id: Any) -> Optional[Any]:
         raise NotImplementedError
 
@@ -81,7 +75,6 @@ class ReviewWorkflowRepository(ABC):
         *,
         category_id: Any,
         ingestion_job_id: Any,
-        effective_asvs_level: int,
     ) -> List[Any]:
         raise NotImplementedError
 
@@ -91,19 +84,8 @@ class ReviewWorkflowRepository(ABC):
         *,
         category_id: Any,
         ingestion_job_id: Any,
-        effective_asvs_level: int,
         query_embedding: List[float],
         top_k: int,
-    ) -> List[Any]:
-        raise NotImplementedError
-
-    @abstractmethod
-    def list_control_summary_requirements(
-        self,
-        *,
-        category_id: Any,
-        ingestion_job_id: Any,
-        effective_asvs_level: int,
     ) -> List[Any]:
         raise NotImplementedError
 
@@ -176,14 +158,6 @@ class SqlAlchemyReviewWorkflowRepository(ReviewWorkflowRepository):
             )
             db.commit()
 
-    def list_asvs_level_definitions(self, ingestion_job_id: Any) -> List[Any]:
-        with core_database.SessionLocal() as db:
-            return db.execute(
-                select(ASVSLevelDefinition)
-                .where(ASVSLevelDefinition.ingestion_job_id == ingestion_job_id)
-                .order_by(ASVSLevelDefinition.level)
-            ).scalars().all()
-
     def get_latest_active_ingestion_job(self, category_id: Any) -> Optional[Any]:
         with core_database.SessionLocal() as db:
             return db.execute(
@@ -217,7 +191,6 @@ class SqlAlchemyReviewWorkflowRepository(ReviewWorkflowRepository):
         *,
         category_id: Any,
         ingestion_job_id: Any,
-        effective_asvs_level: int,
     ) -> List[Any]:
         with core_database.SessionLocal() as db:
             return db.execute(
@@ -225,36 +198,8 @@ class SqlAlchemyReviewWorkflowRepository(ReviewWorkflowRepository):
                 .where(
                     CategoryDiagramRequirement.category_id == category_id,
                     CategoryDiagramRequirement.ingestion_job_id == ingestion_job_id,
-                    CategoryDiagramRequirement.asvs_level <= effective_asvs_level,
                 )
-                .order_by(CategoryDiagramRequirement.asvs_level, CategoryDiagramRequirement.ordinal)
-            ).scalars().all()
-
-    def list_control_summary_requirements(
-        self,
-        *,
-        category_id: Any,
-        ingestion_job_id: Any,
-        effective_asvs_level: int,
-    ) -> List[Any]:
-        with core_database.SessionLocal() as db:
-            return db.execute(
-                select(CategoryControlSummaryRequirement)
-                .options(
-                    joinedload(CategoryControlSummaryRequirement.parent).joinedload(
-                        CategoryParameterParent.category
-                    )
-                )
-                .where(
-                    CategoryControlSummaryRequirement.category_id == category_id,
-                    CategoryControlSummaryRequirement.ingestion_job_id == ingestion_job_id,
-                    CategoryControlSummaryRequirement.asvs_level <= effective_asvs_level,
-                )
-                .order_by(
-                    CategoryControlSummaryRequirement.parent_id,
-                    CategoryControlSummaryRequirement.asvs_level,
-                    CategoryControlSummaryRequirement.ordinal,
-                )
+                .order_by(CategoryDiagramRequirement.ordinal)
             ).scalars().all()
 
     def search_diagram_requirements(
@@ -262,7 +207,6 @@ class SqlAlchemyReviewWorkflowRepository(ReviewWorkflowRepository):
         *,
         category_id: Any,
         ingestion_job_id: Any,
-        effective_asvs_level: int,
         query_embedding: List[float],
         top_k: int,
     ) -> List[Any]:
@@ -281,7 +225,6 @@ class SqlAlchemyReviewWorkflowRepository(ReviewWorkflowRepository):
                 .where(
                     CategoryDiagramRequirement.category_id == category_id,
                     CategoryDiagramRequirement.ingestion_job_id == ingestion_job_id,
-                    CategoryDiagramRequirement.asvs_level <= effective_asvs_level,
                     CategoryDiagramRequirementEmbedding.is_active == True,
                 )
                 .order_by("distance", CategoryDiagramRequirement.ordinal)

@@ -73,7 +73,6 @@ def create_review(payload: ReviewCreateSchema, db: Session = Depends(get_db)):
         category_id=category.id,
         ingestion_job_id=job.id,
         status=Review.STATUS_PENDING,
-        asvs_level_override=payload.asvs_level_override,
         analysis_mode=payload.analysis_mode.value,
     )
     db.add(review)

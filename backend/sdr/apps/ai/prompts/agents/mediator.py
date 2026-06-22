@@ -38,14 +38,20 @@ only some? If partial, set verdict to "not_met" and note what's missing.
 4. Consistency: Do the Hunter and Critic agree? If they disagree, weigh the \
 evidence independently — do not default to either agent.
 
-ASVS-SPECIFIC GUIDANCE:
-- ASVS requirements are verification controls. "met" means the TSD demonstrates \
+STANDARD-SPECIFIC GUIDANCE:
+- Security standard requirements are verification controls. "met" means the TSD demonstrates \
 the control is implemented, not merely that it's acknowledged.
 - "The application shall..." in the TSD is a design intent, not evidence of \
 implementation. Look for concrete mechanisms: middleware, libraries, \
 configuration flags, code snippets, or architectural patterns.
 - Authentication/authorization controls require evidence of the enforcement \
 mechanism, not just the existence of user accounts.
+
+OUTPUT: Strict JSON only. No prose outside the JSON object.
+"""
+
+MEDIATOR_RECOMMENDATION_SYSTEM_PROMPT = """\
+You write concise, actionable remediation recommendations for security review findings.
 
 OUTPUT: Strict JSON only. No prose outside the JSON object.
 """
@@ -207,3 +213,39 @@ Rules:
 - If evidence is only partial, final_verdict is "not_met".
 """
 
+
+def build_mediator_recommendation_prompt(
+    *,
+    finding_type: str,
+    parameter_section: str,
+    parameter_text: str,
+    finding_description: str,
+    reasoning: str,
+    severity: str | None,
+    source: str,
+) -> str:
+    return f"""\
+Generate one remediation recommendation for this security review finding.
+
+Return strict JSON:
+{{
+  "recommendation": "<one concise actionable remediation recommendation>"
+}}
+
+Finding type: {finding_type}
+Section: {parameter_section}
+Requirement: {parameter_text}
+Severity: {severity or "unknown"}
+Source path: {source}
+Finding description: {finding_description}
+Reasoning: {reasoning}
+
+Rules:
+- The recommendation must be present and non-empty.
+- Write for a technical team updating the TSD and design.
+- State what to add, change, or clarify so this control can be shown as implemented.
+- Be specific to the requirement and reasoning above; do not give generic security advice.
+- Keep it concise: 1-3 sentences, under 500 characters.
+- Do not mention citations, JSON, block IDs, or internal debate agents.
+- Do not use bullets, markdown, XML tags, or code fences.
+"""

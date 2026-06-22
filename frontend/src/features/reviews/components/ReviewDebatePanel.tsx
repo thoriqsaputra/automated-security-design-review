@@ -81,7 +81,7 @@ export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
             <div>
               <h3 className="text-sm font-semibold text-text-primary">Analysis Progress</h3>
               <p className="mt-1 text-xs text-text-muted">
-                Debate counts reflect post-ASVS and post-parent-applicability children. Persistence tracks final write-out after debate completes.
+                Debate counts reflect post-filtering requirement selection. Persistence tracks final write-out after debate completes.
               </p>
             </div>
             <div className="rounded-full border border-surface-border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-text-secondary">

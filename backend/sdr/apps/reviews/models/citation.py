@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional
+from typing import Any, Optional
 
 from sqlalchemy import String, Integer, Float, ForeignKey, DateTime, Index, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -52,3 +52,28 @@ class CitationAnchor(Base):
 
     def __str__(self):
         return f"Citation [{self.block_id}] p.{self.page_number} → Finding {self.finding_id}"
+
+    def _structured_metadata(self) -> dict[str, Any]:
+        finding = getattr(self, "finding", None)
+        metadata = getattr(finding, "requirement_metadata", None) or {}
+        if not isinstance(metadata, dict):
+            return {}
+        entries = metadata.get("structured_citations") or []
+        if not isinstance(entries, list):
+            return {}
+        for entry in entries:
+            if not isinstance(entry, dict):
+                continue
+            if entry.get("chunk_id") == self.block_id:
+                return entry
+        return {}
+
+    @property
+    def retrieval_origin(self) -> Optional[str]:
+        value = self._structured_metadata().get("retrieval_origin")
+        return str(value).strip() if isinstance(value, str) and value.strip() else None
+
+    @property
+    def retrieval_origin_label(self) -> Optional[str]:
+        value = self._structured_metadata().get("retrieval_origin_label")
+        return str(value).strip() if isinstance(value, str) and value.strip() else None

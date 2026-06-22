@@ -13,11 +13,10 @@ class SummaryProgressService:
         parameters: List[Any],
         category_code: str,
     ) -> None:
-        category_stats = summary.asvs.setdefault("categories", {}).setdefault(category_code, {})
+        category_stats = summary.category_stats.setdefault(category_code, {})
         parent_ids = set()
         parent_titles = []
         seen_parent_titles = set()
-        level_counts = {"L1": 0, "L2": 0, "L3": 0, "unknown": 0}
 
         for parameter in parameters or []:
             parent_id = getattr(parameter, "parent_id", None)
@@ -29,19 +28,9 @@ class SummaryProgressService:
                 seen_parent_titles.add(parent_title)
                 if len(parent_titles) < 10:
                     parent_titles.append(parent_title)
-            level = getattr(parameter, "asvs_level", None)
-            if level == 1:
-                level_counts["L1"] += 1
-            elif level == 2:
-                level_counts["L2"] += 1
-            elif level == 3:
-                level_counts["L3"] += 1
-            else:
-                level_counts["unknown"] += 1
 
         category_stats["parameter_count_before_parent_applicability"] = len(parameters or [])
         category_stats["parent_count_before_parent_applicability"] = len(parent_ids)
-        category_stats["asvs_level_counts"] = level_counts
         category_stats["parent_titles_sample"] = parent_titles
         category_stats.setdefault("debate_total_count", 0)
         category_stats.setdefault("debate_completed_count", 0)
@@ -60,7 +49,7 @@ class SummaryProgressService:
         category_code: str,
         total_count: int,
     ) -> None:
-        category_stats = summary.asvs.setdefault("categories", {}).setdefault(category_code, {})
+        category_stats = summary.category_stats.setdefault(category_code, {})
         total_count = int(total_count)
         category_stats["debate_total_count"] = total_count
         category_stats["debate_completed_count"] = 0
@@ -83,7 +72,7 @@ class SummaryProgressService:
         summary.analysis_remaining_parameters = summary.debate_remaining_parameters
         if category_code is None:
             return
-        category_stats = summary.asvs.setdefault("categories", {}).setdefault(category_code, {})
+        category_stats = summary.category_stats.setdefault(category_code, {})
         category_stats["analysis_total_count"] = int(category_stats.get("debate_total_count") or 0)
         category_stats["analysis_processed_count"] = int(category_stats.get("debate_completed_count") or 0)
         category_stats["analysis_remaining_count"] = int(category_stats.get("debate_remaining_count") or 0)
@@ -97,7 +86,7 @@ class SummaryProgressService:
     ) -> Optional[Dict[str, int]]:
         if completed_count <= 0:
             return None
-        category_stats = summary.asvs.setdefault("categories", {}).setdefault(category_code, {})
+        category_stats = summary.category_stats.setdefault(category_code, {})
         total_count = int(category_stats.get("debate_total_count") or 0)
         processed_count = min(
             int(category_stats.get("debate_completed_count") or 0) + int(completed_count),
@@ -127,7 +116,7 @@ class SummaryProgressService:
         summary: AnalysisSummary,
         category_code: str,
     ) -> Dict[str, int]:
-        category_stats = summary.asvs.setdefault("categories", {}).setdefault(category_code, {})
+        category_stats = summary.category_stats.setdefault(category_code, {})
         total_count = int(category_stats.get("persistence_total_count") or 0)
         processed_count = min(int(category_stats.get("persistence_completed_count") or 0) + 1, total_count)
         remaining_count = max(total_count - processed_count, 0)

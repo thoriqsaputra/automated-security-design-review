@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+from collections import Counter
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence
 
@@ -91,15 +92,22 @@ def _extract_scope_terms(
     child_requirements: List[str],
     query_details: Optional[Dict[str, Any]] = None,
 ) -> List[str]:
-    raw_terms: List[str] = []
     query_details = query_details or {}
-    for item in query_details.get("family_scope_terms") or []:
-        raw_terms.append(str(item))
-    raw_terms.extend(
-        re.findall(r"[A-Za-z][A-Za-z0-9_-]{2,}", " ".join([parent_title, parent_description]))
+    family_terms: List[str] = [str(item) for item in (query_details.get("family_scope_terms") or [])]
+    title_desc_terms = re.findall(
+        r"[A-Za-z][A-Za-z0-9_-]{2,}", " ".join([parent_title, parent_description])
     )
-    for requirement in child_requirements[:4]:
-        raw_terms.extend(re.findall(r"[A-Za-z][A-Za-z0-9_-]{2,}", requirement))
+
+    # Aggregate term frequency across ALL children rather than truncating to the
+    # first few — a family with many heterogeneous children must not have its scope
+    # defined by an arbitrary positional subset.
+    term_counts: Counter = Counter()
+    for requirement in child_requirements:
+        for term in re.findall(r"[A-Za-z][A-Za-z0-9_-]{2,}", requirement):
+            term_counts[term.lower()] += 1
+    frequency_ranked_child_terms = [term for term, _ in term_counts.most_common()]
+
+    raw_terms = family_terms + title_desc_terms + frequency_ranked_child_terms
     return _normalize_terms(raw_terms)
 
 

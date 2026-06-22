@@ -1,15 +1,8 @@
-import { useState } from 'react';
-import { CheckCircle2, ChevronDown, ChevronRight, Filter, Search, Trash2, X } from 'lucide-react';
+import { CheckCircle2, ChevronDown, ChevronRight, Search, Trash2, X } from 'lucide-react';
 import type { DiagramRequirement, ParameterParent } from '../../../api/standards';
 import Card from '../../../components/ui/Card';
 import PaginationControls from '../../../components/ui/PaginationControls';
-import {
-  asvsLevelClass,
-  asvsLevelLabel,
-  parameterPageSizeOptions,
-  parentLevelSummary,
-  selectArrowStyle,
-} from '../utils/standardsPresentation';
+import { parameterPageSizeOptions } from '../utils/standardsPresentation';
 
 interface CategoryParametersPanelProps {
   activeTab: 'requirements' | 'diagram';
@@ -19,12 +12,10 @@ interface CategoryParametersPanelProps {
   searchInput: string;
   onSearchInputChange: (value: string) => void;
   onSearchCommit: () => void;
-  filterAsvsLevel: string;
-  onFilterAsvsLevelChange: (value: string) => void;
   onClearFilters: () => void;
   parameters: ParameterParent[];
   filteredParameters: ParameterParent[];
-  parameterCounts: { total: number; byLevel: Record<string, number> };
+  parameterCounts: number;
   paginatedParams: ParameterParent[];
   paramsPage: number;
   totalParamsPages: number;
@@ -37,38 +28,11 @@ interface CategoryParametersPanelProps {
   onDeleteChild: (childId: number) => void;
   diagramRequirements: DiagramRequirement[];
   filteredDiagramRequirements: DiagramRequirement[];
-  diagramCounts: { total: number; byLevel: Record<string, number> };
+  diagramCounts: number;
   paginatedDiagramRequirements: DiagramRequirement[];
   diagramParamsPage: number;
   totalDiagramParamsPages: number;
   onDiagramParamsPageChange: (page: number) => void;
-}
-
-function LevelCountChips({ counts }: { counts: Record<string, number> }) {
-  return (
-    <>
-      {counts.L1 > 0 && (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-500/15 text-emerald-400">
-          L1: {counts.L1}
-        </span>
-      )}
-      {counts.L2 > 0 && (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-sky-500/15 text-sky-400">
-          L2: {counts.L2}
-        </span>
-      )}
-      {counts.L3 > 0 && (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-fuchsia-500/15 text-fuchsia-400">
-          L3: {counts.L3}
-        </span>
-      )}
-      {counts.Unknown > 0 && (
-        <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold bg-surface-hover text-text-muted">
-          Unknown: {counts.Unknown}
-        </span>
-      )}
-    </>
-  );
 }
 
 export default function CategoryParametersPanel(props: CategoryParametersPanelProps) {
@@ -80,8 +44,6 @@ export default function CategoryParametersPanel(props: CategoryParametersPanelPr
     searchInput,
     onSearchInputChange,
     onSearchCommit,
-    filterAsvsLevel,
-    onFilterAsvsLevelChange,
     onClearFilters,
     parameters,
     filteredParameters,
@@ -104,17 +66,6 @@ export default function CategoryParametersPanel(props: CategoryParametersPanelPr
     totalDiagramParamsPages,
     onDiagramParamsPageChange,
   } = props;
-
-  const [expandedCfsrs, setExpandedCfsrs] = useState<Set<number>>(new Set());
-
-  const toggleCfsr = (cfsrId: number) => {
-    setExpandedCfsrs((prev) => {
-      const next = new Set(prev);
-      if (next.has(cfsrId)) next.delete(cfsrId);
-      else next.add(cfsrId);
-      return next;
-    });
-  };
 
   return (
     <>
@@ -157,29 +108,11 @@ export default function CategoryParametersPanel(props: CategoryParametersPanelPr
             )}
           </div>
 
-          <div className="flex items-center gap-3 shrink-0">
-            <div className="flex items-center gap-1.5 bg-midnight border border-surface-border rounded-lg px-1 py-1">
-              <Filter size={14} className="text-text-muted ml-2" />
-              <select
-                value={filterAsvsLevel}
-                onChange={(event) => onFilterAsvsLevelChange(event.target.value)}
-                className="bg-transparent text-sm text-text-primary focus:outline-none py-1 pr-6 cursor-pointer appearance-none"
-                style={selectArrowStyle}
-              >
-                <option value="all">ASVS Level: All</option>
-                <option value="1">ASVS Level: L1</option>
-                <option value="2">ASVS Level: L2</option>
-                <option value="3">ASVS Level: L3</option>
-                <option value="unknown">ASVS Level: Unknown</option>
-              </select>
-            </div>
-
-            {(search || filterAsvsLevel !== 'all') && (
-              <button onClick={onClearFilters} className="text-xs font-semibold text-text-muted hover:text-text-primary transition-colors ml-2">
-                Clear All
-              </button>
-            )}
-          </div>
+          {search && (
+            <button onClick={onClearFilters} className="text-xs font-semibold text-text-muted hover:text-text-primary transition-colors ml-2">
+              Clear All
+            </button>
+          )}
         </div>
       )}
 
@@ -189,8 +122,7 @@ export default function CategoryParametersPanel(props: CategoryParametersPanelPr
             <div className="flex flex-col gap-1.5">
               <h2 className="text-lg font-semibold text-text-primary">Extracted Parameters</h2>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm text-text-muted">{filteredParameters.length} sections · {parameterCounts.total} requirements</span>
-                <LevelCountChips counts={parameterCounts.byLevel} />
+                <span className="text-sm text-text-muted">{filteredParameters.length} sections · {parameterCounts} requirements</span>
               </div>
             </div>
           </div>
@@ -218,10 +150,7 @@ export default function CategoryParametersPanel(props: CategoryParametersPanelPr
                           )}
                           <div>
                             <p className="text-sm font-medium text-text-primary">{parent.title}</p>
-                            <p className="text-xs text-text-muted">
-                              {parent.children.length} requirement(s)
-                              {parentLevelSummary(parent) && ` · ${parentLevelSummary(parent)}`}
-                            </p>
+                            <p className="text-xs text-text-muted">{parent.children.length} requirement(s)</p>
                           </div>
                         </div>
                         <span className="text-xs text-text-muted font-mono">{parent.stable_key}</span>
@@ -235,134 +164,26 @@ export default function CategoryParametersPanel(props: CategoryParametersPanelPr
                       </button>
                     </div>
 
-                    {expandedParent === parent.id && (parent.children.length > 0 || (parent.control_summary_requirements && parent.control_summary_requirements.length > 0)) && (
+                    {expandedParent === parent.id && parent.children.length > 0 && (
                       <div className="mt-3 ml-6 space-y-4 border-l-2 border-surface-border pl-4">
-                        {parent.control_summary_requirements?.map((cfsr) => {
-                          const isExpanded = expandedCfsrs.has(cfsr.id);
-                          const coveredChildren = parent.children.filter(c => cfsr.covered_child_keys.includes(c.stable_key));
-                          
-                          return (
-                            <div key={cfsr.id} className="border border-surface-border rounded-lg overflow-hidden">
-                              <button
-                                onClick={() => toggleCfsr(cfsr.id)}
-                                className="w-full flex items-center justify-between p-3 bg-surface-base hover:bg-surface-hover transition-colors text-left"
-                              >
-                                <div className="flex items-start gap-2">
-                                  {isExpanded ? (
-                                    <ChevronDown size={16} className="text-flame mt-0.5 shrink-0" />
-                                  ) : (
-                                    <ChevronRight size={16} className="text-text-muted mt-0.5 shrink-0" />
-                                  )}
-                                  <div>
-                                    <div className="flex flex-wrap items-center gap-2">
-                                      <p className="text-sm font-medium text-text-primary">{cfsr.requirement_text}</p>
-                                      {cfsr.asvs_level && (
-                                        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${asvsLevelClass(cfsr.asvs_level)}`}>
-                                          {asvsLevelLabel(cfsr.asvs_level)}
-                                        </span>
-                                      )}
-                                    </div>
-                                    <p className="text-xs text-text-muted mt-1">{cfsr.analysis_hint}</p>
-                                    <p className="text-[10px] text-text-muted font-mono mt-1">{cfsr.stable_key}</p>
-                                  </div>
-                                </div>
-                                <span className="text-xs font-medium bg-surface-hover px-2 py-1 rounded-md ml-3 shrink-0">
-                                  {coveredChildren.length} params
-                                </span>
-                              </button>
-                              
-                              {isExpanded && coveredChildren.length > 0 && (
-                                <div className="p-3 bg-midnight border-t border-surface-border space-y-3">
-                                  {coveredChildren.map((child) => (
-                                    <div key={child.id} className="flex items-start justify-between gap-4 group">
-                                      <div className="flex items-start gap-2">
-                                        <CheckCircle2 size={14} className="text-burgundy mt-0.5 shrink-0" />
-                                        <div>
-                                          <div className="flex flex-wrap items-center gap-2">
-                                            <p className="text-sm text-text-primary">{child.requirement_text}</p>
-                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${asvsLevelClass(child.asvs_level)}`}>
-                                              {asvsLevelLabel(child.asvs_level)}
-                                            </span>
-                                          </div>
-                                          {child.details && <p className="text-xs text-text-muted mt-0.5">{child.details}</p>}
-                                        </div>
-                                      </div>
-                                      <button
-                                        onClick={() => onDeleteChild(child.id)}
-                                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-flame/10 text-text-muted hover:text-flame transition-all shrink-0"
-                                        title="Delete Requirement"
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
+                        {parent.children.map((child) => (
+                          <div key={child.id} className="flex items-start justify-between gap-4 group">
+                            <div className="flex items-start gap-2">
+                              <CheckCircle2 size={14} className="text-burgundy mt-0.5 shrink-0" />
+                              <div>
+                                <p className="text-sm text-text-primary">{child.requirement_text}</p>
+                                {child.details && <p className="text-xs text-text-muted mt-0.5">{child.details}</p>}
+                              </div>
                             </div>
-                          );
-                        })}
-
-                        {/* Uncategorized children */}
-                        {(() => {
-                          const allCoveredKeys = new Set((parent.control_summary_requirements || []).flatMap(c => c.covered_child_keys));
-                          const uncategorizedChildren = parent.children.filter(c => !allCoveredKeys.has(c.stable_key));
-                          
-                          if (uncategorizedChildren.length === 0) return null;
-                          
-                          const isExpanded = expandedCfsrs.has(-parent.id); // Use negative parent ID for uncategorized section
-                          
-                          return (
-                            <div className="border border-surface-border rounded-lg overflow-hidden mt-4">
-                              <button
-                                onClick={() => toggleCfsr(-parent.id)}
-                                className="w-full flex items-center justify-between p-3 bg-surface-base hover:bg-surface-hover transition-colors text-left"
-                              >
-                                <div className="flex items-start gap-2">
-                                  {isExpanded ? (
-                                    <ChevronDown size={16} className="text-flame mt-0.5 shrink-0" />
-                                  ) : (
-                                    <ChevronRight size={16} className="text-text-muted mt-0.5 shrink-0" />
-                                  )}
-                                  <div>
-                                    <p className="text-sm font-medium text-text-primary">Uncategorized Requirements</p>
-                                    <p className="text-xs text-text-muted mt-1">Parameters not mapped to any CFSR</p>
-                                  </div>
-                                </div>
-                                <span className="text-xs font-medium bg-surface-hover px-2 py-1 rounded-md ml-3 shrink-0">
-                                  {uncategorizedChildren.length} params
-                                </span>
-                              </button>
-                              
-                              {isExpanded && (
-                                <div className="p-3 bg-midnight border-t border-surface-border space-y-3">
-                                  {uncategorizedChildren.map((child) => (
-                                    <div key={child.id} className="flex items-start justify-between gap-4 group">
-                                      <div className="flex items-start gap-2">
-                                        <CheckCircle2 size={14} className="text-burgundy mt-0.5 shrink-0" />
-                                        <div>
-                                          <div className="flex flex-wrap items-center gap-2">
-                                            <p className="text-sm text-text-primary">{child.requirement_text}</p>
-                                            <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${asvsLevelClass(child.asvs_level)}`}>
-                                              {asvsLevelLabel(child.asvs_level)}
-                                            </span>
-                                          </div>
-                                          {child.details && <p className="text-xs text-text-muted mt-0.5">{child.details}</p>}
-                                        </div>
-                                      </div>
-                                      <button
-                                        onClick={() => onDeleteChild(child.id)}
-                                        className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-flame/10 text-text-muted hover:text-flame transition-all shrink-0"
-                                        title="Delete Requirement"
-                                      >
-                                        <Trash2 size={14} />
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })()}
+                            <button
+                              onClick={() => onDeleteChild(child.id)}
+                              className="opacity-0 group-hover:opacity-100 p-1 rounded hover:bg-flame/10 text-text-muted hover:text-flame transition-all shrink-0"
+                              title="Delete Requirement"
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </Card>
@@ -386,8 +207,7 @@ export default function CategoryParametersPanel(props: CategoryParametersPanelPr
             <div className="flex flex-col gap-1.5">
               <h2 className="text-lg font-semibold text-text-primary">Extracted Diagram Requirements</h2>
               <div className="flex items-center gap-2 flex-wrap">
-                <span className="text-sm text-text-muted">{diagramCounts.total} requirements</span>
-                <LevelCountChips counts={diagramCounts.byLevel} />
+                <span className="text-sm text-text-muted">{diagramCounts} requirements</span>
               </div>
             </div>
           </div>
@@ -404,19 +224,12 @@ export default function CategoryParametersPanel(props: CategoryParametersPanelPr
             <div className="space-y-3">
               {paginatedDiagramRequirements.map((requirement) => (
                 <Card key={requirement.id}>
-                  <div className="flex items-start gap-4">
-                    <div className="mt-1">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-semibold ${asvsLevelClass(requirement.asvs_level)}`}>
-                        {asvsLevelLabel(requirement.asvs_level)}
-                      </span>
-                    </div>
-                    <div className="flex-1">
-                      <p className="text-sm font-medium text-text-primary">{requirement.requirement_text}</p>
-                      <p className="text-xs text-text-muted mt-1 italic">{requirement.verification_hint}</p>
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-[10px] font-mono text-text-muted bg-surface px-1.5 py-0.5 rounded">{requirement.stable_key}</span>
-                        <span className="text-[10px] font-medium text-text-secondary">Parent: {requirement.parent_section}</span>
-                      </div>
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-text-primary">{requirement.requirement_text}</p>
+                    <p className="text-xs text-text-muted mt-1 italic">{requirement.verification_hint}</p>
+                    <div className="flex items-center gap-2 mt-2">
+                      <span className="text-[10px] font-mono text-text-muted bg-surface px-1.5 py-0.5 rounded">{requirement.stable_key}</span>
+                      <span className="text-[10px] font-medium text-text-secondary">Parent: {requirement.parent_section}</span>
                     </div>
                   </div>
                 </Card>

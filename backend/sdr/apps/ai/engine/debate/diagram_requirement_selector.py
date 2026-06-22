@@ -19,7 +19,6 @@ class DiagramRequirementSelector:
         tsd_document,
         category,
         ingestion_job,
-        effective_asvs_level: int,
     ) -> List[Any]:
         top_k = self.config.vision_diagram_requirements_max_items
         query_text = self._build_query_text(diagram=diagram, tsd_document=tsd_document)
@@ -27,7 +26,6 @@ class DiagramRequirementSelector:
             return self._fallback_requirements(
                 category_id=category.id,
                 ingestion_job_id=ingestion_job.id,
-                effective_asvs_level=effective_asvs_level,
                 top_k=top_k,
             )
 
@@ -46,7 +44,6 @@ class DiagramRequirementSelector:
                 requirements = self.workflow_repository.search_diagram_requirements(
                     category_id=category.id,
                     ingestion_job_id=ingestion_job.id,
-                    effective_asvs_level=effective_asvs_level,
                     query_embedding=query_vector,
                     top_k=top_k,
                 )
@@ -63,7 +60,6 @@ class DiagramRequirementSelector:
         return self._fallback_requirements(
             category_id=category.id,
             ingestion_job_id=ingestion_job.id,
-            effective_asvs_level=effective_asvs_level,
             top_k=top_k,
         )
 
@@ -91,12 +87,10 @@ class DiagramRequirementSelector:
         *,
         category_id: Any,
         ingestion_job_id: Any,
-        effective_asvs_level: int,
         top_k: int,
     ) -> List[Any]:
         requirements = self.workflow_repository.list_diagram_requirements(
             category_id=category_id,
             ingestion_job_id=ingestion_job_id,
-            effective_asvs_level=effective_asvs_level,
         )
         return list(requirements[:top_k])

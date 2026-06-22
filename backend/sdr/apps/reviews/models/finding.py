@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 
 from sqlalchemy import String, Integer, Float, ForeignKey, DateTime, Index, func
 from sqlalchemy.dialects.postgresql import JSONB
@@ -87,3 +87,54 @@ class Finding(Base):
     @property
     def is_actionable(self) -> bool:
         return self.met_status == MetStatus.NOT_MET.value
+
+    @property
+    def has_citations(self) -> bool:
+        return bool(getattr(self, "citations", None))
+
+    @property
+    def citation_count(self) -> int:
+        return len(getattr(self, "citations", None) or [])
+
+    @property
+    def evidence_sources(self) -> List[Dict[str, Any]]:
+        metadata = self.requirement_metadata or {}
+        if not isinstance(metadata, dict):
+            return []
+
+        explicit = metadata.get("evidence_sources")
+        if isinstance(explicit, list):
+            output: List[Dict[str, Any]] = []
+            for item in explicit:
+                if not isinstance(item, dict):
+                    continue
+                key = str(item.get("key") or "").strip()
+                label = str(item.get("label") or "").strip()
+                count = item.get("count")
+                if not key or not label:
+                    continue
+                output.append(
+                    {
+                        "key": key,
+                        "label": label,
+                        "count": int(count or 0),
+                    }
+                )
+            if output:
+                return output
+
+        counts: Dict[str, Dict[str, Any]] = {}
+        structured = metadata.get("structured_citations") or []
+        if not isinstance(structured, list):
+            return []
+        for item in structured:
+            if not isinstance(item, dict):
+                continue
+            key = str(item.get("retrieval_origin") or "").strip()
+            label = str(item.get("retrieval_origin_label") or "").strip()
+            if not key or not label:
+                continue
+            if key not in counts:
+                counts[key] = {"key": key, "label": label, "count": 0}
+            counts[key]["count"] += 1
+        return list(counts.values())

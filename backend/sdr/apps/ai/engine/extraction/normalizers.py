@@ -135,60 +135,6 @@ def _extract_logical_id(text: str) -> str:
     return text
 
 
-def _coerce_asvs_level(value: Any) -> int | None:
-    if value is None:
-        return None
-    if isinstance(value, int) and value in (1, 2, 3):
-        return value
-    text = str(value).strip().upper()
-    if text.startswith("L"):
-        text = text[1:].strip()
-    if text in {"1", "2", "3"}:
-        return int(text)
-    return None
-
-
-def _clean_asvs_level_definitions(parsed: Any) -> List[Dict[str, Any]]:
-    if isinstance(parsed, dict):
-        raw_items = parsed.get("levels") or parsed.get("asvs_levels") or []
-    elif isinstance(parsed, list):
-        raw_items = parsed
-    else:
-        raw_items = []
-
-    cleaned: List[Dict[str, Any]] = []
-    seen = set()
-    for item in raw_items:
-        if not isinstance(item, dict):
-            continue
-        level = _coerce_asvs_level(item.get("level") or item.get("code"))
-        if level is None or level in seen:
-            continue
-        name = str(item.get("name") or f"Level {level}").strip()
-        description = str(item.get("description") or "").strip()
-        guidance = str(
-            item.get("classification_guidance")
-            or item.get("guidance")
-            or item.get("classification")
-            or description
-        ).strip()
-        if not guidance:
-            continue
-        cleaned.append(
-            {
-                "level": level,
-                "code": f"L{level}",
-                "name": name,
-                "description": description or guidance,
-                "classification_guidance": guidance,
-                "source_quote": str(item.get("source_quote") or "").strip(),
-                "context_marker": str(item.get("context_marker") or "").strip(),
-            }
-        )
-        seen.add(level)
-    return sorted(cleaned, key=lambda item: item["level"])
-
-
 def _is_deleted_reserved_or_blank(requirement: str, *, verbatim_quote: str = "") -> bool:
     combined = " ".join(part for part in (requirement, verbatim_quote) if part).strip()
     if not combined:
@@ -240,7 +186,6 @@ def _canonical_requirement_key(item: Dict[str, Any]) -> str:
 
 def _requirement_richness(item: Dict[str, Any]) -> tuple:
     return (
-        1 if item.get("asvs_level") is not None else 0,
         len(str(item.get("details", "")).strip()),
         1 if str(item.get("context_marker", "")).strip() else 0,
         1 if str(item.get("verbatim_quote", "")).strip() else 0,
@@ -257,7 +202,6 @@ def canonicalize_requirement_items(items: List[Any]) -> List[Dict[str, Any]]:
                 "details": str(item.get("details", "")).strip(),
                 "verbatim_quote": str(item.get("verbatim_quote", "")).strip(),
                 "context_marker": str(item.get("context_marker", "")).strip(),
-                "asvs_level": _coerce_asvs_level(item.get("asvs_level")),
             }
         elif isinstance(item, str):
             text = str(item).strip()
@@ -266,7 +210,6 @@ def canonicalize_requirement_items(items: List[Any]) -> List[Dict[str, Any]]:
                 "details": "",
                 "verbatim_quote": "",
                 "context_marker": "",
-                "asvs_level": None,
             }
         else:
             continue
@@ -315,7 +258,6 @@ def clean_structured_requirements(parsed: Any) -> Dict[str, List[Any]]:
                         "details": details,
                         "verbatim_quote": str(item.get("verbatim_quote", "")).strip(),
                         "context_marker": context_marker,
-                        "asvs_level": _coerce_asvs_level(item.get("asvs_level")),
                     }
                 )
                 continue
@@ -328,33 +270,11 @@ def clean_structured_requirements(parsed: Any) -> Dict[str, List[Any]]:
                             "details": "",
                             "verbatim_quote": "",
                             "context_marker": "",
-                            "asvs_level": None,
                         }
                     )
         if cleaned_reqs:
             cleaned_dict[str(section).strip()] = cleaned_reqs
     return canonicalize_structured_requirements(cleaned_dict)
-
-
-def _backfill_requirement_levels(
-    requirements_by_section: Dict[str, List[Any]],
-    logical_id_to_level: Dict[str, int],
-) -> int:
-    backfilled = 0
-    if not logical_id_to_level:
-        return backfilled
-    for requirements in requirements_by_section.values():
-        for item in requirements:
-            if not isinstance(item, dict):
-                continue
-            if item.get("asvs_level") is not None:
-                continue
-            logical_id = _extract_logical_id(str(item.get("requirement", "")).strip())
-            level = logical_id_to_level.get(logical_id)
-            if level in (1, 2, 3):
-                item["asvs_level"] = level
-                backfilled += 1
-    return backfilled
 
 
 def _canonicalize_diagram_requirements(items: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
@@ -370,7 +290,6 @@ def _canonicalize_diagram_requirements(items: List[Dict[str, Any]]) -> List[Dict
             str(item.get("source_requirement_key", "")).strip(),
             str(item.get("requirement_text", "")).strip(),
             str(item.get("verification_hint", "")).strip(),
-            item.get("asvs_level"),
             str(item.get("parent_section", "")).strip(),
         )
         if exact_fingerprint in exact_seen:
