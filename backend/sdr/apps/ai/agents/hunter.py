@@ -23,6 +23,7 @@ class HunterAgent(BaseAgent):
     model_component: str = "hunter"
     max_tokens: int = 8192
     temperature: float = 0.0
+    reasoning_effort: str = "medium"
 
     def _build_user_prompt(
         self,

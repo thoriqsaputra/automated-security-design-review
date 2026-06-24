@@ -31,6 +31,7 @@ class CriticAgent(BaseAgent):
     model_component: str = "critic"
     max_tokens: int = 8192
     temperature: float = 0.0
+    reasoning_effort: str = "medium"
 
     def _build_user_prompt(
         self,
@@ -41,6 +42,7 @@ class CriticAgent(BaseAgent):
         hunter_result: HunterResult,
         cited_blocks: List[dict],
         available_block_ids: Optional[List[str]] = None,
+        prior_round: Optional[dict] = None,
     ) -> str:
         """
         Delegates to build_critic_prompt() from agent_prompts.py.
@@ -62,6 +64,7 @@ class CriticAgent(BaseAgent):
             hunter_assumptions=hunter_result.assumptions,
             hunter_cot_trace=hunter_result.cot_trace,
             available_block_ids=available_block_ids,
+            prior_round=prior_round,
         )
 
     def run(
@@ -74,6 +77,7 @@ class CriticAgent(BaseAgent):
         cited_blocks: List[dict],
         stream_handler: Optional[Callable[[str], None]] = None,
         available_block_ids: Optional[List[str]] = None,
+        prior_round: Optional[dict] = None,
     ) -> CriticResult:
         # ------------------------------------------------------------------
         # 1. Input validation
@@ -165,6 +169,7 @@ class CriticAgent(BaseAgent):
             hunter_result=hunter_result,
             cited_blocks=cited_blocks,
             available_block_ids=available_block_ids,
+            prior_round=prior_round,
         )
 
         self.logger.info(

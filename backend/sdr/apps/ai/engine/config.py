@@ -7,21 +7,9 @@ from sdr.core.config import settings
 
 @dataclass(frozen=True)
 class AnalysisPipelineConfig:
-    batch_debate_enabled: bool = True
-    batch_debate_batch_size: int = 3
     batch_debate_max_concurrency: int = 3
-    batch_debate_fallback_enabled: bool = True
     batch_debate_parent_context_cache_enabled: bool = True
-    batch_debate_confidence_threshold: float = 0.75
-    batch_debate_soft_confidence_threshold: float = 0.65
-    batch_debate_require_citations_for_not_met: bool = True
     batch_debate_ungrounded_not_met_policy: str = "preserve_not_met"
-    batch_debate_child_refine_enabled: bool = True
-    batch_debate_child_refine_max_context_chunks: int = 6
-    batch_debate_child_refine_include_source_blocks: bool = True
-    batch_debate_child_refine_source_block_limit: int = 8
-    batch_debate_child_refine_enable_keyword_boost: bool = True
-    batch_debate_child_refine_enable_rerank: bool = True
     debate_context_supplemental_block_limit: int = 12
     debate_warn_context_chunk_threshold: int = 40
     parent_applicability_enabled: bool = True
@@ -33,7 +21,6 @@ class AnalysisPipelineConfig:
     parent_retrieval_max_child_snippet_chars: int = 240
     parent_retrieval_max_context_chunks: int = 6
     parent_retrieval_retry_max_context_chunks: int = 14
-    vision_diagram_analysis_enabled: bool = True
     vision_enabled: bool = True
     vision_min_diagram_bytes: int = 512
     vision_diagram_requirements_max_items: int = 15
@@ -42,43 +29,13 @@ class AnalysisPipelineConfig:
     @classmethod
     def from_settings(cls) -> "AnalysisPipelineConfig":
         return cls(
-            batch_debate_enabled=bool(getattr(settings, "AI_BATCH_DEBATE_ENABLED", True)),
-            batch_debate_batch_size=max(1, int(getattr(settings, "AI_BATCH_DEBATE_BATCH_SIZE", 3))),
             batch_debate_max_concurrency=max(1, int(getattr(settings, "AI_BATCH_DEBATE_MAX_CONCURRENCY", 3))),
-            batch_debate_fallback_enabled=bool(getattr(settings, "AI_BATCH_DEBATE_FALLBACK_ENABLED", True)),
             batch_debate_parent_context_cache_enabled=bool(
                 getattr(settings, "AI_BATCH_DEBATE_PARENT_CONTEXT_CACHE_ENABLED", True)
-            ),
-            batch_debate_confidence_threshold=float(
-                getattr(settings, "AI_BATCH_DEBATE_CONFIDENCE_THRESHOLD", 0.75)
-            ),
-            batch_debate_soft_confidence_threshold=float(
-                getattr(settings, "AI_BATCH_DEBATE_SOFT_CONFIDENCE_THRESHOLD", 0.65)
-            ),
-            batch_debate_require_citations_for_not_met=bool(
-                getattr(settings, "AI_BATCH_DEBATE_REQUIRE_CITATIONS_FOR_NOT_MET", True)
             ),
             batch_debate_ungrounded_not_met_policy=str(
                 getattr(settings, "AI_BATCH_DEBATE_UNGROUNDED_NOT_MET_POLICY", "preserve_not_met") or ""
             ).strip().lower(),
-            batch_debate_child_refine_enabled=bool(
-                getattr(settings, "AI_BATCH_DEBATE_CHILD_REFINE_ENABLED", True)
-            ),
-            batch_debate_child_refine_max_context_chunks=max(
-                1, int(getattr(settings, "AI_BATCH_DEBATE_CHILD_REFINE_MAX_CONTEXT_CHUNKS", 6))
-            ),
-            batch_debate_child_refine_include_source_blocks=bool(
-                getattr(settings, "AI_BATCH_DEBATE_CHILD_REFINE_INCLUDE_SOURCE_BLOCKS", True)
-            ),
-            batch_debate_child_refine_source_block_limit=max(
-                0, int(getattr(settings, "AI_BATCH_DEBATE_CHILD_REFINE_SOURCE_BLOCK_LIMIT", 8))
-            ),
-            batch_debate_child_refine_enable_keyword_boost=bool(
-                getattr(settings, "AI_BATCH_DEBATE_CHILD_REFINE_ENABLE_KEYWORD_BOOST", True)
-            ),
-            batch_debate_child_refine_enable_rerank=bool(
-                getattr(settings, "AI_BATCH_DEBATE_CHILD_REFINE_ENABLE_RERANK", True)
-            ),
             debate_context_supplemental_block_limit=max(
                 0,
                 int(getattr(settings, "AI_DEBATE_CONTEXT_SUPPLEMENTAL_BLOCK_LIMIT", 12)),
@@ -113,9 +70,6 @@ class AnalysisPipelineConfig:
             ),
             parent_retrieval_retry_max_context_chunks=max(
                 1, int(getattr(settings, "AI_PARENT_RETRIEVAL_RETRY_MAX_CONTEXT_CHUNKS", 14))
-            ),
-            vision_diagram_analysis_enabled=bool(
-                getattr(settings, "AI_VISION_DIAGRAM_ANALYSIS_ENABLED", True)
             ),
             vision_enabled=bool(getattr(settings, "AI_VISION_ENABLED", True)),
             vision_min_diagram_bytes=int(getattr(settings, "AI_VISION_MIN_DIAGRAM_BYTES", 512)),

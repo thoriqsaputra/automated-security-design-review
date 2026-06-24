@@ -15,6 +15,7 @@ from typing import Any, Callable, Dict, List, Optional
 from sdr.apps.ai.client import AIResponse, chat_completion
 from sdr.apps.ai.client.base import AIProvider
 from sdr.apps.ai.utils.parsing import strip_markdown_code_blocks, strip_thinking_block
+from sdr.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -144,9 +145,10 @@ class VisionResult(AgentReasoningMixin):
 class BaseAgent:
     system_prompt: str = ""
     model: Optional[str] = None
-    model_component: str = "orchestrator"
+    model_component: str = "fallback"
     max_tokens: int = 2048
     temperature: float = 0.05
+    reasoning_effort: Optional[str] = None
 
     def __init__(self) -> None:
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
@@ -174,6 +176,9 @@ class BaseAgent:
             "image_format": image_format,
             "top_p": top_p,
         }
+        reasoning_effort = self.reasoning_effort or getattr(settings, "AI_OPENROUTER_REASONING_EFFORT", "") or ""
+        if reasoning_effort:
+            request_kwargs["reasoning"] = {"effort": reasoning_effort}
         if stream_handler:
             stream = chat_completion(stream=True, **request_kwargs)
             content_parts: List[str] = []

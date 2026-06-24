@@ -40,7 +40,7 @@ class OverviewGenerator:
                     {"role": "system", "content": OVERVIEW_SYSTEM_PROMPT},
                     {"role": "user", "content": prompt},
                 ],
-                component="orchestrator",
+                component="mediator",
                 temperature=0.2,
                 max_tokens=1024,
             )

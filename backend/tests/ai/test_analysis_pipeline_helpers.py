@@ -455,11 +455,6 @@ def test_group_parameters_by_parent_preserves_order():
     assert [[p.id for p in group[1]] for group in grouped] == [[1, 2, 4], [3]]
 
 
-def test_split_batches_uses_requested_size():
-    batches = _pipeline()._split_batches([_parameter(i) for i in range(1, 8)], 3)
-    assert [[p.id for p in batch] for batch in batches] == [[1, 2, 3], [4, 5, 6], [7]]
-
-
 def test_is_cancelled_detects_cancelled_status(monkeypatch):
     review = SimpleNamespace(id=77)
     latest = SimpleNamespace(status="cancelled", error_message="Analysis was cancelled by user.")
@@ -740,143 +735,6 @@ def test_build_retrieval_snapshot_serializes_raptor_and_graph():
     assert snapshot["graph"]["edges"][0]["relation_type"] == "calls"
 
 
-def test_batched_analysis_uses_wrapped_concurrency_probes(monkeypatch, settings_override):
-    settings_override(
-        AI_BATCH_DEBATE_ENABLED=True,
-        AI_BATCH_DEBATE_BATCH_SIZE=10,
-        AI_BATCH_DEBATE_MAX_CONCURRENCY=2,
-    )
-
-    parent = _parent(1, title="Authentication")
-    parameters = [
-        _parameter(1, parent=parent, text="Require MFA for admin access."),
-        _parameter(2, parent=parent, text="Require session timeout."),
-    ]
-    review = SimpleNamespace(id=99)
-    category = SimpleNamespace(id=7, code="web_application")
-    ingestion_job = SimpleNamespace(id=11)
-    tsd_document = SimpleNamespace(
-        get_diagram_by_id=lambda *_args, **_kwargs: None,
-    )
-    indexes = SimpleNamespace()
-    summary = AnalysisSummary()
-
-    parent_result = RetrievalResult(
-        context_chunks=["--- DOCUMENT CHUNK 1 OF 1 ---\np1_b1 Authentication evidence."],
-        source_block_ids=["p1_b1"],
-        evidence_metadata={},
-    )
-
-    class _BatchRetrievalService:
-        def retrieve_for_parent_group(self, **kwargs):
-            return parent_result
-
-    class _BatchDebateService:
-        def run_batch_debate(self, **kwargs):
-            return {}
-
-    pipeline = TSDAnalysisPipeline(
-        ingestion_service=SimpleNamespace(),
-        retrieval_service=_BatchRetrievalService(),
-        debate_service=_BatchDebateService(),
-        persistence_service=SimpleNamespace(),
-    )
-
-    persisted = []
-
-    monkeypatch.setattr(TSDAnalysisPipeline, "_is_cancelled", lambda self, review: False)
-    monkeypatch.setattr(
-        TSDAnalysisPipeline,
-        "_persist_summary_snapshot",
-        lambda self, review_obj, summary_obj: setattr(review_obj, "summary_json", summary_obj.to_dict()),
-    )
-    monkeypatch.setattr(
-        TSDAnalysisPipeline,
-        "_persist_debate_output",
-        lambda self, **kwargs: persisted.append(kwargs["parameter"].id),
-    )
-    monkeypatch.setattr(
-        TSDAnalysisPipeline,
-        "_analyze_single_child_with_retrieval_result",
-        lambda self, **kwargs: _debate_output(
-            kwargs["parameter"],
-            verdict="met",
-            citations=[Citation(block_id="p1_b1", page_number=1)],
-            reasoning="Explicit implementation evidence is present.",
-        ),
-    )
-
-    pipeline._run_batched_analysis_for_category(
-        review=review,
-        category=category,
-        ingestion_job=ingestion_job,
-        parameters=parameters,
-        indexes=indexes,
-        tsd_document=tsd_document,
-        summary=summary,
-        killed_assumptions_memory=deque(maxlen=16),
-    )
-
-    assert persisted == [1, 2]
-    assert summary.debate_total_parameters == 2
-    assert summary.debate_completed_parameters == 2
-    assert summary.debate_remaining_parameters == 0
-    assert summary.persistence_total_parameters == 2
-    assert summary.persistence_completed_parameters == 2
-    assert summary.persistence_remaining_parameters == 0
-    assert summary.analysis_total_parameters == 2
-    assert summary.analysis_processed_parameters == 2
-    assert summary.analysis_remaining_parameters == 0
-    assert summary.asvs["categories"]["web_application"]["debate_total_count"] == 2
-    assert summary.asvs["categories"]["web_application"]["debate_completed_count"] == 2
-    assert summary.asvs["categories"]["web_application"]["debate_remaining_count"] == 0
-    assert summary.asvs["categories"]["web_application"]["persistence_total_count"] == 2
-    assert summary.asvs["categories"]["web_application"]["persistence_completed_count"] == 2
-    assert summary.asvs["categories"]["web_application"]["persistence_remaining_count"] == 0
-    assert summary.asvs["categories"]["web_application"]["analysis_total_count"] == 2
-    assert summary.asvs["categories"]["web_application"]["analysis_processed_count"] == 2
-    assert summary.asvs["categories"]["web_application"]["analysis_remaining_count"] == 0
-    assert pipeline._last_batch_concurrency_stats["parent_retrieval"]["submitted"] == 1
-    assert pipeline._last_batch_concurrency_stats["batch_debate"]["submitted"] == 1
-    assert pipeline._last_batch_concurrency_stats["fallback"]["submitted"] == 2
-
-
-def test_validate_batch_outputs_rejects_missing_and_generic_results(settings_override):
-    settings_override(
-        AI_BATCH_DEBATE_CONFIDENCE_THRESHOLD=0.75,
-        AI_BATCH_DEBATE_SOFT_CONFIDENCE_THRESHOLD=0.65,
-        AI_BATCH_DEBATE_REQUIRE_CITATIONS_FOR_NOT_MET=True,
-        AI_BATCH_DEBATE_UNGROUNDED_NOT_MET_POLICY="selective_fallback",
-    )
-    pipeline = _pipeline()
-    params = [_parameter(i) for i in range(1, 5)]
-    valid = _debate_output(params[0], verdict="not_met")
-    valid.mediator_result.final_citations = [Citation(block_id="p1_b1", page_number=1)]
-    valid.critic_result.valid_citations = [Citation(block_id="p1_b1", page_number=1)]
-    low_conf = _debate_output(params[1], confidence=0.4)
-    weak = _debate_output(params[2], confidence=0.8, reasoning="Too short.")
-    generic = _debate_output(
-        params[3],
-        reasoning="All children in the batch are covered by the same evidence and therefore pass.",
-    )
-    accepted, invalid = pipeline._validate_batch_outputs(
-        params,
-        {
-            "1": valid,
-            "2": low_conf,
-            "3": weak,
-            "4": generic,
-            "999": _debate_output(_parameter(999)),
-        },
-    )
-
-    assert set(accepted) == {"1"}
-    assert "low_confidence" in invalid["2"]
-    assert "weak_or_generic_reasoning" in invalid["3"]
-    assert "generic_multi_child_result" in invalid["4"]
-    assert "unknown_child_id" in invalid["999"]
-
-
 def test_evidence_gate_preserves_not_met_without_retry_context(settings_override):
     settings_override(AI_BATCH_DEBATE_UNGROUNDED_NOT_MET_POLICY="downgrade_na")
     pipeline = _pipeline()
@@ -1021,7 +879,7 @@ def test_debate_output_can_embed_retrieval_result_without_forward_ref_error():
 
 def _category_analysis_coordinator():
     return CategoryAnalysisCoordinator(
-        config=SimpleNamespace(batch_debate_enabled=True),
+        config=SimpleNamespace(),
         workflow_repository=SimpleNamespace(),
         progress_service=SimpleNamespace(),
         run_state_service=SimpleNamespace(),
@@ -1047,8 +905,7 @@ def test_category_analysis_coordinator_skips_diagrams_in_text_only_mode(monkeypa
     coordinator.run_state.persist_summary_snapshot = lambda *_args, **_kwargs: None
     coordinator.run_state.is_cancelled = lambda _review: False
     coordinator.text_debate.apply_parent_applicability_gate = lambda **_kwargs: ([parameter], {})
-    coordinator.text_debate.run_batched_analysis_for_category = lambda **_kwargs: calls.__setitem__("text", calls["text"] + 1)
-    coordinator.text_debate.run_single_analysis_for_category = lambda **_kwargs: None
+    coordinator.text_debate.run_single_analysis_for_category = lambda **_kwargs: calls.__setitem__("text", calls["text"] + 1)
     coordinator.diagram_analysis.run = lambda **_kwargs: calls.__setitem__("diagram", calls["diagram"] + 1)
 
     coordinator.run_category(
@@ -1082,8 +939,7 @@ def test_category_analysis_coordinator_skips_text_path_in_diagram_only_mode(monk
     coordinator.run_state.persist_summary_snapshot = lambda *_args, **_kwargs: None
     coordinator.run_state.is_cancelled = lambda _review: False
     coordinator.text_debate.apply_parent_applicability_gate = lambda **_kwargs: calls.__setitem__("text_gate", calls["text_gate"] + 1)
-    coordinator.text_debate.run_batched_analysis_for_category = lambda **_kwargs: calls.__setitem__("text", calls["text"] + 1)
-    coordinator.text_debate.run_single_analysis_for_category = lambda **_kwargs: None
+    coordinator.text_debate.run_single_analysis_for_category = lambda **_kwargs: calls.__setitem__("text", calls["text"] + 1)
     coordinator.diagram_analysis.run = lambda **_kwargs: calls.__setitem__("diagram", calls["diagram"] + 1)
 
     coordinator.run_category(

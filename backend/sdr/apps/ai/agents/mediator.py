@@ -37,6 +37,7 @@ class MediatorAgent(BaseAgent):
     model_component: str = "mediator"
     max_tokens: int = 8192  # Give the structured JSON enough room to finish cleanly
     temperature: float = 0.0
+    reasoning_effort: str = "medium"
 
     def _build_user_prompt(
         self,

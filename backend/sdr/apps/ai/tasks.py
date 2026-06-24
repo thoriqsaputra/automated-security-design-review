@@ -72,7 +72,7 @@ def generate_finding_severity_analysis_task(self, finding_id: str) -> None:
             {"role": "system", "content": SEVERITY_JUSTIFICATION_SYSTEM_PROMPT},
             {"role": "user", "content": prompt},
         ],
-        component="orchestrator",
+        component="mediator",
         temperature=_SEVERITY_JUSTIFICATION_TEMPERATURE,
         max_tokens=_SEVERITY_JUSTIFICATION_MAX_TOKENS,
         response_format={"type": "json_object"},

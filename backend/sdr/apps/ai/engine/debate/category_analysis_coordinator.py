@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import threading
 from collections import deque
 from typing import Any, List
 
@@ -61,7 +62,8 @@ class CategoryAnalysisCoordinator:
             return
 
         if analysis_mode != "diagram_only":
-            summary.total_parameters += len(parameters)
+            with summary.lock:
+                summary.total_parameters += len(parameters)
 
         category_code = getattr(category, "code", None) or "unknown"
         self.run_state.update_stage(review, summary, "4_parameter_resolution")
@@ -84,6 +86,35 @@ class CategoryAnalysisCoordinator:
             )
             return
 
+        diagram_thread = None
+        diagram_errors: List[BaseException] = []
+        if analysis_mode != "text_only":
+            self.run_state.update_stage(review, summary, "6_7_concurrent_debate")
+            # Diagram debate has no data dependency on text-debate output, so it's
+            # started here on a background thread to run concurrently with the
+            # text-debate phase below rather than waiting for it to finish first.
+            # AnalysisSummary.lock (see dto.py) guards the now-concurrent writes
+            # from both phases' driver threads.
+            def _run_diagram_phase() -> None:
+                try:
+                    self.diagram_analysis.run(
+                        review=review,
+                        tsd_document=tsd_document,
+                        category=category,
+                        ingestion_job=ingestion_job,
+                        summary=summary,
+                        cancel_check=lambda: self.run_state.is_cancelled(review),
+                    )
+                except BaseException as exc:  # noqa: BLE001 - re-raised on join below
+                    diagram_errors.append(exc)
+
+            diagram_thread = threading.Thread(
+                target=_run_diagram_phase,
+                name=f"DiagramDebatePhase-{category_code}",
+                daemon=True,
+            )
+            diagram_thread.start()
+
         self._run_raw_children_analysis(
             review=review,
             category=category,
@@ -96,18 +127,10 @@ class CategoryAnalysisCoordinator:
             killed_assumptions_memory=killed_assumptions_memory,
         )
 
-        if analysis_mode == "text_only":
-            return
-
-        self.run_state.update_stage(review, summary, "7_diagram_debate")
-        self.diagram_analysis.run(
-            review=review,
-            tsd_document=tsd_document,
-            category=category,
-            ingestion_job=ingestion_job,
-            summary=summary,
-            cancel_check=lambda: self.run_state.is_cancelled(review),
-        )
+        if diagram_thread is not None:
+            diagram_thread.join()
+            if diagram_errors:
+                raise diagram_errors[0]
 
     def _run_raw_children_analysis(
         self,
@@ -127,7 +150,8 @@ class CategoryAnalysisCoordinator:
             parameters=parameters,
             category_code=category_code,
         )
-        parent_skip_before = int(summary.applicability.get("children_marked_na_by_parent", 0) or 0)
+        with summary.lock:
+            parent_skip_before = int(summary.applicability.get("children_marked_na_by_parent", 0) or 0)
         self.run_state.update_stage(review, summary, "5_parent_retrieval")
         applicable_parameters, parent_context_cache = self.text_debate.apply_parent_applicability_gate(
             review=review,
@@ -141,10 +165,11 @@ class CategoryAnalysisCoordinator:
         if not applicable_parameters:
             return
 
-        summary.debate_total_parameters += len(applicable_parameters)
-        summary.debate_remaining_parameters += len(applicable_parameters)
-        summary.persistence_total_parameters += len(applicable_parameters)
-        summary.persistence_remaining_parameters += len(applicable_parameters)
+        with summary.lock:
+            summary.debate_total_parameters += len(applicable_parameters)
+            summary.debate_remaining_parameters += len(applicable_parameters)
+            summary.persistence_total_parameters += len(applicable_parameters)
+            summary.persistence_remaining_parameters += len(applicable_parameters)
         self.progress_service.initialize_category_progress(
             summary=summary,
             category_code=category_code,
@@ -165,26 +190,13 @@ class CategoryAnalysisCoordinator:
         )
 
         self.run_state.update_stage(review, summary, "6_text_debate")
-        if self.config.batch_debate_enabled:
-            self.text_debate.run_batched_analysis_for_category(
-                review=review,
-                category=category,
-                ingestion_job=ingestion_job,
-                parameters=applicable_parameters,
-                indexes=indexes,
-                tsd_document=tsd_document,
-                summary=summary,
-                killed_assumptions_memory=killed_assumptions_memory,
-                parent_context_cache=parent_context_cache,
-            )
-        else:
-            self.text_debate.run_single_analysis_for_category(
-                review=review,
-                category=category,
-                ingestion_job=ingestion_job,
-                parameters=applicable_parameters,
-                indexes=indexes,
-                tsd_document=tsd_document,
-                summary=summary,
-                killed_assumptions_memory=killed_assumptions_memory,
-            )
+        self.text_debate.run_single_analysis_for_category(
+            review=review,
+            category=category,
+            ingestion_job=ingestion_job,
+            parameters=applicable_parameters,
+            indexes=indexes,
+            tsd_document=tsd_document,
+            summary=summary,
+            killed_assumptions_memory=killed_assumptions_memory,
+        )

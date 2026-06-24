@@ -290,7 +290,6 @@ def test_classify_review_asvs_level_prefers_ingestion_job_definitions(monkeypatc
 
 
 def test_pipeline_dry_run_executes_without_real_llm_or_db(monkeypatch, settings_override):
-    settings_override(AI_BATCH_DEBATE_ENABLED=False)
     category = SimpleNamespace(id=4, code="web_application", name="Web Application")
     ingestion_job = SimpleNamespace(id=8, category=category)
     parent = _parent()

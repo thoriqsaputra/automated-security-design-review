@@ -100,7 +100,6 @@ class TSDAnalysisPipeline:
             diagram_analysis_coordinator=self.diagram_analysis,
         )
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self._last_batch_concurrency_stats: Dict[str, Dict[str, Any]] = {}
 
     def _default_mediator_agent_factory(self):
         from sdr.apps.ai.agents.mediator import MediatorAgent
@@ -286,9 +285,6 @@ class TSDAnalysisPipeline:
     def _group_parameters_by_parent(self, parameters: List[Any]):
         return self.text_debate.group_parameters_by_parent(parameters)
 
-    def _split_batches(self, parameters: List[Any], batch_size: int):
-        return self.text_debate.split_batches(parameters, batch_size)
-
     def _run_diagram_analysis(self, **kwargs) -> None:
         self.diagram_analysis.run(**kwargs)
 
@@ -306,27 +302,6 @@ class TSDAnalysisPipeline:
         finally:
             self.run_state.is_cancelled = original_is_cancelled
             self.run_state.persist_summary_snapshot = original_persist_summary
-            self.text_debate.analyze_single_child_with_retrieval_result = original_analyze
-            self.text_debate.persist_debate_output = original_persist
-
-    def _run_batched_analysis_for_category(self, **kwargs) -> None:
-        original_is_cancelled = self.run_state.is_cancelled
-        original_persist_summary = self.run_state.persist_summary_snapshot
-        original_get_parent = self.text_debate.get_parent_retrieval_result
-        original_analyze = self.text_debate.analyze_single_child_with_retrieval_result
-        original_persist = self.text_debate.persist_debate_output
-        try:
-            self.run_state.is_cancelled = self._is_cancelled
-            self.run_state.persist_summary_snapshot = self._persist_summary_snapshot
-            self.text_debate.get_parent_retrieval_result = self._get_parent_retrieval_result
-            self.text_debate.analyze_single_child_with_retrieval_result = self._analyze_single_child_with_retrieval_result
-            self.text_debate.persist_debate_output = self._persist_debate_output
-            self.text_debate.run_batched_analysis_for_category(**kwargs)
-            self._last_batch_concurrency_stats = dict(self.text_debate.last_batch_concurrency_stats)
-        finally:
-            self.run_state.is_cancelled = original_is_cancelled
-            self.run_state.persist_summary_snapshot = original_persist_summary
-            self.text_debate.get_parent_retrieval_result = original_get_parent
             self.text_debate.analyze_single_child_with_retrieval_result = original_analyze
             self.text_debate.persist_debate_output = original_persist
 
@@ -381,9 +356,6 @@ class TSDAnalysisPipeline:
             self.text_debate.get_parent_retrieval_result = original_get_parent
             self.text_debate.persist_debate_output = original_persist
             text_debate_module.classify_parent_applicability = original_classifier
-
-    def _validate_batch_outputs(self, expected_parameters: List[Any], batch_outputs: Dict[str, Any]):
-        return self.text_debate.validate_batch_outputs(expected_parameters, batch_outputs)
 
     def _apply_not_met_evidence_gate(self, **kwargs):
         return self.text_debate.apply_not_met_evidence_gate(**kwargs)

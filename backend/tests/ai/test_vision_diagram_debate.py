@@ -321,7 +321,6 @@ class _SessionContext:
 
 def test_pipeline_diagram_analysis_uses_diagram_input_and_debate_service(monkeypatch, settings_override):
     settings_override(
-        AI_VISION_DIAGRAM_ANALYSIS_ENABLED=True,
         AI_VISION_ENABLED=True,
         AI_VISION_MIN_DIAGRAM_BYTES=512,
         AI_VISION_MAX_CONCURRENCY=1,
@@ -397,7 +396,6 @@ def test_pipeline_diagram_analysis_persists_na_for_non_architecture_images(monke
     from sdr.apps.ai.agents.base import BaseAgent
 
     settings_override(
-        AI_VISION_DIAGRAM_ANALYSIS_ENABLED=True,
         AI_VISION_ENABLED=True,
         AI_VISION_MIN_DIAGRAM_BYTES=512,
         AI_VISION_MAX_CONCURRENCY=1,
@@ -484,7 +482,6 @@ def test_pipeline_diagram_analysis_counts_total_parameters_for_errors_and_succes
     monkeypatch, settings_override
 ):
     settings_override(
-        AI_VISION_DIAGRAM_ANALYSIS_ENABLED=True,
         AI_VISION_ENABLED=True,
         AI_VISION_MIN_DIAGRAM_BYTES=512,
         AI_VISION_MAX_CONCURRENCY=1,

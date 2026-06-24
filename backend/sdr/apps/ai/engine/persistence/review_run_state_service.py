@@ -37,7 +37,8 @@ class ReviewRunStateService:
 
     def persist_summary_snapshot(self, review: Review, summary: AnalysisSummary) -> None:
         try:
-            summary_dict = summary.to_dict()
+            with summary.lock:
+                summary_dict = summary.to_dict()
             self.workflow_repository.save_summary_snapshot(review.id, summary=summary_dict)
             review.summary_json = summary_dict
         except Exception as exc:
@@ -48,7 +49,8 @@ class ReviewRunStateService:
             )
 
     def update_stage(self, review: Review, summary: AnalysisSummary, stage: str) -> None:
-        summary.current_stage = stage
+        with summary.lock:
+            summary.current_stage = stage
         self.persist_summary_snapshot(review, summary)
 
     def complete_review(self, review: Review, summary: AnalysisSummary) -> None:

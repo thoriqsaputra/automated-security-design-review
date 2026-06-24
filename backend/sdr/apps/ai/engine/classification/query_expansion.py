@@ -80,7 +80,15 @@ def _generate_variants(requirement_text: str, *, variant_count: int) -> List[str
             ],
             component="query_expansion",
             temperature=0.0,
-            max_tokens=400,
+            # Some OpenRouter models (e.g. deepseek-v4-flash) are hybrid
+            # reasoning models that spend completion tokens on hidden
+            # chain-of-thought before emitting the JSON answer. A tight
+            # budget here gets entirely consumed by reasoning, leaving an
+            # empty (finish_reason="length") response. Give it plenty of
+            # room and cap reasoning effort so the visible JSON is never
+            # starved out.
+            max_tokens=2000,
+            reasoning={"effort": "low"},
             response_format={"type": "json_object"},
         )
         if response.error or not response.content:

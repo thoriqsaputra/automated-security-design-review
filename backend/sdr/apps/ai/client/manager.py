@@ -40,7 +40,6 @@ class AIServiceManager:
             'diagram_requirement_extraction': getattr(settings, 'AI_MODEL_DIAGRAM_REQUIREMENT_EXTRACTION', 'meta/llama-3.1-8b-instruct'),
             'tsd_ingestion': getattr(settings, 'AI_MODEL_TSD_INGESTION', 'meta/llama-3.1-8b-instruct'),
             'vision': getattr(settings, 'AI_MODEL_VISION', 'meta/llama-3.2-90b-vision-instruct'),
-            'orchestrator': getattr(settings, 'AI_MODEL_ORCHESTRATOR', 'meta/llama-3.1-70b-instruct'),
             'contract_synthesizer': getattr(settings, 'AI_MODEL_CONTRACT_SYNTHESIZER', 'meta/llama-3.1-70b-instruct'),
             'hunter': getattr(settings, 'AI_MODEL_HUNTER', 'meta/llama-3.1-70b-instruct'),
             'critic': getattr(settings, 'AI_MODEL_CRITIC', 'meta/llama-3.1-70b-instruct'),
@@ -177,29 +176,6 @@ class AIServiceManager:
                 duration_seconds=time.perf_counter() - started_at,
             )
 
-    def _maybe_fallback_provider(
-        self,
-        *,
-        component: Optional[str],
-        primary_provider: AIProvider,
-        response: AIResponse,
-    ) -> Optional[AIProvider]:
-        if component != "standard_extraction":
-            return None
-        if primary_provider != AIProvider.NVIDIA:
-            return None
-        if response.error_code != "rate_limit_exhausted":
-            return None
-        if not getattr(settings, "AI_LLM_FALLBACK_ON_RETRY_EXHAUSTED", True):
-            return None
-
-        configured_provider = str(
-            getattr(settings, "AI_STANDARD_EXTRACTION_FALLBACK_PROVIDER", "none")
-        ).strip().lower()
-        if configured_provider == "openrouter" and self.openrouter_service:
-            return AIProvider.OPENROUTER
-        return None
-
     def chat_completion_with_fallback(self, *args, **kwargs) -> Union[AIResponse, Generator[str, None, None]]:
         component = kwargs.get('component', None)
         target_provider = self._get_provider_for_component(component)
@@ -218,42 +194,9 @@ class AIServiceManager:
         if args:
             request_kwargs["messages"] = args[0]
 
-        response = self._invoke_service(
+        return self._invoke_service(
             service,
             actual_provider,
-            component,
-            request_kwargs,
-        )
-        if not isinstance(response, AIResponse):
-            return response
-
-        fallback_provider = self._maybe_fallback_provider(
-            component=component,
-            primary_provider=actual_provider,
-            response=response,
-        )
-        if not fallback_provider:
-            return response
-
-        fallback_service = self._get_service_for_provider(fallback_provider)
-        if not fallback_service:
-            logger.warning(
-                "AIServiceManager: fallback provider %s unavailable for component %s.",
-                fallback_provider,
-                component,
-            )
-            return response
-
-        logger.warning(
-            "AIServiceManager: falling back from %s to %s for component %s after rate limit exhaustion.",
-            actual_provider.value,
-            fallback_provider.value,
-            component,
-        )
-        request_kwargs["model"] = self.get_model_for_component(component, fallback_provider)
-        return self._invoke_service(
-            fallback_service,
-            fallback_provider,
             component,
             request_kwargs,
         )

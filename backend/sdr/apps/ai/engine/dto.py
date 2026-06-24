@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+import threading
+from dataclasses import dataclass, field
 from typing import List, Optional, Dict, Any
 
 from pydantic import BaseModel, Field
@@ -112,6 +113,11 @@ class AnalysisSummary:
     high_findings: List[str] = None
     category_stats: Dict[str, Any] = None
     applicability: Dict[str, Any] = None
+    # Guards concurrent mutation when text debate and diagram debate run as
+    # parallel driver threads sharing this same summary instance. Reentrant
+    # so nested helper calls (e.g. progress recorders calling persist) don't
+    # deadlock on the same thread.
+    lock: threading.RLock = field(default_factory=threading.RLock, repr=False, compare=False)
 
     def __post_init__(self):
         if self.critical_findings is None:

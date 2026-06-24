@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import hashlib
 import json
 import logging
 import time
@@ -21,8 +20,6 @@ from sdr.apps.ai.tsd_processing.graph_builder import TSDGraph, TSDGraphBuilder
 from sdr.apps.ai.tsd_processing.prepared_view import prepare_tsd_view
 from sdr.apps.ai.tsd_processing.raptor_graph_linker import RaptorGraphLinker
 from sdr.apps.ai.retrieval.core import RetrievalCandidate, RetrievalResult
-from sdr.apps.ai.retrieval.postprocessing.evidence_grader import EvidenceGrader
-from sdr.apps.ai.retrieval.postprocessing.reranker import SafeOptionalReranker
 from sdr.apps.ai.retrieval.routing.router import HybridRetrievalRouter
 from sdr.apps.ai.retrieval.searchers.graph import _extract_keywords
 from sdr.apps.ai.utils.parsing import strip_thinking_block
@@ -77,24 +74,6 @@ class RetrievalService:
 
     def get_parent_retrieval_retry_max_context_chunks(self) -> int:
         return max(1, int(getattr(settings, "AI_PARENT_RETRIEVAL_RETRY_MAX_CONTEXT_CHUNKS", 14)))
-
-    def child_refinement_enabled(self) -> bool:
-        return bool(getattr(settings, "AI_BATCH_DEBATE_CHILD_REFINE_ENABLED", True))
-
-    def get_child_refinement_max_context_chunks(self) -> int:
-        return max(1, int(getattr(settings, "AI_BATCH_DEBATE_CHILD_REFINE_MAX_CONTEXT_CHUNKS", 6)))
-
-    def child_refinement_include_source_blocks(self) -> bool:
-        return bool(getattr(settings, "AI_BATCH_DEBATE_CHILD_REFINE_INCLUDE_SOURCE_BLOCKS", True))
-
-    def get_child_refinement_source_block_limit(self) -> int:
-        return max(0, int(getattr(settings, "AI_BATCH_DEBATE_CHILD_REFINE_SOURCE_BLOCK_LIMIT", 8)))
-
-    def child_refinement_enable_keyword_boost(self) -> bool:
-        return bool(getattr(settings, "AI_BATCH_DEBATE_CHILD_REFINE_ENABLE_KEYWORD_BOOST", True))
-
-    def child_refinement_enable_rerank(self) -> bool:
-        return bool(getattr(settings, "AI_BATCH_DEBATE_CHILD_REFINE_ENABLE_RERANK", True))
 
     def build_indexes(self, tsd_document: TSDDocument, progress_callbacks: Optional[Dict[str, Any]] = None) -> RetrievalIndexes:
         self.logger.info(
@@ -267,132 +246,6 @@ class RetrievalService:
         )
 
         return result
-
-    def refine_parent_result_for_child(
-        self,
-        *,
-        parent_result: RetrievalResult,
-        parameter: DebatableParameter,
-        query_details: Optional[Dict[str, Any]] = None,
-        tsd_document: Optional[TSDDocument] = None,
-    ) -> RetrievalResult:
-        if not self.child_refinement_enabled():
-            return parent_result
-        if parent_result is None:
-            return RetrievalResult(error="Missing parent retrieval result for child refinement.")
-
-        query_details = dict(query_details or {})
-        query_text = self._build_override_query_text(query_details) or build_parameter_analysis_text(parameter).strip()
-        keywords = _extract_keywords(query_text)
-        candidates = self._build_child_refinement_candidates(
-            parent_result=parent_result,
-            tsd_document=tsd_document,
-        )
-        if not candidates:
-            metadata = dict(getattr(parent_result, "evidence_metadata", {}) or {})
-            metadata["child_refinement"] = {
-                "applied": True,
-                "query_text": query_text,
-                "query_hash": hashlib.sha256(query_text.encode("utf-8")).hexdigest()[:12],
-                "candidate_count": 0,
-                "selected_count": 0,
-                "selected_block_ids": [],
-                "from_parent_group": True,
-            }
-            return RetrievalResult(
-                context_chunks=list(parent_result.context_chunks or []),
-                context_chunk_block_ids=list(parent_result.context_chunk_block_ids or []),
-                source_block_ids=list(parent_result.source_block_ids or []),
-                block_source_map=dict(parent_result.block_source_map or {}),
-                diagram_block_ids=list(parent_result.diagram_block_ids or []),
-                strategy_used=parent_result.strategy_used,
-                query_embedding=list(parent_result.query_embedding or []),
-                vector_response=parent_result.vector_response,
-                raptor_response=parent_result.raptor_response,
-                graph_response=parent_result.graph_response,
-                graph_node_ids=list(parent_result.graph_node_ids or []),
-                graph_edge_ids=list(parent_result.graph_edge_ids or []),
-                grounded_texts=list(parent_result.grounded_texts or []),
-                evidence_metadata=metadata,
-                error=parent_result.error,
-            )
-
-        if self.child_refinement_enable_keyword_boost():
-            candidates = self._build_refinement_grader().apply_keyword_coverage_boost(candidates, keywords)
-
-        selected_candidates, evidence_metadata = self._build_refinement_grader().grade_and_filter_candidates(
-            candidates,
-            query_text=query_text,
-            keywords=keywords,
-        )
-        if self.child_refinement_enable_rerank():
-            selected_candidates = self._build_refinement_reranker().rerank(
-                query=query_text,
-                candidates=selected_candidates,
-                top_k=self.get_child_refinement_max_context_chunks(),
-            )
-        else:
-            selected_candidates = sorted(selected_candidates, key=lambda c: c.score, reverse=True)[
-                : self.get_child_refinement_max_context_chunks()
-            ]
-
-        refined_context_chunks: List[str] = []
-        refined_context_chunk_block_ids: List[List[str]] = []
-        seen_chunks = set()
-        refined_source_block_ids: List[str] = []
-        seen_block_ids = set()
-        parent_block_source_map = dict(getattr(parent_result, "block_source_map", {}) or {})
-        refined_block_source_map: Dict[str, Dict[str, Any]] = {}
-
-        for candidate in selected_candidates:
-            text = (candidate.text or "").strip()
-            if text and text not in seen_chunks:
-                refined_context_chunks.append(text)
-                refined_context_chunk_block_ids.append(list(candidate.block_ids or []))
-                seen_chunks.add(text)
-            for block_id in candidate.block_ids or []:
-                if not block_id or block_id in seen_block_ids:
-                    continue
-                seen_block_ids.add(block_id)
-                refined_source_block_ids.append(block_id)
-                if block_id in parent_block_source_map:
-                    refined_block_source_map[block_id] = dict(parent_block_source_map[block_id])
-                else:
-                    refined_block_source_map[block_id] = {
-                        "retrieval_origin": candidate.source_type,
-                        "retrieval_origin_label": str(candidate.source_type).replace("_", " ").title(),
-                        "source_keys": [candidate.source_type],
-                    }
-
-        metadata = dict(getattr(parent_result, "evidence_metadata", {}) or {})
-        metadata.update(evidence_metadata)
-        metadata["block_source_map"] = refined_block_source_map
-        metadata["child_refinement"] = {
-            "applied": True,
-            "query_text": query_text,
-            "query_hash": hashlib.sha256(query_text.encode("utf-8")).hexdigest()[:12],
-            "candidate_count": len(candidates),
-            "selected_count": len(selected_candidates),
-            "selected_block_ids": list(refined_source_block_ids),
-            "from_parent_group": True,
-        }
-        return RetrievalResult(
-            context_chunks=refined_context_chunks[: self.get_child_refinement_max_context_chunks()],
-            context_chunk_block_ids=refined_context_chunk_block_ids[: self.get_child_refinement_max_context_chunks()],
-            source_block_ids=refined_source_block_ids,
-            block_source_map=refined_block_source_map,
-            diagram_block_ids=list(parent_result.diagram_block_ids or []),
-            strategy_used=parent_result.strategy_used,
-            query_embedding=list(parent_result.query_embedding or []),
-            vector_response=parent_result.vector_response,
-            raptor_response=parent_result.raptor_response,
-            graph_response=parent_result.graph_response,
-            graph_node_ids=list(parent_result.graph_node_ids or []),
-            graph_edge_ids=list(parent_result.graph_edge_ids or []),
-            grounded_texts=list(parent_result.grounded_texts or []),
-            evidence_metadata=metadata,
-            error=parent_result.error,
-        )
 
     def retrieve_many_for_parameters(
         self,
@@ -585,85 +438,6 @@ class RetrievalService:
             " ".join([x for x in domain_keywords if isinstance(x, str)]),
         ]
         return "\n".join([p for p in parts if p]).strip() or None
-
-    def _build_refinement_grader(self) -> EvidenceGrader:
-        return EvidenceGrader(max_context_chunks=self.get_child_refinement_max_context_chunks())
-
-    def _build_refinement_reranker(self) -> SafeOptionalReranker:
-        enable_cross_encoder = bool(
-            getattr(getattr(self.router, "advanced_config", None), "enable_cross_encoder_rerank", False)
-        )
-        return SafeOptionalReranker(enable_cross_encoder=enable_cross_encoder)
-
-    def _build_child_refinement_candidates(
-        self,
-        *,
-        parent_result: RetrievalResult,
-        tsd_document: Optional[TSDDocument],
-    ) -> List[RetrievalCandidate]:
-        candidates: List[RetrievalCandidate] = []
-        parent_block_source_map = dict(getattr(parent_result, "block_source_map", {}) or {})
-        source_block_limit = self.get_child_refinement_source_block_limit()
-        if self.child_refinement_include_source_blocks() and tsd_document is not None and source_block_limit != 0:
-            for idx, block_id in enumerate(parent_result.source_block_ids or []):
-                if source_block_limit and idx >= source_block_limit:
-                    break
-                if not block_id or "_d" in block_id:
-                    continue
-                try:
-                    block = tsd_document.get_block_by_id(block_id)
-                except Exception:
-                    block = None
-                text = (getattr(block, "text", "") or "").strip() if block is not None else ""
-                if not text:
-                    continue
-                provenance = parent_block_source_map.get(block_id) or {}
-                source_type = str(
-                    provenance.get("retrieval_origin")
-                    or (provenance.get("source_keys") or ["parent_group"])[0]
-                )
-                candidates.append(
-                    RetrievalCandidate(
-                        id=f"block:{block_id}",
-                        source_type=source_type,
-                        text=text,
-                        score=1.0,
-                        block_ids=[block_id],
-                        metadata={
-                            "source": "parent_group_source_block",
-                            "section_heading": getattr(block, "section_heading", None),
-                            "page_numbers": [getattr(block, "page_number", None)] if getattr(block, "page_number", None) is not None else [],
-                            "sensitivity": "internal",
-                        },
-                        token_count=max(1, len(text) // 4),
-                    )
-                )
-
-        parent_chunk_block_ids = parent_result.context_chunk_block_ids or []
-        for idx, chunk in enumerate(parent_result.context_chunks or [], start=1):
-            text = (chunk or "").strip()
-            if not text:
-                continue
-            chunk_block_ids = (
-                list(parent_chunk_block_ids[idx - 1])
-                if idx - 1 < len(parent_chunk_block_ids)
-                else []
-            )
-            candidates.append(
-                RetrievalCandidate(
-                    id=f"context:{idx}",
-                    source_type="parent_group_context",
-                    text=text,
-                    score=max(0.1, 0.5 - (idx * 0.01)),
-                    block_ids=chunk_block_ids,
-                    metadata={
-                        "source": "parent_group_context",
-                        "sensitivity": "internal",
-                    },
-                    token_count=max(1, len(text) // 4),
-                )
-            )
-        return candidates
 
     def _extract_json_payload(self, text: str) -> str:
         text = strip_thinking_block(text)

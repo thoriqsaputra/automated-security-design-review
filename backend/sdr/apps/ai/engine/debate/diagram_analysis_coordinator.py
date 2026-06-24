@@ -40,9 +40,6 @@ class DiagramAnalysisCoordinator:
         summary,
         cancel_check=None,
     ) -> None:
-        if not self.config.vision_diagram_analysis_enabled:
-            self.logger.info("DiagramAnalysisCoordinator.run: diagram analysis disabled — skipping")
-            return
         if not self.config.vision_enabled:
             self.logger.info("DiagramAnalysisCoordinator.run: vision disabled — skipping")
             return
@@ -153,10 +150,11 @@ class DiagramAnalysisCoordinator:
 
         persisted_count = 0
         for output in diagram_outputs:
-            summary.total_parameters += 1
-            if output.error:
-                summary.error_count += 1
-                continue
+            with summary.lock:
+                summary.total_parameters += 1
+                if output.error:
+                    summary.error_count += 1
+                    continue
             finding = self.persistence.persist_diagram_debate_finding(
                 review=review,
                 category=category,

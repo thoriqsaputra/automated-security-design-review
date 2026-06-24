@@ -115,6 +115,7 @@ class DebateService:
 
         round_number = 0
         escalation_round_granted = False
+        previous_critic_result: Optional[CriticResult] = None
         while True:
             round_number += 1
             self._raise_if_cancelled(cancel_check, phase=f"run_debate.round_{round_number}.before_hunter")
@@ -191,6 +192,16 @@ class DebateService:
             if agent_started_handler:
                 agent_started_handler("critic")
             critic_started = time.monotonic()
+            prior_round = (
+                {
+                    "round": round_number - 1,
+                    "objections": list(previous_critic_result.objections or []),
+                    "weak_evidence": list(previous_critic_result.weak_evidence or []),
+                    "missed_evidence": list(previous_critic_result.missed_evidence or []),
+                }
+                if previous_critic_result is not None
+                else None
+            )
             critic_result = self.critic.run(
                 parameter_text=parameter_text,
                 parameter_section=parameter_section,
@@ -202,6 +213,7 @@ class DebateService:
                 ),
                 stream_handler=(lambda chunk: agent_chunk_handler("critic", chunk)) if agent_chunk_handler else None,
                 available_block_ids=list(retrieved_chunk_ids),
+                prior_round=prior_round,
             )
             timing[f"critic_round_{round_number}_seconds"] = round(
                 time.monotonic() - critic_started, 4
@@ -235,6 +247,8 @@ class DebateService:
                     rebuttal_context=rebuttal_context,
                 )
             )
+
+            previous_critic_result = critic_result
 
             should_continue, escalation_round_granted = self._should_continue_debate(
                 hunter_result, critic_result, round_number, escalation_round_granted
@@ -357,222 +371,6 @@ class DebateService:
             parameter.id,
         )
         return output
-
-    def run_batch_debate(
-        self,
-        debate_inputs: List[DebateInput],
-        retrieval_result: Optional[RetrievalResult],
-        tsd_document: TSDDocument,
-        cancel_check: Optional[Any] = None,
-    ) -> Dict[str, DebateOutput]:
-        """
-        Runs one Hunter -> Critic -> Mediator flow for a small set of children.
-
-        This method performs no database writes. It returns normal DebateOutput
-        objects keyed by child parameter id so callers can validate and persist
-        findings exactly like the single-child path.
-        """
-        if not debate_inputs:
-            return {}
-        self._raise_if_cancelled(cancel_check, phase="run_batch_debate.entry")
-
-        first = debate_inputs[0]
-        context_chunks: List[str] = []
-        seen_chunks: set = set()
-        context_chunk_map: Dict[str, Any] = {}
-        for item in debate_inputs:
-            for chunk in item.context_chunks or []:
-                if chunk not in seen_chunks:
-                    seen_chunks.add(chunk)
-                    context_chunks.append(chunk)
-            context_chunk_map.update(item.context_chunk_map or {})
-        retrieved_chunk_ids = self._citation_grade_ids(context_chunk_map)
-        warn_threshold = max(1, int(getattr(settings, "AI_DEBATE_WARN_CONTEXT_CHUNK_THRESHOLD", 40)))
-        child_inputs = [
-            {
-                "id": str(item.parameter.id),
-                "requirement": item.parameter_text,
-                "contract": item.contract or {},
-            }
-            for item in debate_inputs
-        ]
-        start_ts = time.monotonic()
-
-        self.logger.info(
-            "DebateService.run_batch_debate: [ENTRY] children=%d parent_section=%s prompt_context_chunks=%d citation_grade_ids=%d",
-            len(debate_inputs),
-            first.parameter_section,
-            len(context_chunks),
-            len(retrieved_chunk_ids),
-        )
-        if len(context_chunks) > warn_threshold:
-            self.logger.warning(
-                "DebateService.run_batch_debate: prompt_context_chunks=%d exceeded warn threshold=%d",
-                len(context_chunks),
-                warn_threshold,
-            )
-        self._raise_if_cancelled(cancel_check, phase="run_batch_debate.before_hunter")
-        hunter_results = self.hunter.run_batch(
-            child_inputs=child_inputs,
-            parameter_section=first.parameter_section,
-            context_chunks=context_chunks,
-            killed_assumptions=first.killed_assumptions,
-            available_block_ids=list(retrieved_chunk_ids),
-        )
-        sanitized_hunters: Dict[str, HunterResult] = {}
-        cited_blocks_by_child: Dict[str, List[dict]] = {}
-        hunter_rejected_by_child: Dict[str, List[Any]] = {}
-        for child_id, hunter_result in list(hunter_results.items()):
-            hunter_result = self._normalize_reasoning_payload(hunter_result)
-            hunter_result.citations, rejected = self._validate_citations(
-                hunter_result.citations,
-                retrieved_chunk_ids,
-                "hunter_batch",
-                context_chunk_map=context_chunk_map,
-            )
-            hunter_result = self._stabilize_hunter_grounding(
-                hunter_result,
-                rejected_citations=rejected,
-            )
-            hunter_results[child_id] = hunter_result
-            hunter_rejected_by_child[child_id] = rejected
-            sanitized_hunters[child_id] = self._sanitize_hunter_for_handoff(hunter_result)
-            cited_blocks_by_child[child_id] = self._build_cold_start_cited_blocks(
-                sanitized_hunters[child_id].citations,
-                context_chunk_map,
-            )
-
-        self._raise_if_cancelled(cancel_check, phase="run_batch_debate.before_critic")
-        critic_results = self.critic.run_batch(
-            child_inputs=child_inputs,
-            parameter_section=first.parameter_section,
-            context_chunks=context_chunks,
-            hunter_results=sanitized_hunters,
-            cited_blocks_by_child=cited_blocks_by_child,
-            available_block_ids=list(retrieved_chunk_ids),
-        )
-        sanitized_critics: Dict[str, CriticResult] = {}
-        critic_rejected_by_child: Dict[str, List[Any]] = {}
-        debate_history_by_child: Dict[str, List[dict]] = {}
-        for debate_input in debate_inputs:
-            child_id = str(debate_input.parameter.id)
-            critic_result = critic_results.get(child_id)
-            hunter_result = hunter_results.get(child_id)
-            if not critic_result or not hunter_result:
-                continue
-            critic_result = self._normalize_reasoning_payload(critic_result)
-            critic_result.valid_citations, rejected = self._validate_citations(
-                critic_result.valid_citations,
-                retrieved_chunk_ids,
-                "critic_batch",
-                context_chunk_map=context_chunk_map,
-            )
-            critic_result.invalid_citation_ids = self._merge_invalid_ids(
-                critic_result.invalid_citation_ids,
-                [citation.block_id for citation in rejected],
-            )
-            critic_result = self._stabilize_critic_grounding(
-                critic_result,
-                rejected_citations=rejected,
-            )
-            critic_results[child_id] = critic_result
-            critic_rejected_by_child[child_id] = rejected
-            sanitized_critics[child_id] = self._sanitize_critic_for_handoff(critic_result)
-            debate_history_by_child[child_id] = [
-                self._build_debate_history_entry(
-                    round_number=1,
-                    hunter_result=hunter_result,
-                    critic_result=critic_result,
-                    hunter_rejected=hunter_rejected_by_child.get(child_id, []),
-                    critic_rejected=rejected,
-                    rebuttal_context=[],
-                )
-            ]
-
-        self._raise_if_cancelled(cancel_check, phase="run_batch_debate.before_mediator")
-        mediator_results = self.mediator.run_batch(
-            child_inputs=child_inputs,
-            parameter_section=first.parameter_section,
-            hunter_results=sanitized_hunters,
-            critic_results=sanitized_critics,
-            debate_history_by_child=debate_history_by_child,
-        )
-
-        outputs: Dict[str, DebateOutput] = {}
-        for debate_input in debate_inputs:
-            self._raise_if_cancelled(cancel_check, phase="run_batch_debate.before_output_merge")
-            child_id = str(debate_input.parameter.id)
-            hunter_result = hunter_results.get(child_id)
-            critic_result = critic_results.get(child_id)
-            mediator_result = mediator_results.get(child_id)
-            if not hunter_result or not critic_result or not mediator_result:
-                continue
-            mediator_result = self._normalize_reasoning_payload(mediator_result)
-            mediator_result = self._apply_mediator_evidence_policy(
-                mediator_result=mediator_result,
-                critic_result=critic_result,
-                contract=debate_input.contract or {},
-                hunter_result=hunter_result,
-            )
-            mediator_result = self._calibrate_confidence(
-                mediator_result=mediator_result,
-                hunter_result=hunter_result,
-                critic_result=critic_result,
-            )
-            outputs[child_id] = DebateOutput(
-                parameter=debate_input.parameter,
-                hunter_result=hunter_result,
-                critic_result=critic_result,
-                mediator_result=mediator_result,
-                retrieval_result=retrieval_result,
-                debate_rounds=1,
-                analysis_trace={
-                    "contract": debate_input.contract or {},
-                    "retrieved_chunk_ids": retrieved_chunk_ids,
-                    "killed_assumptions": list(debate_input.killed_assumptions or []),
-                    "retrieval_query_details": debate_input.retrieval_query_details or {},
-                    "batch": {
-                        "enabled": True,
-                        "child_count": len(debate_inputs),
-                        "child_ids": [str(item.parameter.id) for item in debate_inputs],
-                        "elapsed_seconds": round(time.monotonic() - start_ts, 4),
-                    },
-                    "hunter_claim": {
-                        "verdict": hunter_result.verdict,
-                        "confidence": hunter_result.confidence,
-                        "citation_ids": [c.block_id for c in hunter_result.citations],
-                    },
-                    "critic_verification": {
-                        "valid_ids": [c.block_id for c in critic_result.valid_citations],
-                        "invalid_ids": list(critic_result.invalid_citation_ids),
-                        "decision": critic_result.decision,
-                        "weak_evidence": list(critic_result.weak_evidence),
-                        "missed_evidence": list(critic_result.missed_evidence),
-                        "objections": list(critic_result.objections),
-                        "requires_rebuttal": critic_result.requires_rebuttal,
-                    },
-                    "mediator_decision_basis": {
-                        "final_verdict": mediator_result.final_verdict,
-                        "raw_final_verdict": mediator_result.raw_final_verdict or mediator_result.final_verdict,
-                        "critic_upheld_citations": [c.block_id for c in critic_result.valid_citations],
-                        "verified_evidence": list(mediator_result.verified_evidence),
-                        "rejected_evidence": list(mediator_result.rejected_evidence),
-                        "debate_rounds_used": mediator_result.debate_rounds_used or 1,
-                    },
-                    "rejected_evidence": {
-                        "hunter": [c.block_id for c in hunter_rejected_by_child.get(child_id, [])],
-                        "critic": [c.block_id for c in critic_rejected_by_child.get(child_id, [])],
-                    },
-                    "debate_history": debate_history_by_child.get(child_id, []),
-                },
-            )
-        self.logger.info(
-            "DebateService.run_batch_debate: [SUCCESS] children=%d outputs=%d elapsed=%.4f",
-            len(debate_inputs),
-            len(outputs),
-            time.monotonic() - start_ts,
-        )
-        return outputs
 
     def _raise_if_cancelled(self, cancel_check: Optional[Any], *, phase: str) -> None:
         if cancel_check is None:
@@ -899,6 +697,9 @@ class DebateService:
     ) -> List[str]:
         invalid_citations = ", ".join(critic_result.invalid_citation_ids) or "none"
         valid_citations = ", ".join(c.block_id for c in critic_result.valid_citations) or "none"
+        objections = "\n".join(f"  - {o}" for o in critic_result.objections) or "  (none)"
+        weak_evidence = "\n".join(f"  - {w}" for w in critic_result.weak_evidence) or "  (none)"
+        missed_evidence = "\n".join(f"  - {m}" for m in critic_result.missed_evidence) or "  (none)"
         rebuttal_chunk = "\n".join(
             [
                 f"--- DEBATE REBUTTAL ROUND {round_number} ---",
@@ -908,9 +709,15 @@ class DebateService:
                 f"Critic outcome: {critic_result.outcome}",
                 f"Critic revised verdict: {critic_result.revised_verdict} (confidence={critic_result.revised_confidence:.2f})",
                 f"Critic reasoning: {critic_result.logic_summary or critic_result.reasoning}",
+                "Critic objections you must respond to directly:",
+                objections,
+                "Critic-flagged weak evidence:",
+                weak_evidence,
+                "Critic-flagged evidence you may have missed:",
+                missed_evidence,
                 f"Valid citations: {valid_citations}",
                 f"Invalid citations: {invalid_citations}",
-                "Instruction: Re-check the original TSD context and respond directly to the Critic's objections.",
+                "Instruction: Re-check the original TSD context and respond directly to each Critic objection above.",
                 "Defend valid evidence when Critic objections are unsupported; concede only when criticism disproves contract satisfaction.",
                 "Only cite evidence that is explicitly present in the supplied TSD context.",
             ]

@@ -60,12 +60,28 @@ def build_critic_prompt(
     hunter_assumptions: List[dict] | None = None,
     hunter_cot_trace: str | None = None,
     available_block_ids: Optional[List[str]] = None,
+    prior_round: Optional[dict] = None,
 ) -> str:
     citations_text = json.dumps(hunter_citation_ids, indent=2) if hunter_citation_ids else "[]"
     cited_blocks_text = json.dumps(cited_blocks, indent=2) if cited_blocks else "[]"
     chunks_text = "\n\n---\n\n".join(context_chunks)
     quotes_text = json.dumps(hunter_evidence_quotes or [], indent=2)
     block_ids_block = _build_block_ids_block(available_block_ids)
+    prior_round_block = ""
+    if prior_round:
+        prior_round_block = f"""
+## YOUR PRIOR CHALLENGE (round {prior_round.get('round', 'previous')})
+You previously challenged the Hunter on this same parameter. The Hunter has \
+now responded with the rebuttal above. Check whether each item below was \
+actually resolved with new, verifiable evidence — or merely restated.
+
+Objections you raised:
+{json.dumps(prior_round.get('objections') or [], indent=2)}
+Weak evidence you flagged:
+{json.dumps(prior_round.get('weak_evidence') or [], indent=2)}
+Evidence you said was missed:
+{json.dumps(prior_round.get('missed_evidence') or [], indent=2)}
+"""
 
     return f"""\
 ## SECURITY PARAMETER UNDER REVIEW
@@ -95,7 +111,7 @@ Cited block IDs:
 
 ## RAW TEXT FOR CITED BLOCKS ONLY
 {cited_blocks_text}
-
+{prior_round_block}
 ## YOUR TASK
 
 Challenge or confirm the Hunter's finding by answering these questions:
@@ -141,6 +157,7 @@ Reasoning -> assumptions: ["Validity depends on quoted evidence in cited blocks.
 	- If the retrieved context is only headings, graph summaries, baseline requirements, or unrelated snippets and does not establish applicability, revise the verdict to "na".
 	- Do not uphold "not_met" solely because evidence is absent; absent evidence is a failure only after applicability is established.
 	- Use evidence-only reasoning; do not infer controls that are not explicitly stated.
+	- If YOUR PRIOR CHALLENGE is present above, this is a rebuttal round: explicitly check whether each prior objection/weak_evidence/missed_evidence item was resolved by the Hunter's new evidence. Carry forward any item that is still unresolved into this round's objections list — do not silently drop it just because the Hunter restated its position.
 {block_ids_block}
 {_ASSUMPTIONS_FIRST_RULES}
 """

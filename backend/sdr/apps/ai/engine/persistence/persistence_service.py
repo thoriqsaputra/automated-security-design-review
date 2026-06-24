@@ -187,7 +187,8 @@ class PersistenceService:
                             debate_output.analysis_trace or {},
                         )
                         db.add_all(anchors)
-                        summary.citation_count += len(anchors)
+                        with summary.lock:
+                            summary.citation_count += len(anchors)
                         self.logger.info(
                             "PersistenceService.persist_finding: [CITATIONS] persisted %d anchor(s)",
                             len(anchors),
@@ -199,16 +200,17 @@ class PersistenceService:
                     db.rollback()
                     raise
 
-            if persisted_met_status == "met":
-                summary.met_count += 1
-            elif persisted_met_status == "not_met":
-                summary.not_met_count += 1
-                if severity_payload["severity"] == "critical":
-                    summary.critical_findings.append(finding_title)
-                elif severity_payload["severity"] == "high":
-                    summary.high_findings.append(finding_title)
-            else:
-                summary.na_count += 1
+            with summary.lock:
+                if persisted_met_status == "met":
+                    summary.met_count += 1
+                elif persisted_met_status == "not_met":
+                    summary.not_met_count += 1
+                    if severity_payload["severity"] == "critical":
+                        summary.critical_findings.append(finding_title)
+                    elif severity_payload["severity"] == "high":
+                        summary.high_findings.append(finding_title)
+                else:
+                    summary.na_count += 1
 
             self.logger.info(
                 "PersistenceService.persist_finding: [SUCCESS] finding_id=%s",
@@ -217,7 +219,8 @@ class PersistenceService:
             return finding
 
         except Exception as exc:
-            summary.error_count += 1
+            with summary.lock:
+                summary.error_count += 1
             self.logger.exception(
                 "PersistenceService.persist_finding: [FAILED] parameter id=%s: %s",
                 parameter.id,
@@ -388,18 +391,19 @@ class PersistenceService:
                     if finding is None:
                         raise
 
-            if created:
-                summary.diagram_findings_count += 1
-            if met_status == "met":
-                summary.met_count += 1
-            elif met_status == "not_met":
-                summary.not_met_count += 1
-                if severity_payload["severity"] == "critical":
-                    summary.critical_findings.append(finding.title)
-                elif severity_payload["severity"] == "high":
-                    summary.high_findings.append(finding.title)
-            else:
-                summary.na_count += 1
+            with summary.lock:
+                if created:
+                    summary.diagram_findings_count += 1
+                if met_status == "met":
+                    summary.met_count += 1
+                elif met_status == "not_met":
+                    summary.not_met_count += 1
+                    if severity_payload["severity"] == "critical":
+                        summary.critical_findings.append(finding.title)
+                    elif severity_payload["severity"] == "high":
+                        summary.high_findings.append(finding.title)
+                else:
+                    summary.na_count += 1
 
             self.logger.info(
                 "PersistenceService.persist_diagram_debate_finding: [SUCCESS] created=%s finding_id=%s",
@@ -409,7 +413,8 @@ class PersistenceService:
             return finding
 
         except Exception as exc:
-            summary.error_count += 1
+            with summary.lock:
+                summary.error_count += 1
             self.logger.exception(
                 "PersistenceService.persist_diagram_debate_finding: failed: %s",
                 exc,

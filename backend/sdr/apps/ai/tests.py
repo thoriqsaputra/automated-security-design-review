@@ -7,7 +7,7 @@ chat_response = chat_completion(
         {"role": "system", "content": "You are a helpful security assistant. Answer in one sentence."},
         {"role": "user", "content": "What is CSRF?"}
     ],
-    component="orchestrator",
+    component="fallback",
 )
 
 if chat_response.error:
