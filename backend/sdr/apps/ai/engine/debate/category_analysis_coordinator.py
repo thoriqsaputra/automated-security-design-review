@@ -187,5 +187,4 @@ class CategoryAnalysisCoordinator:
                 tsd_document=tsd_document,
                 summary=summary,
                 killed_assumptions_memory=killed_assumptions_memory,
-                parent_context_cache=parent_context_cache,
             )

@@ -95,6 +95,51 @@ def test_build_context_chunk_map_uses_merged_window_for_supplemental_blocks():
     assert chunk_map["b2"]["citation_grade"] is True
 
 
+def test_build_context_chunk_map_ranks_blocks_by_query_relevance_before_truncating():
+    blocks = [
+        _block("b1", "The SMS gateway rotates its signing key nightly.", 0, section_heading="Messaging"),
+        _block("b2", "The billing export job runs every quarter.", 10, section_heading="Billing"),
+        _block("b3", "All forms require a valid CAPTCHA and anti-CSRF token before submission.", 20, section_heading="Forms"),
+    ]
+    document = _document_with_blocks(blocks)
+    factory = DebateInputFactory()
+
+    chunk_map = factory.build_context_chunk_map(
+        context_chunks=[],
+        retrieval_metadata={},
+        tsd_document=document,
+        source_block_ids=["b1", "b2", "b3"],
+        include_source_blocks=True,
+        source_block_limit=1,
+        query_text="Does the application use anti-CSRF tokens with CAPTCHA on forms?",
+    )
+
+    assert "b3" in chunk_map
+    assert "b1" not in chunk_map
+    assert "b2" not in chunk_map
+
+
+def test_build_context_chunk_map_preserves_original_order_without_query_text():
+    blocks = [
+        _block("b1", "First unrelated block.", 0, section_heading="Other"),
+        _block("b2", "Second unrelated block.", 10, section_heading="Other"),
+    ]
+    document = _document_with_blocks(blocks)
+    factory = DebateInputFactory()
+
+    chunk_map = factory.build_context_chunk_map(
+        context_chunks=[],
+        retrieval_metadata={},
+        tsd_document=document,
+        source_block_ids=["b1", "b2"],
+        include_source_blocks=True,
+        source_block_limit=1,
+    )
+
+    assert "b1" in chunk_map
+    assert "b2" not in chunk_map
+
+
 def test_get_block_window_bbox_spans_all_merged_blocks():
     blocks = [
         _block("b1", "The gateway authenticates all inbound requests.", 0),

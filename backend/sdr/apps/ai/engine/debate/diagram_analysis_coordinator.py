@@ -153,6 +153,7 @@ class DiagramAnalysisCoordinator:
 
         persisted_count = 0
         for output in diagram_outputs:
+            summary.total_parameters += 1
             if output.error:
                 summary.error_count += 1
                 continue

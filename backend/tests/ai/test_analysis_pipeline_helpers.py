@@ -168,6 +168,134 @@ def test_citation_validator_rejects_unknown_ids():
     assert [c.block_id for c in rejected] == ["x999"]
 
 
+def test_citation_validator_rejects_fabricated_quotes():
+    debate = DebateService()
+    citations = [
+        Citation(block_id="p1_b1", page_number=1, quoted_text="The gateway enforces mTLS for all services."),
+        Citation(block_id="p1_b1", page_number=1, quoted_text="Completely unrelated fabricated sentence."),
+    ]
+    context_chunk_map = {
+        "p1_b1": {"text": "The gateway enforces mTLS for all services."},
+    }
+
+    valid, rejected = debate._validate_citations(
+        citations, ["p1_b1"], "hunter", context_chunk_map=context_chunk_map
+    )
+
+    assert [c.quoted_text for c in valid] == ["The gateway enforces mTLS for all services."]
+    assert [c.quoted_text for c in rejected] == ["Completely unrelated fabricated sentence."]
+
+
+def test_citation_validator_tolerates_whitespace_variation_in_quotes():
+    debate = DebateService()
+    citations = [
+        Citation(
+            block_id="p1_b1",
+            page_number=1,
+            quoted_text="The gateway   enforces\nmTLS for all  services.",
+        )
+    ]
+    context_chunk_map = {
+        "p1_b1": {"text": "The gateway enforces mTLS for all services."},
+    }
+
+    valid, rejected = debate._validate_citations(
+        citations, ["p1_b1"], "hunter", context_chunk_map=context_chunk_map
+    )
+
+    assert len(valid) == 1
+    assert rejected == []
+
+
+def test_citation_validator_rejects_real_world_fabricated_quote_p24_b8():
+    """Regression test for hunter/20260622_154521_704_adhoc.md (requirement 4.1.3)."""
+    debate = DebateService()
+    real_block_text = (
+        "The Carpool System utilizes a highly sophisticated Role Based Access "
+        "Control model combined with underlying Attribute Based Access Control "
+        "principles to guarantee that all users interact"
+    )
+    fabricated_quote = (
+        "The Carpool System utilizes a highly sophisticated Role Based Access "
+        "Control model combined with underlying Attribute Based Access Control "
+        "principles to guarantee that all users interact strictly within their "
+        "authorized functional boundaries."
+    )
+    citations = [Citation(block_id="p24_b8", page_number=24, quoted_text=fabricated_quote)]
+    context_chunk_map = {"p24_b8": {"text": real_block_text}}
+
+    valid, rejected = debate._validate_citations(
+        citations, ["p24_b8"], "hunter", context_chunk_map=context_chunk_map
+    )
+
+    assert valid == []
+    assert [c.block_id for c in rejected] == ["p24_b8"]
+
+
+def test_citation_validator_rejects_real_world_fabricated_quote_p24_b7():
+    """Regression test for hunter/20260622_161026_108_adhoc.md (requirement 4.3.1)."""
+    debate = DebateService()
+    real_block_text = (
+        "mobile text alerting provider. 11. User Access & Roles The Carpool "
+        "System utilizes a highly sophisticated Role Based Access Control "
+        "model combined"
+    )
+    fabricated_quote = (
+        "the system explicitly dictates that all system roles require "
+        "mandatory Multi Factor Authentication prior to being granted any access."
+    )
+    citations = [Citation(block_id="p24_b7", page_number=24, quoted_text=fabricated_quote)]
+    context_chunk_map = {"p24_b7": {"text": real_block_text}}
+
+    valid, rejected = debate._validate_citations(
+        citations, ["p24_b7"], "hunter", context_chunk_map=context_chunk_map
+    )
+
+    assert valid == []
+    assert [c.block_id for c in rejected] == ["p24_b7"]
+
+
+def test_stabilize_critic_grounding_downgrades_met_without_valid_citations():
+    debate = DebateService()
+    critic_result = CriticResult(
+        outcome="OVERTURN",
+        revised_verdict="met",
+        revised_confidence=0.8,
+        reasoning="The clear textual evidence supports met.",
+        logic_summary="The clear textual evidence supports met.",
+        valid_citations=[],
+        decision="reject",
+    )
+
+    stabilized = debate._stabilize_critic_grounding(
+        critic_result, rejected_citations=[Citation(block_id="p24_b8", page_number=24)]
+    )
+
+    assert stabilized.revised_verdict == "not_met"
+    assert stabilized.revised_confidence <= 0.45
+    assert stabilized.outcome == "OVERTURN"
+    assert stabilized.decision == "reject"
+    assert "Rejected citation ids: p24_b8" in stabilized.logic_summary
+
+
+def test_stabilize_critic_grounding_leaves_valid_results_unchanged():
+    debate = DebateService()
+    critic_result = CriticResult(
+        outcome="UPHOLD",
+        revised_verdict="met",
+        revised_confidence=0.9,
+        reasoning="Looks good.",
+        logic_summary="Looks good.",
+        valid_citations=[Citation(block_id="p1_b1", page_number=1)],
+        decision="uphold",
+    )
+
+    stabilized = debate._stabilize_critic_grounding(critic_result)
+
+    assert stabilized.revised_verdict == "met"
+    assert stabilized.revised_confidence == 0.9
+
+
 def test_hunter_citation_parser_accepts_aliases():
     agent = HunterAgent()
     citations = agent._extract_citations(
@@ -278,6 +406,36 @@ def test_mediator_evidence_policy_adjusts_verdicts():
     assert [c.block_id for c in grounded_not_met.final_citations] == ["p1_b1"]
     assert unsupported_met.final_verdict == "na"
     assert out_of_scope.final_verdict == "na"
+
+
+def test_mediator_evidence_policy_default_preserves_ungrounded_not_met():
+    # Default policy is "preserve_not_met": a genuinely missing/contradicted control
+    # (raw not_met, no citations to give since there's nothing to cite) stays "not_met"
+    # rather than being silently swallowed into "na".
+    debate = DebateService()
+    contract = {"in_scope": True, "specific_enough": True}
+
+    ungrounded_not_met = debate._apply_mediator_evidence_policy(
+        MediatorResult(final_verdict="not_met", confidence=0.5, final_citations=[]),
+        CriticResult(revised_verdict="not_met", valid_citations=[]),
+        contract,
+    )
+
+    assert ungrounded_not_met.final_verdict == "not_met"
+
+
+def test_mediator_evidence_policy_downgrade_na_requires_explicit_opt_in(settings_override):
+    settings_override(AI_BATCH_DEBATE_UNGROUNDED_NOT_MET_POLICY="downgrade_na")
+    debate = DebateService()
+    contract = {"in_scope": True, "specific_enough": True}
+
+    ungrounded_not_met = debate._apply_mediator_evidence_policy(
+        MediatorResult(final_verdict="not_met", confidence=0.5, final_citations=[]),
+        CriticResult(revised_verdict="not_met", valid_citations=[]),
+        contract,
+    )
+
+    assert ungrounded_not_met.final_verdict == "na"
 
 
 def test_group_parameters_by_parent_preserves_order():

@@ -102,10 +102,20 @@ class RetrievalStrategySelector:
             "authorization bypass", "unauthorized access", "horizontal access", "vertical access",
             "isolation", "multi-tenant", "impersonat",
         )
+        # Requirements about end-user tampering/manipulation of attributes or state
+        # (e.g. ASVS 4.1.2-style wording) often require cross-referencing the access
+        # control model with the session/state-management mechanism that actually
+        # enforces it — route these like other multi-hop security queries.
+        integrity_markers = (
+            "manipulate", "manipulated", "manipulation", "tamper", "tampering", "tampered",
+            "immutable", "modify", "modified", "modification",
+        )
         reasoning_markers = ("between", "path", "flow", "across", "relationship", "all services")
         if any(_marker_matches(marker, text) for marker in global_markers):
             return QueryType.GLOBAL_ARCHITECTURAL
         if any(_marker_matches(marker, text) for marker in multi_hop_markers):
+            return QueryType.MULTI_HOP_SECURITY
+        if any(_marker_matches(marker, text) for marker in integrity_markers):
             return QueryType.MULTI_HOP_SECURITY
         # Structural fallback: a query touching >=2 entities whose inferred
         # relations are security-critical is multi-hop in shape even when

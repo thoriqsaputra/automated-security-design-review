@@ -7,7 +7,6 @@ from sdr.apps.ai.retrieval.core.types import AdvancedRetrievalConfig
 from sdr.apps.ai.retrieval.routing.router import HybridRetrievalRouter
 from sdr.apps.ai.retrieval.searchers.graph import GraphSearchResponse, GraphSearchResult
 from sdr.apps.ai.retrieval.searchers.raptor import RAPTORSearchResponse, RAPTORSearchResult
-from sdr.apps.ai.retrieval.searchers.vector import VectorSearchResponse, VectorSearchResult
 from sdr.apps.ai.tsd_processing.graph_builder import GraphEntity, TSDGraph
 from sdr.apps.ai.tsd_processing.raptor import RAPTORNode
 
@@ -60,12 +59,12 @@ def _graph_response() -> GraphSearchResponse:
     )
 
 
-def test_graph_local_survives_vector_searcher_exception():
+def test_graph_local_survives_dense_searcher_exception():
     router = _router()
     graph = _graph_with_entity()
 
     router._graph_searcher.search_local = lambda **kwargs: _graph_response()
-    router._vector_searcher.search = lambda **kwargs: (_ for _ in ()).throw(RuntimeError("vector backend down"))
+    router._raptor_searcher.search_collapsed_raptor = lambda **kwargs: (_ for _ in ()).throw(RuntimeError("raptor dense backend down"))
     router._keyword_searcher.search = lambda **kwargs: [
         RetrievalCandidate(id="bm25:1", source_type="keyword", text="API Gateway authenticates requests", score=0.5, block_ids=["p1_b1"])
     ]
@@ -74,7 +73,7 @@ def test_graph_local_survives_vector_searcher_exception():
         query_text="API Gateway auth",
         category=SimpleNamespace(id=1, code="web_application"),
         ingestion_job=SimpleNamespace(id=1),
-        raptor_tree=None,
+        raptor_tree=SimpleNamespace(is_empty=lambda: False),
         graph=graph,
         query_embedding=[0.1, 0.2],
         keywords=["auth"],
@@ -82,7 +81,7 @@ def test_graph_local_survives_vector_searcher_exception():
     )
 
     assert result.error is None
-    assert result.vector_response.error == "vector backend down"
+    assert result.vector_response is None
     assert result.context_chunks
 
 
@@ -93,9 +92,6 @@ def test_hybrid_survives_keyword_searcher_exception():
         level=0,
         text="The service enforces authentication using OAuth and requires MFA for admin access.",
         source_block_ids=["p1_b1"],
-    )
-    router._vector_searcher.search = lambda **kwargs: VectorSearchResponse(
-        results=[VectorSearchResult(child=SimpleNamespace(requirement_text="Use MFA", stable_key="c1"), cosine_distance=0.1)]
     )
     router._raptor_searcher.search_collapsed_raptor = lambda **kwargs: RAPTORSearchResponse(
         results=[RAPTORSearchResult(node=raptor_node, cosine_similarity=0.8, source_block_ids=["p1_b1"])]
@@ -119,7 +115,6 @@ def test_hybrid_survives_keyword_searcher_exception():
 
 def test_all_branches_failing_in_hybrid_returns_gracefully_not_via_router_catch_all():
     router = _router()
-    router._vector_searcher.search = lambda **kwargs: (_ for _ in ()).throw(RuntimeError("vector down"))
     router._raptor_searcher.search_collapsed_raptor = lambda **kwargs: (_ for _ in ()).throw(RuntimeError("raptor down"))
     router._keyword_searcher.search = lambda **kwargs: (_ for _ in ()).throw(RuntimeError("bm25 down"))
 
@@ -127,7 +122,7 @@ def test_all_branches_failing_in_hybrid_returns_gracefully_not_via_router_catch_
         query_text="Use MFA for admin access",
         category=SimpleNamespace(id=1, code="web_application"),
         ingestion_job=SimpleNamespace(id=1),
-        raptor_tree=None,
+        raptor_tree=SimpleNamespace(is_empty=lambda: False),
         graph=None,
         query_embedding=[0.1, 0.2],
         keywords=["mfa"],
@@ -135,5 +130,5 @@ def test_all_branches_failing_in_hybrid_returns_gracefully_not_via_router_catch_
     )
 
     assert result.error is None
-    assert result.vector_response.error == "vector down"
+    assert result.vector_response is None
     assert result.context_chunks == []

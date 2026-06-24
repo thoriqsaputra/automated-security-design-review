@@ -205,9 +205,11 @@ class RetrievalService:
 
                     chunks = chunk_text_with_context(tsd_document.full_text)
                     result.context_chunks = [c["text"] for c in chunks]
+                    result.context_chunk_block_ids = [[] for _ in result.context_chunks]
                     result.error = None
                 else:
                     result.context_chunks = []
+                    result.context_chunk_block_ids = []
                     result.error = (
                         "No TSD-backed indexes available; vector-only matches "
                         "are not used as evidence."
@@ -299,6 +301,7 @@ class RetrievalService:
             }
             return RetrievalResult(
                 context_chunks=list(parent_result.context_chunks or []),
+                context_chunk_block_ids=list(parent_result.context_chunk_block_ids or []),
                 source_block_ids=list(parent_result.source_block_ids or []),
                 block_source_map=dict(parent_result.block_source_map or {}),
                 diagram_block_ids=list(parent_result.diagram_block_ids or []),
@@ -334,6 +337,7 @@ class RetrievalService:
             ]
 
         refined_context_chunks: List[str] = []
+        refined_context_chunk_block_ids: List[List[str]] = []
         seen_chunks = set()
         refined_source_block_ids: List[str] = []
         seen_block_ids = set()
@@ -344,6 +348,7 @@ class RetrievalService:
             text = (candidate.text or "").strip()
             if text and text not in seen_chunks:
                 refined_context_chunks.append(text)
+                refined_context_chunk_block_ids.append(list(candidate.block_ids or []))
                 seen_chunks.add(text)
             for block_id in candidate.block_ids or []:
                 if not block_id or block_id in seen_block_ids:
@@ -373,6 +378,7 @@ class RetrievalService:
         }
         return RetrievalResult(
             context_chunks=refined_context_chunks[: self.get_child_refinement_max_context_chunks()],
+            context_chunk_block_ids=refined_context_chunk_block_ids[: self.get_child_refinement_max_context_chunks()],
             source_block_ids=refined_source_block_ids,
             block_source_map=refined_block_source_map,
             diagram_block_ids=list(parent_result.diagram_block_ids or []),
@@ -548,6 +554,9 @@ class RetrievalService:
         )
         if len(result.context_chunks or []) > max_context_chunks:
             result.context_chunks = list(result.context_chunks[:max_context_chunks])
+            result.context_chunk_block_ids = list(
+                (result.context_chunk_block_ids or [])[:max_context_chunks]
+            )
         self.logger.info(
             "RetrievalService.retrieve_for_parent_group: parent=%s prompt_child_snippets=%d context_chunks=%d",
             getattr(parent, "id", None),
@@ -630,17 +639,23 @@ class RetrievalService:
                     )
                 )
 
+        parent_chunk_block_ids = parent_result.context_chunk_block_ids or []
         for idx, chunk in enumerate(parent_result.context_chunks or [], start=1):
             text = (chunk or "").strip()
             if not text:
                 continue
+            chunk_block_ids = (
+                list(parent_chunk_block_ids[idx - 1])
+                if idx - 1 < len(parent_chunk_block_ids)
+                else []
+            )
             candidates.append(
                 RetrievalCandidate(
                     id=f"context:{idx}",
                     source_type="parent_group_context",
                     text=text,
                     score=max(0.1, 0.5 - (idx * 0.01)),
-                    block_ids=[],
+                    block_ids=chunk_block_ids,
                     metadata={
                         "source": "parent_group_context",
                         "sensitivity": "internal",

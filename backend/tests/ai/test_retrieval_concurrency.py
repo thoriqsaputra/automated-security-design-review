@@ -80,7 +80,7 @@ def test_hybrid_executor_caps_worker_count_to_active_branches(monkeypatch):
     router._vector_searcher = SimpleNamespace(search=lambda **kwargs: SimpleNamespace(results=[], error=None))
     router._raptor_searcher = SimpleNamespace(search_collapsed_raptor=lambda **kwargs: None)
     router._keyword_searcher = SimpleNamespace(search=lambda **kwargs: [])
-    router._vector_results_to_candidates = lambda response: []
+    router._dense_tsd_results_to_candidates = lambda response: []
     router._raptor_results_to_candidates = lambda response: []
     router._apply_keyword_coverage_boost = lambda candidates, keywords: candidates
     router._grade_and_filter_candidates = lambda candidates, **kwargs: (candidates, {})
@@ -100,7 +100,56 @@ def test_hybrid_executor_caps_worker_count_to_active_branches(monkeypatch):
     )
 
     assert result.error is None
-    assert _ImmediateExecutor.seen_max_workers[-1] == 2
+    assert _ImmediateExecutor.seen_max_workers[-1] == 1
+
+
+def test_hybrid_executor_includes_dense_and_raptor_branches_when_tree_available(monkeypatch):
+    from sdr.apps.ai.retrieval.routing import executors as executors_module
+    from sdr.apps.ai.retrieval.searchers.raptor import RAPTORSearchResponse, RAPTORSearchResult
+
+    _ImmediateExecutor.seen_max_workers.clear()
+    monkeypatch.setattr(executors_module, "ThreadPoolExecutor", _ImmediateExecutor)
+
+    leaf_node = SimpleNamespace(
+        node_id="leaf-1",
+        level=0,
+        text="The gateway enforces MFA on all logins.",
+        page_numbers=[1],
+        section_heading="Authentication",
+        token_estimate=10,
+    )
+    leaf_result = RAPTORSearchResult(node=leaf_node, cosine_similarity=0.9, source_block_ids=["b1"])
+    dense_response = RAPTORSearchResponse(results=[leaf_result])
+
+    router = HybridRetrievalRouter.__new__(HybridRetrievalRouter)
+    router.vector_top_k = 8
+    router.raptor_top_k = 5
+    router.graph_top_k = 6
+    router.max_context_chunks = 12
+    router.advanced_config = AdvancedRetrievalConfig(hybrid_max_workers=9)
+    router._raptor_searcher = SimpleNamespace(search_collapsed_raptor=lambda **kwargs: dense_response)
+    router._keyword_searcher = SimpleNamespace(search=lambda **kwargs: [])
+    router._apply_keyword_coverage_boost = lambda candidates, keywords: candidates
+    router._grade_and_filter_candidates = lambda candidates, **kwargs: (candidates, {})
+    router._reranker = SimpleNamespace(rerank=lambda query, candidates, top_k: candidates)
+    router._collect_candidate_block_ids = lambda candidates: []
+
+    result = executors_module.RetrievalRouteExecutor().execute_hybrid(
+        router,
+        query_text="Use MFA",
+        category=SimpleNamespace(id=1, code="web_application"),
+        ingestion_job=SimpleNamespace(id=1),
+        raptor_tree=SimpleNamespace(is_empty=lambda: False),
+        graph=None,
+        query_embedding=[0.1],
+        keywords=["mfa"],
+        inferred_relations=set(),
+    )
+
+    assert result.error is None
+    assert result.vector_response is None
+    dense_candidates = [c for c in result.context_chunks]
+    assert any("enforces MFA" in chunk for chunk in dense_candidates)
 
 
 def test_retrieve_many_returns_results_and_per_parameter_errors():
@@ -190,3 +239,71 @@ def test_parent_applicability_gate_prefetches_without_changing_outcome(monkeypat
     assert [parameter.id for parameter in applicable] == [1, 2]
     assert set(retrieval_calls) == {10, 20}
     assert len(cache) == 2
+
+
+def test_run_single_analysis_for_category_runs_parameters_concurrently():
+    import threading
+    import time
+
+    coordinator = TextDebateCoordinator(
+        config=SimpleNamespace(batch_debate_max_concurrency=3),
+        retrieval_service=SimpleNamespace(),
+        debate_service=SimpleNamespace(),
+        persistence_service=SimpleNamespace(),
+        debate_input_factory=SimpleNamespace(),
+        progress_service=SimpleNamespace(
+            initialize_category_progress=lambda **kwargs: None,
+            sync_analysis_aliases=lambda **kwargs: None,
+        ),
+        run_state_service=SimpleNamespace(
+            raise_if_cancelled=lambda *args, **kwargs: None,
+            is_cancelled=lambda _review: False,
+            persist_summary_snapshot=lambda *args, **kwargs: None,
+        ),
+        mediator_agent_factory=lambda: None,
+    )
+    coordinator.seed_live_debates = lambda **kwargs: None
+    coordinator.retry_if_needed = lambda **kwargs: kwargs["debate_output"]
+    coordinator.extract_killed_assumptions_from_output = lambda output, parameter: []
+
+    lock = threading.Lock()
+    in_flight = 0
+    peak_in_flight = 0
+    persisted_ids = []
+
+    def _slow_analyze(**kwargs):
+        nonlocal in_flight, peak_in_flight
+        with lock:
+            in_flight += 1
+            peak_in_flight = max(peak_in_flight, in_flight)
+        time.sleep(0.2)
+        with lock:
+            in_flight -= 1
+        parameter = kwargs["parameter"]
+        return SimpleNamespace(analysis_trace={}, mediator_result=None, hunter_result=None, critic_result=None, parameter_id=parameter.id)
+
+    coordinator.analyze_single_child = _slow_analyze
+    coordinator.persist_debate_output = lambda **kwargs: persisted_ids.append(kwargs["parameter"].id)
+    coordinator.record_debate_progress = lambda **kwargs: None
+    coordinator.record_persistence_progress = lambda **kwargs: None
+
+    parameters = [_parameter(i) for i in range(1, 7)]
+    summary = AnalysisSummary()
+
+    started_at = time.monotonic()
+    coordinator.run_single_analysis_for_category(
+        review=SimpleNamespace(id=1),
+        category=SimpleNamespace(id=7, code="web_application"),
+        ingestion_job=SimpleNamespace(id=11),
+        parameters=parameters,
+        indexes=SimpleNamespace(),
+        tsd_document=SimpleNamespace(),
+        summary=summary,
+        killed_assumptions_memory=deque(),
+    )
+    elapsed = time.monotonic() - started_at
+
+    assert peak_in_flight > 1, "parameters should have overlapped instead of running strictly sequentially"
+    assert peak_in_flight <= 3
+    assert elapsed < 0.2 * len(parameters), "concurrent run should be faster than the fully sequential baseline"
+    assert sorted(persisted_ids) == [1, 2, 3, 4, 5, 6]

@@ -58,6 +58,26 @@ def test_retry_returns_still_truncated_response_when_retry_also_fails(monkeypatc
     assert fallback.revised_verdict == VERDICT_NA
 
 
+def test_retry_with_explicit_max_tokens_kwarg_does_not_raise(monkeypatch):
+    agent = HunterAgent()
+    calls = []
+
+    def fake_call_llm(_self, user_prompt, **kwargs):
+        calls.append(kwargs.get("max_tokens"))
+        if len(calls) == 1:
+            return _response(content="", finish_reason="length")
+        return _response(content='{"recommendation": "do x"}', finish_reason="stop")
+
+    monkeypatch.setattr(BaseAgent, "_call_llm", fake_call_llm)
+
+    result = agent._call_llm_with_truncation_retry("prompt", max_tokens=400)
+
+    assert result.finish_reason == "stop"
+    assert len(calls) == 2
+    assert calls[0] == 400
+    assert calls[1] == min(agent.max_tokens * 2, 16384)
+
+
 def test_no_retry_when_response_not_truncated(monkeypatch):
     agent = HunterAgent()
     calls = []

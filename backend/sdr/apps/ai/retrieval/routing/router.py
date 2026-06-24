@@ -4,8 +4,10 @@ import logging
 from typing import Any, Dict, List, Optional, Set
 
 from sdr.apps.ai.client import get_embedding
+from sdr.apps.ai.engine.classification.query_expansion import expand_retrieval_query_variants
 from sdr.apps.ai.retrieval.core import AdvancedRetrievalConfig, RetrievalCandidate, RetrievalResult, RetrievalStrategy
 from sdr.apps.ai.retrieval.postprocessing.chunk_builders import (
+    build_chunk_block_ids_from_graph,
     build_chunks_from_graph,
     build_chunks_from_vector,
     collect_block_ids_from_vector,
@@ -28,6 +30,7 @@ from sdr.apps.ai.tsd_processing.graph_builder import TSDGraph
 from sdr.apps.ai.tsd_processing.raptor import RAPTORTree
 from sdr.apps.standards.models import CategoryParameterChild, StandardCategory, StandardIngestionJob
 from sdr.apps.standards.utils import build_parameter_analysis_text
+from sdr.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -114,6 +117,11 @@ class HybridRetrievalRouter:
                     query_embedding=query_embedding,
                 )
             if strategy == RetrievalStrategy.GRAPH_LOCAL:
+                query_variants = self._get_query_variants(
+                    parameter=parameter,
+                    ingestion_job=ingestion_job,
+                    query_text=query_text,
+                )
                 return self._execute_graph_local(
                     query_text=query_text,
                     category=category,
@@ -123,7 +131,13 @@ class HybridRetrievalRouter:
                     query_embedding=query_embedding,
                     keywords=keywords,
                     query_entities=query_entities,
+                    query_variants=query_variants,
                 )
+            query_variants = self._get_query_variants(
+                parameter=parameter,
+                ingestion_job=ingestion_job,
+                query_text=query_text,
+            )
             return self._execute_hybrid(
                 query_text=query_text,
                 category=category,
@@ -133,6 +147,7 @@ class HybridRetrievalRouter:
                 query_embedding=query_embedding,
                 keywords=keywords,
                 inferred_relations=inferred_relations,
+                query_variants=query_variants,
             )
         except Exception as exc:
             msg = f"Strategy execution failed for strategy={strategy.value}: {exc}"
@@ -194,6 +209,9 @@ class HybridRetrievalRouter:
     def _build_chunks_from_graph(self, graph_response: GraphSearchResponse) -> List[str]:
         return build_chunks_from_graph(graph_response)
 
+    def _build_chunk_block_ids_from_graph(self, graph_response: GraphSearchResponse) -> List[List[str]]:
+        return build_chunk_block_ids_from_graph(graph_response)
+
     def _collect_block_ids_from_vector(self, vector_response: VectorSearchResponse) -> List[str]:
         return collect_block_ids_from_vector(vector_response)
 
@@ -242,6 +260,28 @@ class HybridRetrievalRouter:
                 )
         return candidates
 
+    def _dense_tsd_results_to_candidates(self, raptor_response: Optional[RAPTORSearchResponse]) -> List[RetrievalCandidate]:
+        candidates: List[RetrievalCandidate] = []
+        if raptor_response and not raptor_response.is_empty:
+            for result in raptor_response.results:
+                candidates.append(
+                    RetrievalCandidate(
+                        id=f"dense:{result.node.node_id}",
+                        source_type="dense",
+                        text=result.node.text,
+                        score=float(result.cosine_similarity),
+                        block_ids=list(result.source_block_ids),
+                        metadata={
+                            "level": result.node.level,
+                            "page_numbers": list(result.node.page_numbers),
+                            "section_heading": result.node.section_heading,
+                            "sensitivity": "internal",
+                        },
+                        token_count=result.node.token_estimate,
+                    )
+                )
+        return candidates
+
     def _collect_candidate_block_ids(self, candidates: List[RetrievalCandidate]) -> List[str]:
         block_ids: List[str] = []
         seen: Set[str] = set()
@@ -272,6 +312,28 @@ class HybridRetrievalRouter:
         metadata.update(normalized)
         result.evidence_metadata = metadata
         return normalized
+
+    def _get_query_variants(
+        self,
+        *,
+        parameter: CategoryParameterChild,
+        ingestion_job: Optional[StandardIngestionJob],
+        query_text: str,
+    ) -> List[Any]:
+        if not bool(getattr(settings, "AI_RETRIEVAL_QUERY_EXPANSION_ENABLED", True)):
+            return []
+        cache_key = f"{getattr(parameter, 'id', '')}:{getattr(ingestion_job, 'id', 'none')}"
+        try:
+            variant_texts = expand_retrieval_query_variants(
+                query_text,
+                cache_key=cache_key,
+                variant_count=int(getattr(settings, "AI_RETRIEVAL_QUERY_EXPANSION_VARIANT_COUNT", 3)),
+                enabled=True,
+            )
+        except Exception:
+            self.logger.exception("HybridRetrievalRouter._get_query_variants: expansion failed")
+            return []
+        return [(text, self._generate_query_embedding(text)) for text in variant_texts]
 
     def _generate_query_embedding(self, query_text: str) -> List[float]:
         try:

@@ -133,9 +133,10 @@ Reasoning -> assumptions: ["Validity depends on quoted evidence in cited blocks.
 	- "PARTIAL"  → Some citations are valid, verdict needs adjustment.
 	- decision mapping → uphold = UPHOLD, challenge = PARTIAL, reject = OVERTURN.
 	- requires_rebuttal → true when Hunter reasoning is weak/generic, evidence may be missed, or citations need a direct response.
-	- valid_citations   → Only block_ids you have personally verified in the context, and only from CONTEXT_CHUNK elements with citable="true".
+	- valid_citations   → Only block_ids you have personally verified in the context, and only from CONTEXT_CHUNK elements with citable="true". "Verified" means the quoted text literally appears in that block's own raw text — never accept a quote that was inferred, paraphrased, or merged from a different chunk, even if that other chunk is nearby or about the same topic.
 	- invalid_citation_ids → block_ids cited by the Hunter that do NOT contain \
 	the claimed evidence.
+	- If revised_verdict is "met", valid_citations MUST contain at least one block_id you verified this way. Never output revised_verdict "met" (or an OVERTURN to "met") with an empty valid_citations list — if you cannot find a verified citation, the verdict must be "not_met" or "na" instead.
 	- Challenge generic missing-evidence findings unless Hunter identified both why the control applies and what implementation evidence is missing.
 	- If the retrieved context is only headings, graph summaries, baseline requirements, or unrelated snippets and does not establish applicability, revise the verdict to "na".
 	- Do not uphold "not_met" solely because evidence is absent; absent evidence is a failure only after applicability is established.
@@ -194,7 +195,8 @@ Challenge or confirm each Hunter finding independently. Return strict JSON:
 Rules:
 - Use child_id exactly as supplied.
 - Verify citations against ORIGINAL TSD CONTEXT for that child only.
-- valid_citations → only block_ids from CONTEXT_CHUNK elements with citable="true".
+- valid_citations → only block_ids from CONTEXT_CHUNK elements with citable="true", and only when the quoted text literally appears in that block's own raw text — never accept a quote inferred, paraphrased, or merged from a different chunk.
+- If a child's revised_verdict is "met", that child's valid_citations MUST contain at least one such verified block_id. Never output revised_verdict "met" with an empty valid_citations list for that child.
 - Do not let evidence for one child satisfy a different child.
 - Scrutinise the Hunter's assumptions and cot_trace for logical leaps.
 {block_ids_block}

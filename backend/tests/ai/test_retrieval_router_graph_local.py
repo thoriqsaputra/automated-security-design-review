@@ -8,7 +8,6 @@ from sdr.apps.ai.retrieval.searchers.graph import (
     GraphSearchResult,
 )
 from sdr.apps.ai.retrieval.routing.router import HybridRetrievalRouter
-from sdr.apps.ai.retrieval.searchers.vector import VectorSearchResponse, VectorSearchResult
 from sdr.apps.ai.tsd_processing.graph_builder import GraphEntity, GraphRelation, TSDGraph
 
 
@@ -59,14 +58,6 @@ def test_execute_graph_local_returns_grounded_texts(monkeypatch):
         graph_edge_ids=["api_gateway->auth_service"],
         grounded_texts=[{"text": "API Gateway authenticates requests", "block_id": "p1_b1"}],
     )
-    vector_response = VectorSearchResponse(
-        results=[
-            VectorSearchResult(
-                child=SimpleNamespace(requirement_text="Use MFA for admin access", stable_key="child-1"),
-                cosine_distance=0.1,
-            )
-        ]
-    )
     bm25_candidates = [
         RetrievalCandidate(
             id="bm25:1",
@@ -78,7 +69,6 @@ def test_execute_graph_local_returns_grounded_texts(monkeypatch):
     ]
 
     router._graph_searcher.search_local = lambda **kwargs: graph_response
-    router._vector_searcher.search = lambda **kwargs: vector_response
     router._keyword_searcher.search = lambda **kwargs: bm25_candidates
 
     result = router._execute_graph_local(

@@ -11,6 +11,7 @@ from sdr.apps.standards.utils import build_parameter_analysis_text
 from sdr.apps.ai.engine.preparation.contract_synthesizer import ContractSynthesizer
 from sdr.apps.ai.engine.classification.domain_classification import DOMAIN_KEYWORDS, classify_requirement_domain
 from sdr.apps.ai.engine.dto import DebateInput
+from sdr.apps.ai.retrieval.searchers.graph import _extract_keywords
 
 logger = logging.getLogger(__name__)
 
@@ -110,12 +111,15 @@ class DebateInputFactory:
                 "retrieval_evidence_metadata": retrieval_metadata,
             }
         supplemental_block_limit = max(0, int(getattr(settings, "AI_DEBATE_CONTEXT_SUPPLEMENTAL_BLOCK_LIMIT", 0)))
+        chunk_block_ids = getattr(retrieval_result, "context_chunk_block_ids", []) or []
         debate_context_chunks = self.build_xml_context_chunks(
             retrieval_result.context_chunks or [],
             retrieval_metadata=retrieval_metadata,
             tsd_document=tsd_document,
             source_block_ids=getattr(retrieval_result, "source_block_ids", []) or [],
             include_source_blocks=supplemental_block_limit > 0,
+            query_text=parameter_text,
+            chunk_block_ids=chunk_block_ids,
         )
         context_chunk_map = self.build_context_chunk_map(
             retrieval_result.context_chunks or [],
@@ -124,6 +128,8 @@ class DebateInputFactory:
             source_block_ids=getattr(retrieval_result, "source_block_ids", []) or [],
             include_source_blocks=supplemental_block_limit > 0,
             source_block_limit=supplemental_block_limit,
+            query_text=parameter_text,
+            chunk_block_ids=chunk_block_ids,
         )
         logger.info(
             "DebateInputFactory.build_debate_input: parameter id=%s retrieval_chunks=%d source_block_ids=%d prompt_chunks=%d chunk_map_entries=%d",
@@ -153,6 +159,8 @@ class DebateInputFactory:
         source_block_ids: Optional[list] = None,
         include_source_blocks: bool = True,
         source_block_limit: Optional[int] = None,
+        query_text: str = "",
+        chunk_block_ids: Optional[List[List[str]]] = None,
     ) -> dict:
         chunk_map = {}
         evidence_quality = (retrieval_metadata or {}).get("evidence_quality") or {}
@@ -160,20 +168,34 @@ class DebateInputFactory:
         for idx, chunk in enumerate(context_chunks, start=1):
             evidence_kind = self.classify_context_chunk_text(chunk)
             chunk_id = f"graph_summary_{idx}" if evidence_kind == "graph_summary" else f"chunk_{idx}"
-            source_location = self.resolve_chunk_source_location(chunk_id, tsd_document)
+            real_block_ids = (
+                chunk_block_ids[idx - 1] if chunk_block_ids and idx - 1 < len(chunk_block_ids) else []
+            )
+            real_block_ids = [bid for bid in (real_block_ids or []) if bid]
+            if real_block_ids:
+                source_location = self.resolve_chunk_source_location(real_block_ids[0], tsd_document)
+            else:
+                source_location = self.resolve_chunk_source_location(chunk_id, tsd_document)
             chunk_map[chunk_id] = {
                 "source": "retrieval_context",
                 "section": source_location.get("section") or "unknown",
                 "text": chunk,
                 "evidence_kind": evidence_kind,
-                "citation_grade": False,
+                "citation_grade": bool(real_block_ids),
                 "evidence_quality": evidence_quality,
+                **({"block_ids": real_block_ids} if real_block_ids else {}),
                 **source_location,
             }
         if include_source_blocks:
-            supplemental_added = 0
-            for block_id in source_block_ids or []:
-                if source_block_limit is not None and supplemental_added >= max(0, int(source_block_limit)):
+            limit = max(0, int(source_block_limit)) if source_block_limit is not None else None
+            candidate_limit = max(
+                limit or 0,
+                int(getattr(settings, "AI_DEBATE_SUPPLEMENTAL_BLOCK_CANDIDATE_LIMIT", 32)),
+            )
+            keywords = [kw.lower() for kw in _extract_keywords(query_text or "")]
+            resolved: List[Dict[str, Any]] = []
+            for idx, block_id in enumerate(source_block_ids or []):
+                if len(resolved) >= candidate_limit:
                     break
                 if not block_id or block_id in chunk_map or "_d" in block_id:
                     continue
@@ -217,10 +239,28 @@ class DebateInputFactory:
                     text = ""
                 if not text:
                     continue
-                chunk_map[block_id] = {
+                lowered_text = text.lower()
+                score = sum(1 for keyword in keywords if keyword in lowered_text)
+                resolved.append(
+                    {
+                        "block_id": block_id,
+                        "score": score,
+                        "order": idx,
+                        "text": text,
+                        "source_location": source_location,
+                        "provenance": provenance,
+                    }
+                )
+            resolved.sort(key=lambda item: (-item["score"], item["order"]))
+            if limit is not None:
+                resolved = resolved[:limit]
+            for item in resolved:
+                source_location = item["source_location"]
+                provenance = item["provenance"]
+                chunk_map[item["block_id"]] = {
                     "source": "retrieval_grounded_source",
                     "section": source_location.get("section") or "unknown",
-                    "text": text,
+                    "text": item["text"],
                     "evidence_kind": "grounded_text_block",
                     "citation_grade": True,
                     "evidence_quality": evidence_quality,
@@ -228,7 +268,6 @@ class DebateInputFactory:
                     "retrieval_origin_label": provenance.get("retrieval_origin_label"),
                     **source_location,
                 }
-                supplemental_added += 1
         return chunk_map
 
     def resolve_chunk_source_location(self, chunk_id: str, tsd_document) -> Dict[str, Any]:
@@ -293,6 +332,8 @@ class DebateInputFactory:
         tsd_document=None,
         source_block_ids: Optional[list] = None,
         include_source_blocks: bool = False,
+        query_text: str = "",
+        chunk_block_ids: Optional[List[List[str]]] = None,
     ) -> list:
         source_block_limit = None
         if include_source_blocks:
@@ -304,6 +345,8 @@ class DebateInputFactory:
             source_block_ids=source_block_ids,
             include_source_blocks=include_source_blocks,
             source_block_limit=source_block_limit,
+            query_text=query_text,
+            chunk_block_ids=chunk_block_ids,
         )
         xml_chunks = []
         for chunk_id, payload in chunk_map.items():

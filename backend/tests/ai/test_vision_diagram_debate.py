@@ -390,6 +390,7 @@ def test_pipeline_diagram_analysis_uses_diagram_input_and_debate_service(monkeyp
     assert len(captured["requirements"]) == 1
     assert persisted
     assert summary.diagram_findings_count == 1
+    assert summary.total_parameters == 1
 
 
 def test_pipeline_diagram_analysis_persists_na_for_non_architecture_images(monkeypatch, settings_override):
@@ -469,6 +470,93 @@ def test_pipeline_diagram_analysis_persists_na_for_non_architecture_images(monke
     assert persisted[0].mediator_result["final_verdict"] == "na"
     assert persisted[0].mediator_result["diagram_scope_verdict"] == "non_architecture"
     assert summary.diagram_findings_count == 1
+    assert summary.total_parameters == 1
+
+
+class _FakeDiagramBlockTwo(_FakeDiagramBlock):
+    def __init__(self):
+        super().__init__()
+        self.diagram_id = "p3_d1"
+        self.caption = "Deployment topology"
+
+
+def test_pipeline_diagram_analysis_counts_total_parameters_for_errors_and_successes(
+    monkeypatch, settings_override
+):
+    settings_override(
+        AI_VISION_DIAGRAM_ANALYSIS_ENABLED=True,
+        AI_VISION_ENABLED=True,
+        AI_VISION_MIN_DIAGRAM_BYTES=512,
+        AI_VISION_MAX_CONCURRENCY=1,
+        AI_VISION_DIAGRAM_REQUIREMENTS_MAX_ITEMS=15,
+    )
+
+    persisted = []
+
+    class _FakePersistence:
+        def persist_diagram_debate_finding(self, review, category, diagram_debate_output, summary):
+            persisted.append(diagram_debate_output)
+            summary.diagram_findings_count += 1
+            summary.not_met_count += 1
+            return object()
+
+    pipeline = TSDAnalysisPipeline(
+        ingestion_service=SimpleNamespace(),
+        retrieval_service=SimpleNamespace(),
+        debate_service=SimpleNamespace(),
+        persistence_service=_FakePersistence(),
+    )
+
+    def _fake_run_diagram_debate(*, diagram, requirements, tsd_context, cancel_check=None):
+        if diagram.diagram_id == "p3_d1":
+            return SimpleNamespace(
+                diagram=diagram,
+                hunter_result=None,
+                critic_result=None,
+                mediator_result=None,
+                requirements=requirements,
+                debate_rounds=0,
+                error="vision call failed",
+            )
+        return SimpleNamespace(
+            diagram=diagram,
+            hunter_result={"overall_verdict": "not_met"},
+            critic_result={"outcome": "uphold"},
+            mediator_result={"final_verdict": "not_met", "confidence": 0.7},
+            requirements=requirements,
+            debate_rounds=1,
+            error=None,
+        )
+
+    pipeline.diagram_debate_service = SimpleNamespace(run_diagram_debate=_fake_run_diagram_debate)
+    pipeline.diagram_analysis.diagram_debate_service = pipeline.diagram_debate_service
+
+    monkeypatch.setattr(
+        "sdr.core.database.SessionLocal",
+        lambda: _SessionContext(_Session([_requirement()])),
+    )
+
+    tsd_document = SimpleNamespace(
+        all_diagrams=[_FakeDiagramBlock(), _FakeDiagramBlockTwo()],
+        full_text="Gateway architecture with ingress traffic and authentication.",
+    )
+    review = SimpleNamespace(id=1)
+    category = SimpleNamespace(id=10, code="web_application")
+    ingestion_job = SimpleNamespace(id=11)
+    summary = AnalysisSummary()
+
+    pipeline.diagram_analysis.run(
+        review=review,
+        tsd_document=tsd_document,
+        category=category,
+        ingestion_job=ingestion_job,
+        summary=summary,
+    )
+
+    assert len(persisted) == 1
+    assert summary.error_count == 1
+    assert summary.total_parameters == 2
+    assert summary.met_count + summary.not_met_count + summary.na_count <= summary.total_parameters
 
 
 def test_backend_runtime_source_has_no_legacy_vision_agent_usage():

@@ -1,10 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
+import { ChevronLeft, ChevronRight, ListFilter } from 'lucide-react';
 import type { ReviewAnalysisMode } from '../../../api/reviews';
 import Card from '../../../components/ui/Card';
+import Modal from '../../../components/ui/Modal';
 import { useReviewDebateStream } from '../hooks/useReviewDebateStream';
 import { isPresent } from '../utils/reviewPresentation';
 import ActiveDebateCard from './ActiveDebateCard';
 import DebateLiveStream from './DebateLiveStream';
+import DebateStatusBadge from './DebateStatusBadge';
 
 interface ReviewDebatePanelProps {
   reviewId: number;
@@ -34,6 +37,7 @@ export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
   } = props;
   const { debates, connected, streamError, errorMessage } = useReviewDebateStream(reviewId, reviewStatus, analysisMode);
   const [selectedDebateId, setSelectedDebateId] = useState<string | null>(null);
+  const [isPickerOpen, setIsPickerOpen] = useState(false);
 
   useEffect(() => {
     if (!debates.length) {
@@ -51,6 +55,16 @@ export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
     () => debates.find((debate) => debate.debate_id === selectedDebateId) || null,
     [debates, selectedDebateId],
   );
+
+  const selectedIndex = selectedDebate ? debates.findIndex((debate) => debate.debate_id === selectedDebateId) : -1;
+
+  const stepDebate = (offset: number) => {
+    if (!debates.length || selectedIndex === -1) {
+      return;
+    }
+    const nextIndex = (selectedIndex + offset + debates.length) % debates.length;
+    setSelectedDebateId(debates[nextIndex].debate_id);
+  };
 
   const showSummary =
     isPresent(debatedTotal)
@@ -122,34 +136,80 @@ export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
         </Card>
       )}
 
-      <div className="grid gap-6 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-text-primary">Active And Completed Debates</h3>
-            <div className="text-xs text-text-muted">{debates.length} tracked debate{debates.length === 1 ? '' : 's'}</div>
-          </div>
-          {debates.length ? (
-            <div className="grid gap-4 md:grid-cols-2">
-              {debates.map((debate) => (
-                <ActiveDebateCard
-                  key={debate.debate_id}
-                  debate={debate}
-                  selected={debate.debate_id === selectedDebateId}
-                  onSelect={() => setSelectedDebateId(debate.debate_id)}
-                />
-              ))}
+      {debates.length ? (
+        <Card>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <button
+                type="button"
+                onClick={() => stepDebate(-1)}
+                disabled={debates.length < 2}
+                className="rounded-full border border-surface-border p-1.5 text-text-muted transition-colors hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Previous debate"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <div className="min-w-0">
+                <div className="truncate text-xs font-semibold uppercase tracking-[0.18em] text-text-muted">
+                  {selectedDebate ? (selectedDebate.requirement_reference || selectedDebate.debate_id) : 'No debate selected'}
+                </div>
+                <div className="mt-1 flex items-center gap-2">
+                  {selectedDebate && <DebateStatusBadge status={selectedDebate.status} />}
+                  {selectedDebate?.active_agent && (
+                    <span className="text-[11px] font-semibold uppercase tracking-[0.16em] text-text-secondary">
+                      {selectedDebate.active_agent}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => stepDebate(1)}
+                disabled={debates.length < 2}
+                className="rounded-full border border-surface-border p-1.5 text-text-muted transition-colors hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
+                aria-label="Next debate"
+              >
+                <ChevronRight size={16} />
+              </button>
             </div>
-          ) : (
-            <Card>
-              <p className="text-sm text-text-muted">
-                No debate events have been emitted yet. Once text-requirement analysis starts, active debate cards will appear here.
-              </p>
-            </Card>
-          )}
-        </div>
+            <button
+              type="button"
+              onClick={() => setIsPickerOpen(true)}
+              className="flex items-center gap-2 rounded-full border border-surface-border px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-text-secondary transition-colors hover:text-text-primary"
+            >
+              <ListFilter size={14} />
+              Switch debate
+              {selectedIndex !== -1 && (
+                <span className="text-text-muted">{selectedIndex + 1} of {debates.length}</span>
+              )}
+            </button>
+          </div>
+        </Card>
+      ) : (
+        <Card>
+          <p className="text-sm text-text-muted">
+            No debate events have been emitted yet. Once text-requirement analysis starts, active debates will appear here.
+          </p>
+        </Card>
+      )}
 
-        <DebateLiveStream debate={selectedDebate} />
-      </div>
+      <DebateLiveStream debate={selectedDebate} />
+
+      <Modal open={isPickerOpen} onClose={() => setIsPickerOpen(false)} title="Switch debate">
+        <div className="max-h-[70vh] space-y-3 overflow-y-auto">
+          {debates.map((debate) => (
+            <ActiveDebateCard
+              key={debate.debate_id}
+              debate={debate}
+              selected={debate.debate_id === selectedDebateId}
+              onSelect={() => {
+                setSelectedDebateId(debate.debate_id);
+                setIsPickerOpen(false);
+              }}
+            />
+          ))}
+        </div>
+      </Modal>
     </div>
   );
 }

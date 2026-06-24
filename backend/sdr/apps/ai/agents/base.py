@@ -243,7 +243,9 @@ class BaseAgent:
                 self.__class__.__name__,
                 getattr(response, "finish_reason", None),
             )
-        return self._call_llm(user_prompt=user_prompt, max_tokens=retry_max_tokens, **kwargs)
+        retry_kwargs = dict(kwargs)
+        retry_kwargs["max_tokens"] = retry_max_tokens
+        return self._call_llm(user_prompt=user_prompt, **retry_kwargs)
 
     def _parse_json_response(self, response: AIResponse) -> Optional[Dict[str, Any]]:
         if getattr(response, "finish_reason", None) == "length":

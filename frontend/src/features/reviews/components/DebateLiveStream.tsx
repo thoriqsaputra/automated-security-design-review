@@ -1,6 +1,8 @@
+import { useRef, useState } from 'react';
 import Card from '../../../components/ui/Card';
-import type { DebateStreamState } from '../../../api/reviews';
+import type { DebateAgent, DebateStreamState } from '../../../api/reviews';
 import AgentMessageBubble from './AgentMessageBubble';
+import DebateAgentFlow from './DebateAgentFlow';
 import DebateStatusBadge from './DebateStatusBadge';
 
 interface DebateLiveStreamProps {
@@ -8,6 +10,16 @@ interface DebateLiveStreamProps {
 }
 
 export default function DebateLiveStream({ debate }: DebateLiveStreamProps) {
+  const [selectedAgent, setSelectedAgent] = useState<DebateAgent | null>(null);
+  const lastDebateIdRef = useRef<string | undefined>(debate?.debate_id);
+
+  if (debate?.debate_id !== lastDebateIdRef.current) {
+    lastDebateIdRef.current = debate?.debate_id;
+    if (selectedAgent !== null) {
+      setSelectedAgent(null);
+    }
+  }
+
   if (!debate) {
     return (
       <Card className="min-h-[320px]">
@@ -15,6 +27,10 @@ export default function DebateLiveStream({ debate }: DebateLiveStreamProps) {
       </Card>
     );
   }
+
+  const visibleTranscript = selectedAgent
+    ? debate.transcript.filter((message) => message.agent === selectedAgent)
+    : debate.transcript;
 
   return (
     <Card className="min-h-[320px]">
@@ -47,14 +63,34 @@ export default function DebateLiveStream({ debate }: DebateLiveStreamProps) {
         />
       </div>
 
+      <div className="mt-5">
+        <DebateAgentFlow debate={debate} selectedAgent={selectedAgent} onSelectAgent={setSelectedAgent} />
+      </div>
+
       <div className="mt-5 space-y-3">
-        {debate.transcript.length ? (
-          debate.transcript.map((message) => (
+        <div className="flex items-center justify-between">
+          <h4 className="text-xs font-semibold uppercase tracking-[0.2em] text-text-muted">
+            {selectedAgent ? `${selectedAgent} transcript` : 'Full transcript'}
+          </h4>
+          {selectedAgent && (
+            <button
+              type="button"
+              onClick={() => setSelectedAgent(null)}
+              className="text-[11px] font-semibold uppercase tracking-wider text-text-muted hover:text-text-primary"
+            >
+              Show all
+            </button>
+          )}
+        </div>
+        {visibleTranscript.length ? (
+          visibleTranscript.map((message) => (
             <AgentMessageBubble key={message.message_id} message={message} />
           ))
         ) : (
           <div className="rounded-xl border border-dashed border-surface-border p-4 text-sm text-text-muted">
-            No transcript has been emitted for this debate yet.
+            {selectedAgent
+              ? `No transcript has been emitted by ${selectedAgent} yet.`
+              : 'No transcript has been emitted for this debate yet.'}
           </div>
         )}
       </div>

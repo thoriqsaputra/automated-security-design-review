@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import type { CitationAnchor, Finding, FindingEvidenceSource } from '../../../api/reviews';
+import type { CitationAnchor, Finding, FindingEvidenceSource, JsonRecord } from '../../../api/reviews';
 import {
   formatLabel,
   formatValue,
@@ -395,6 +395,29 @@ export function FindingDetails({ finding, activeCitationId = null, onCitationSel
           </div>
         </section>
       )}
+
+      {Boolean(
+        (finding.requirement_metadata?.analysis_trace as JsonRecord | undefined)
+          ?.hunter_diagnostics as JsonRecord | undefined,
+      ) && (() => {
+        const diagnostics = (finding.requirement_metadata?.analysis_trace as JsonRecord)
+          .hunter_diagnostics as JsonRecord;
+        if (!diagnostics.zero_citation_not_met) return null;
+        const availableCount = Array.isArray(diagnostics.available_block_ids)
+          ? diagnostics.available_block_ids.length
+          : 0;
+        return (
+          <section className="space-y-2 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4">
+            <p className="text-xs font-semibold text-amber-300 uppercase tracking-wider">Retrieval Note</p>
+            <p className="text-sm text-amber-200/90">
+              Hunter searched {availableCount} retrieved section{availableCount === 1 ? '' : 's'} and found no
+              relevant evidence to cite, so this finding was recorded as "not met" without citations. If the TSD
+              does describe this control elsewhere, this may indicate a retrieval coverage gap rather than a true
+              absence.
+            </p>
+          </section>
+        );
+      })()}
 
       <section className="space-y-3 rounded-xl border border-surface-border bg-midnight/30 p-4">
         <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Raw Audit</p>

@@ -72,7 +72,6 @@ class TextDebateCoordinator:
         tsd_document,
         summary: AnalysisSummary,
         killed_assumptions_memory: deque,
-        parent_context_cache: Optional[Dict[Tuple[Any, Any, Any], Any]] = None,
     ) -> None:
         category_code = getattr(category, "code", None) or "unknown"
         self.seed_live_debates(
@@ -94,94 +93,119 @@ class TextDebateCoordinator:
             summary.persistence_remaining_parameters += len(parameters)
             self.progress_service.sync_analysis_aliases(summary=summary, category_code=category_code)
             self.run_state.persist_summary_snapshot(review, summary)
-        for idx, parameter in enumerate(parameters, start=1):
-            self.run_state.raise_if_cancelled(review, phase="run.parameter_loop")
-            self.logger.info(
-                "TextDebateCoordinator.run_single_analysis_for_category: category=%s [%d/%d] parameter id=%s",
-                getattr(category, "code", None),
-                idx,
-                len(parameters),
-                parameter.id,
+        max_concurrency = self.config.batch_debate_max_concurrency
+        killed_snapshot = list(killed_assumptions_memory)
+
+        def _run_single(parameter):
+            if self.run_state.is_cancelled(review):
+                return None
+            return self.analyze_single_child(
+                review=review,
+                category=category,
+                ingestion_job=ingestion_job,
+                parameter=parameter,
+                indexes=indexes,
+                tsd_document=tsd_document,
+                killed_assumptions=killed_snapshot,
+                execution_mode="single",
             )
-            try:
-                debate_output = self.analyze_single_child_with_parent_context(
-                    review=review,
-                    category=category,
-                    ingestion_job=ingestion_job,
-                    parameter=parameter,
-                    indexes=indexes,
-                    tsd_document=tsd_document,
-                    killed_assumptions=list(killed_assumptions_memory),
-                    parent_context_cache=parent_context_cache or {},
-                    execution_mode="single",
-                )
-                self.run_state.raise_if_cancelled(review, phase="run.after_debate")
-                debate_output = self.retry_if_needed(
-                    category=category,
-                    ingestion_job=ingestion_job,
-                    parameter=parameter,
-                    indexes=indexes,
-                    tsd_document=tsd_document,
-                    debate_output=debate_output,
-                    killed_assumptions=list(killed_assumptions_memory),
-                )
-                killed_assumptions_memory.extend(self.extract_killed_assumptions_from_output(debate_output, parameter))
-                debate_output.analysis_trace["killed_assumptions"] = list(killed_assumptions_memory)
-                self.record_debate_progress(
-                    review=review,
-                    summary=summary,
-                    category_code=category_code,
-                    completed_count=1,
-                    parameter_ids=[parameter.id],
-                    log_prefix="TextDebateCoordinator.debate",
-                    source="single",
-                )
-                self.persist_debate_output(
-                    review=review,
-                    category=category,
-                    ingestion_job=ingestion_job,
-                    parameter=parameter,
-                    indexes=indexes,
-                    tsd_document=tsd_document,
-                    debate_output=debate_output,
-                    summary=summary,
-                )
-                self.record_persistence_progress(
-                    review=review,
-                    summary=summary,
-                    category_code=category_code,
-                    parameter_id=parameter.id,
-                )
-            except Exception as exc:
-                summary.error_count += 1
-                self.logger.exception(
-                    "TextDebateCoordinator.run_single_analysis_for_category: failed for parameter id=%s: %s",
+
+        single_probe = ConcurrencyProbe(max_concurrency=max_concurrency)
+        with ThreadPoolExecutor(max_workers=max_concurrency, thread_name_prefix="SingleDebate") as executor:
+            future_map = {}
+            for parameter in parameters:
+                self.run_state.raise_if_cancelled(review, phase="single.before_submission")
+                future = executor.submit(single_probe.wrap(_run_single), parameter)
+                future_map[future] = parameter
+            single_probe.mark_submitted(len(future_map))
+            for idx, future in enumerate(as_completed(future_map), start=1):
+                if self.run_state.is_cancelled(review):
+                    self.cancel_pending_futures(
+                        executor=executor,
+                        future_map=future_map,
+                        review_id=review.id,
+                        phase="single.parameter_loop",
+                    )
+                    raise AnalysisCancelledError("Analysis was cancelled by user.")
+                parameter = future_map[future]
+                self.logger.info(
+                    "TextDebateCoordinator.run_single_analysis_for_category: category=%s [%d/%d] parameter id=%s",
+                    getattr(category, "code", None),
+                    idx,
+                    len(parameters),
                     parameter.id,
-                    exc,
                 )
-                self.record_debate_progress(
-                    review=review,
-                    summary=summary,
-                    category_code=category_code,
-                    completed_count=1,
-                    parameter_ids=[parameter.id],
-                    log_prefix="TextDebateCoordinator.debate",
-                    source="single",
-                    status="terminal_error",
-                )
-                self.record_persistence_progress(
-                    review=review,
-                    summary=summary,
-                    category_code=category_code,
-                    parameter_id=parameter.id,
-                    status="terminal_error",
-                )
-                review_debate_event_store.fail_agent(
-                    review.id,
-                    debate_id=self.build_live_debate_id(parameter),
-                    agent="mediator",
-                    error_message=str(exc),
-                )
+                try:
+                    debate_output = future.result()
+                    if debate_output is None:
+                        continue
+                    debate_output = self.retry_if_needed(
+                        category=category,
+                        ingestion_job=ingestion_job,
+                        parameter=parameter,
+                        indexes=indexes,
+                        tsd_document=tsd_document,
+                        debate_output=debate_output,
+                        killed_assumptions=list(killed_assumptions_memory),
+                    )
+                    killed_assumptions_memory.extend(self.extract_killed_assumptions_from_output(debate_output, parameter))
+                    debate_output.analysis_trace["killed_assumptions"] = list(killed_assumptions_memory)
+                    self.record_debate_progress(
+                        review=review,
+                        summary=summary,
+                        category_code=category_code,
+                        completed_count=1,
+                        parameter_ids=[parameter.id],
+                        log_prefix="TextDebateCoordinator.debate",
+                        source="single",
+                    )
+                    self.persist_debate_output(
+                        review=review,
+                        category=category,
+                        ingestion_job=ingestion_job,
+                        parameter=parameter,
+                        indexes=indexes,
+                        tsd_document=tsd_document,
+                        debate_output=debate_output,
+                        summary=summary,
+                    )
+                    self.record_persistence_progress(
+                        review=review,
+                        summary=summary,
+                        category_code=category_code,
+                        parameter_id=parameter.id,
+                    )
+                except Exception as exc:
+                    summary.error_count += 1
+                    self.logger.exception(
+                        "TextDebateCoordinator.run_single_analysis_for_category: failed for parameter id=%s: %s",
+                        parameter.id,
+                        exc,
+                    )
+                    self.record_debate_progress(
+                        review=review,
+                        summary=summary,
+                        category_code=category_code,
+                        completed_count=1,
+                        parameter_ids=[parameter.id],
+                        log_prefix="TextDebateCoordinator.debate",
+                        source="single",
+                        status="terminal_error",
+                    )
+                    self.record_persistence_progress(
+                        review=review,
+                        summary=summary,
+                        category_code=category_code,
+                        parameter_id=parameter.id,
+                        status="terminal_error",
+                    )
+                    review_debate_event_store.fail_agent(
+                        review.id,
+                        debate_id=self.build_live_debate_id(parameter),
+                        agent="mediator",
+                        error_message=str(exc),
+                    )
+        self.last_batch_concurrency_stats["single"] = single_probe.snapshot().to_dict()
 
     def run_batched_analysis_for_category(
         self,
@@ -289,21 +313,19 @@ class TextDebateCoordinator:
                     parameter,
                     contract,
                 )
-                refine_child = getattr(self.retrieval, "refine_parent_result_for_child", None)
-                if callable(refine_child):
-                    refined_retrieval_result = refine_child(
-                        parent_result=retrieval_result,
-                        parameter=parameter,
-                        query_details=retrieval_query_details,
-                        tsd_document=tsd_document,
-                    )
-                else:
-                    refined_retrieval_result = retrieval_result
+                child_retrieval_result = self.retrieval.retrieve_for_parameter(
+                    parameter=parameter,
+                    category=category,
+                    ingestion_job=ingestion_job,
+                    indexes=indexes,
+                    tsd_document=tsd_document,
+                    query_details=retrieval_query_details,
+                )
                 debate_inputs.append(
                     self.build_debate_input_for_parameter(
                         parameter=parameter,
                         category=category,
-                        retrieval_result=refined_retrieval_result,
+                        retrieval_result=child_retrieval_result,
                         tsd_document=tsd_document,
                         killed_assumptions=killed_snapshot,
                         contract=contract,
@@ -1187,51 +1209,6 @@ class TextDebateCoordinator:
             retrieval_result=None,
             debate_rounds=0,
             analysis_trace=analysis_trace,
-        )
-
-    def analyze_single_child_with_parent_context(
-        self,
-        *,
-        review,
-        category,
-        ingestion_job,
-        parameter,
-        indexes,
-        tsd_document,
-        killed_assumptions: List[Dict[str, Any]],
-        parent_context_cache: Dict[Tuple[Any, Any, Any], Any],
-        execution_mode: str = "single",
-    ) -> DebateOutput:
-        parent = getattr(parameter, "parent", None)
-        if parent is not None:
-            parent_result = self.get_parent_retrieval_result(
-                parent=parent,
-                child_parameters=[parameter],
-                category=category,
-                ingestion_job=ingestion_job,
-                indexes=indexes,
-                tsd_document=tsd_document,
-                cache=parent_context_cache,
-            )
-            if parent_result is not None and not getattr(parent_result, "error", None):
-                return self.analyze_single_child_with_retrieval_result(
-                    review=review,
-                    category=category,
-                    parameter=parameter,
-                    retrieval_result=parent_result,
-                    tsd_document=tsd_document,
-                    killed_assumptions=killed_assumptions,
-                    execution_mode=execution_mode,
-                )
-        return self.analyze_single_child(
-            review=review,
-            category=category,
-            ingestion_job=ingestion_job,
-            parameter=parameter,
-            indexes=indexes,
-            tsd_document=tsd_document,
-            killed_assumptions=killed_assumptions,
-            execution_mode=execution_mode,
         )
 
     def validate_batch_outputs(

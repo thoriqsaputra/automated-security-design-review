@@ -41,6 +41,8 @@ dependencies = [
     "pydantic[email]>=2.13.4",
     "minio>=7.2.14",
     "langchain-nvidia-ai-endpoints>=0.3.6",
+    "ollama>=0.6.2",
+    "zstandard>=0.24.0",
 ]
 
 [project.optional-dependencies]

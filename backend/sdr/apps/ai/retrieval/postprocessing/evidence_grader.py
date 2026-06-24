@@ -114,7 +114,7 @@ class EvidenceGrader:
         lowered = text.lower()
         if not text:
             return "empty", "empty chunk"
-        if candidate.metadata.get("non_tsd_evidence") or candidate.source_type == "dense":
+        if candidate.metadata.get("non_tsd_evidence"):
             return "baseline_requirement", "standard baseline text is not TSD evidence"
         if text.startswith(_WEAK_CHUNK_PREFIXES) or lowered.startswith("graph node:"):
             return "graph_summary", "graph summary is structural context, not implementation evidence"

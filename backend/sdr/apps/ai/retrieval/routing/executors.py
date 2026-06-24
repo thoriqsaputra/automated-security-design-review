@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from sdr.apps.ai.retrieval.core import RetrievalCandidate, RetrievalResult, RetrievalStrategy, dedupe_candidates, merge_candidates
 from sdr.apps.ai.retrieval.searchers.graph import GraphSearchResponse, GraphTraversalConfig, _extract_keywords
@@ -11,8 +11,82 @@ from sdr.apps.ai.retrieval.searchers.vector import VectorSearchResponse
 from sdr.apps.ai.tsd_processing.graph_builder import TSDGraph
 from sdr.apps.ai.tsd_processing.raptor import RAPTORTree
 from sdr.apps.standards.models import StandardCategory, StandardIngestionJob
+from sdr.core.config import settings
 
 logger = logging.getLogger(__name__)
+
+
+def _grade_with_secondary_search(
+    router,
+    candidates: List[RetrievalCandidate],
+    *,
+    query_text: str,
+    keywords: List[str],
+    raptor_tree: Optional[RAPTORTree],
+    has_raptor: bool,
+) -> Tuple[List[RetrievalCandidate], Dict[str, Any]]:
+    """Grade candidates, then — if nothing graded as implementation-grade evidence —
+    run one extra cheap (no-LLM) BM25 + RAPTOR-dense round using a follow-up query
+    built from the current top candidates' own keywords, to reach adjacent TSD
+    sections that implement a concept the first pass only found discussed in the
+    abstract (e.g. an access-control model whose enforcement lives in a separate
+    session-management section)."""
+    evidence_filtered, evidence_metadata = router._grade_and_filter_candidates(
+        candidates,
+        query_text=query_text,
+        keywords=keywords,
+    )
+    evidence_metadata["secondary_search_triggered"] = False
+
+    evidence_quality = evidence_metadata.get("evidence_quality") or {}
+    implementation_count = int(evidence_quality.get("implementation_evidence_count") or 0)
+    if (
+        not bool(getattr(settings, "AI_RETRIEVAL_SECONDARY_SEARCH_ENABLED", True))
+        or implementation_count > 0
+        or not evidence_filtered
+    ):
+        return evidence_filtered, evidence_metadata
+
+    followup_query = router._grader().generate_followup_query(query_text, evidence_filtered[:5], _extract_keywords)
+    followup_query = (followup_query or "").strip()
+    if not followup_query or followup_query.lower() == query_text.strip().lower():
+        return evidence_filtered, evidence_metadata
+
+    followup_embedding = router._generate_query_embedding(followup_query)
+    extra_bm25 = _safe_execute(
+        router._keyword_searcher.search,
+        query_text=followup_query,
+        tree=raptor_tree,
+        top_k=max(router.vector_top_k, router.raptor_top_k, 20),
+        allowed_levels=[RAPTOR_LEVEL_LOW, RAPTOR_LEVEL_MID, RAPTOR_LEVEL_HIGH],
+        on_error=lambda exc: [],
+    )
+    extra_dense_candidates: List[RetrievalCandidate] = []
+    if has_raptor:
+        extra_dense_response = _safe_execute(
+            router._raptor_searcher.search_collapsed_raptor,
+            query_text=followup_query,
+            tree=raptor_tree,
+            top_k=max(router.vector_top_k, 8),
+            max_tokens=4000,
+            allowed_levels=[RAPTOR_LEVEL_LOW],
+            precomputed_embedding=followup_embedding or None,
+            on_error=lambda exc: RAPTORSearchResponse(error=str(exc)),
+        )
+        extra_dense_candidates = router._dense_tsd_results_to_candidates(extra_dense_response)
+
+    merged = merge_candidates(candidates, extra_bm25, extra_dense_candidates)
+    deduped = dedupe_candidates(merged)
+    followup_keywords = keywords + _extract_keywords(followup_query)
+    boosted = router._apply_keyword_coverage_boost(deduped, followup_keywords)
+    evidence_filtered, evidence_metadata = router._grade_and_filter_candidates(
+        boosted,
+        query_text=query_text,
+        keywords=keywords,
+    )
+    evidence_metadata["secondary_search_triggered"] = True
+    evidence_metadata["secondary_search_query"] = followup_query
+    return evidence_filtered, evidence_metadata
 
 
 def _safe_execute(func, *args, on_error=None, **kwargs):
@@ -113,6 +187,7 @@ class RetrievalRouteExecutor:
         source_block_ids = router._collect_block_ids_from_vector(vector_response)
         return RetrievalResult(
             context_chunks=context_chunks[: router.max_context_chunks],
+            context_chunk_block_ids=[[] for _ in context_chunks[: router.max_context_chunks]],
             source_block_ids=source_block_ids,
             block_source_map={},
             strategy_used=RetrievalStrategy.VECTOR_ONLY,
@@ -137,6 +212,7 @@ class RetrievalRouteExecutor:
         )
         return RetrievalResult(
             context_chunks=raptor_response.get_context_chunks()[: router.max_context_chunks],
+            context_chunk_block_ids=raptor_response.get_context_chunk_block_ids()[: router.max_context_chunks],
             source_block_ids=raptor_response.all_source_block_ids,
             block_source_map=_build_uniform_block_source_map(
                 raptor_response.all_source_block_ids,
@@ -164,6 +240,7 @@ class RetrievalRouteExecutor:
         )
         return RetrievalResult(
             context_chunks=raptor_response.get_context_chunks()[: router.max_context_chunks],
+            context_chunk_block_ids=raptor_response.get_context_chunk_block_ids()[: router.max_context_chunks],
             source_block_ids=raptor_response.all_source_block_ids,
             block_source_map=_build_uniform_block_source_map(
                 raptor_response.all_source_block_ids,
@@ -195,6 +272,7 @@ class RetrievalRouteExecutor:
         if graph_response.error:
             return router._execute_raptor_low(query_text=query_text, raptor_tree=raptor_tree, query_embedding=query_embedding)
         context_chunks = router._build_chunks_from_graph(graph_response)
+        context_chunk_block_ids = router._build_chunk_block_ids_from_graph(graph_response)
         source_block_ids = graph_response.all_source_block_ids
         block_source_map = _build_uniform_block_source_map(source_block_ids, "graph")
         if raptor_tree and not raptor_tree.is_empty() and source_block_ids:
@@ -207,6 +285,7 @@ class RetrievalRouteExecutor:
             )
             if not raptor_response.is_empty:
                 context_chunks.extend(raptor_response.get_context_chunks())
+                context_chunk_block_ids.extend(raptor_response.get_context_chunk_block_ids())
                 for bid in raptor_response.all_source_block_ids:
                     _merge_block_source_entry(block_source_map, bid, "raptor")
                     if bid not in source_block_ids:
@@ -215,6 +294,7 @@ class RetrievalRouteExecutor:
             raptor_response = None
         return RetrievalResult(
             context_chunks=context_chunks[: router.max_context_chunks],
+            context_chunk_block_ids=context_chunk_block_ids[: router.max_context_chunks],
             source_block_ids=source_block_ids,
             block_source_map=block_source_map,
             strategy_used=RetrievalStrategy.GRAPH_TRAVERSE,
@@ -241,21 +321,34 @@ class RetrievalRouteExecutor:
         query_embedding: List[float],
         keywords: List[str],
         inferred_relations: set,
+        query_variants: Optional[List[Tuple[str, List[float]]]] = None,
     ) -> RetrievalResult:
-        branch_count = 2 + int(bool(raptor_tree and not raptor_tree.is_empty()))
+        has_raptor = bool(raptor_tree and not raptor_tree.is_empty())
+        # query_variants are LLM-generated rephrasings of query_text aimed at bridging
+        # the abstract-standard-language vs concrete-TSD-language vocabulary gap. They
+        # are only run through the literal-text-matching branches (BM25, RAPTOR dense
+        # leaf search) — structural/hierarchical branches stay single-query.
+        all_queries: List[Tuple[str, List[float]]] = [(query_text, query_embedding)] + list(query_variants or [])
+        branch_count = len(all_queries) * (2 if has_raptor else 1) + (1 if has_raptor else 0)
         max_workers = _bounded_pool_size(router.advanced_config.hybrid_max_workers, branch_count)
         with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="ThreadPoolExecutor-3") as executor:
-            fut_vec = executor.submit(
-                _safe_execute,
-                router._vector_searcher.search,
-                query_text=query_text,
-                category=category,
-                top_k=router.vector_top_k,
-                ingestion_job=ingestion_job,
-                precomputed_embedding=query_embedding or None,
-                on_error=lambda exc: VectorSearchResponse(error=str(exc)),
-            )
-            if raptor_tree and not raptor_tree.is_empty():
+            dense_futures = []
+            bm25_futures = []
+            if has_raptor:
+                for q_text, q_embedding in all_queries:
+                    dense_futures.append(
+                        executor.submit(
+                            _safe_execute,
+                            router._raptor_searcher.search_collapsed_raptor,
+                            query_text=q_text,
+                            tree=raptor_tree,
+                            top_k=max(router.vector_top_k, 8),
+                            max_tokens=4000,
+                            allowed_levels=[RAPTOR_LEVEL_LOW],
+                            precomputed_embedding=q_embedding or None,
+                            on_error=lambda exc: RAPTORSearchResponse(error=str(exc)),
+                        )
+                    )
                 fut_rap = executor.submit(
                     _safe_execute,
                     router._raptor_searcher.search_collapsed_raptor,
@@ -269,40 +362,49 @@ class RetrievalRouteExecutor:
                 )
             else:
                 fut_rap = None
-            fut_bm25 = executor.submit(
-                _safe_execute,
-                router._keyword_searcher.search,
-                query_text=query_text,
-                tree=raptor_tree,
-                top_k=max(router.vector_top_k, router.raptor_top_k, 20),
-                allowed_levels=[RAPTOR_LEVEL_LOW, RAPTOR_LEVEL_MID, RAPTOR_LEVEL_HIGH],
-                on_error=lambda exc: [],
-            )
-            vector_response = fut_vec.result()
+            for q_text, _q_embedding in all_queries:
+                bm25_futures.append(
+                    executor.submit(
+                        _safe_execute,
+                        router._keyword_searcher.search,
+                        query_text=q_text,
+                        tree=raptor_tree,
+                        top_k=max(router.vector_top_k, router.raptor_top_k, 20),
+                        allowed_levels=[RAPTOR_LEVEL_LOW, RAPTOR_LEVEL_MID, RAPTOR_LEVEL_HIGH],
+                        on_error=lambda exc: [],
+                    )
+                )
+            dense_responses = [fut.result() for fut in dense_futures]
             raptor_response = fut_rap.result() if fut_rap else None
-            bm25_candidates = fut_bm25.result()
+            bm25_candidate_lists = [fut.result() for fut in bm25_futures]
 
-        dense_candidates = router._vector_results_to_candidates(vector_response)
+        dense_candidate_lists = [router._dense_tsd_results_to_candidates(resp) for resp in dense_responses]
         raptor_candidates = router._raptor_results_to_candidates(raptor_response)
-        merged = merge_candidates(bm25_candidates, dense_candidates, raptor_candidates)
+        merged = merge_candidates(*bm25_candidate_lists, *dense_candidate_lists, raptor_candidates)
         deduped = dedupe_candidates(merged)
         scored = router._apply_keyword_coverage_boost(deduped, keywords)
-        evidence_filtered, evidence_metadata = router._grade_and_filter_candidates(
+        evidence_filtered, evidence_metadata = _grade_with_secondary_search(
+            router,
             scored,
             query_text=query_text,
             keywords=keywords,
+            raptor_tree=raptor_tree,
+            has_raptor=has_raptor,
         )
         reranked = router._reranker.rerank(query=query_text, candidates=evidence_filtered, top_k=router.max_context_chunks)
-        merged_chunks = [c.text for c in reranked if c.text]
+        kept = [c for c in reranked if c.text]
+        merged_chunks = [c.text for c in kept]
+        merged_chunk_block_ids = [list(c.block_ids) for c in kept]
         all_source_block_ids = router._collect_candidate_block_ids(reranked)
         block_source_map = _build_block_source_map_from_candidates(reranked)
         return RetrievalResult(
             context_chunks=merged_chunks[: router.max_context_chunks],
+            context_chunk_block_ids=merged_chunk_block_ids[: router.max_context_chunks],
             source_block_ids=all_source_block_ids,
             block_source_map=block_source_map,
             strategy_used=RetrievalStrategy.HYBRID,
             query_embedding=query_embedding,
-            vector_response=vector_response,
+            vector_response=None,
             raptor_response=raptor_response,
             evidence_metadata={
                 **evidence_metadata,
@@ -322,6 +424,7 @@ class RetrievalRouteExecutor:
         query_embedding: List[float],
         keywords: List[str],
         query_entities: List[str],
+        query_variants: Optional[List[Tuple[str, List[float]]]] = None,
     ) -> RetrievalResult:
         if graph is None or graph.is_empty():
             return router._execute_hybrid(
@@ -333,8 +436,15 @@ class RetrievalRouteExecutor:
                 query_embedding=query_embedding,
                 keywords=keywords,
                 inferred_relations=set(),
+                query_variants=query_variants,
             )
-        max_workers = _bounded_pool_size(router.advanced_config.graph_local_max_workers, 3)
+        has_raptor = bool(raptor_tree and not raptor_tree.is_empty())
+        # query_variants only feed the literal-text-matching branches (BM25, RAPTOR
+        # dense leaf search); graph traversal stays single-query since entity/relation
+        # matching isn't driven by surface query phrasing the same way.
+        all_queries: List[Tuple[str, List[float]]] = [(query_text, query_embedding)] + list(query_variants or [])
+        branch_count = 1 + len(all_queries) * (2 if has_raptor else 1)
+        max_workers = _bounded_pool_size(router.advanced_config.graph_local_max_workers, branch_count)
         with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="ThreadPoolExecutor-4") as executor:
             fut_graph = executor.submit(
                 _safe_execute,
@@ -345,25 +455,35 @@ class RetrievalRouteExecutor:
                 traversal_config=GraphTraversalConfig(),
                 on_error=lambda exc: GraphSearchResponse(error=str(exc)),
             )
-            fut_vec = executor.submit(
-                _safe_execute,
-                router._vector_searcher.search,
-                query_text=query_text,
-                category=category,
-                top_k=router.vector_top_k,
-                ingestion_job=ingestion_job,
-                precomputed_embedding=query_embedding or None,
-                on_error=lambda exc: VectorSearchResponse(error=str(exc)),
-            )
-            fut_bm25 = executor.submit(
-                _safe_execute,
-                router._keyword_searcher.search,
-                query_text=query_text,
-                tree=raptor_tree,
-                top_k=max(router.vector_top_k, router.raptor_top_k, 20),
-                allowed_levels=[RAPTOR_LEVEL_LOW, RAPTOR_LEVEL_MID, RAPTOR_LEVEL_HIGH],
-                on_error=lambda exc: [],
-            )
+            dense_futures = []
+            if has_raptor:
+                for q_text, q_embedding in all_queries:
+                    dense_futures.append(
+                        executor.submit(
+                            _safe_execute,
+                            router._raptor_searcher.search_collapsed_raptor,
+                            query_text=q_text,
+                            tree=raptor_tree,
+                            top_k=max(router.vector_top_k, 8),
+                            max_tokens=4000,
+                            allowed_levels=[RAPTOR_LEVEL_LOW],
+                            precomputed_embedding=q_embedding or None,
+                            on_error=lambda exc: RAPTORSearchResponse(error=str(exc)),
+                        )
+                    )
+            bm25_futures = []
+            for q_text, _q_embedding in all_queries:
+                bm25_futures.append(
+                    executor.submit(
+                        _safe_execute,
+                        router._keyword_searcher.search,
+                        query_text=q_text,
+                        tree=raptor_tree,
+                        top_k=max(router.vector_top_k, router.raptor_top_k, 20),
+                        allowed_levels=[RAPTOR_LEVEL_LOW, RAPTOR_LEVEL_MID, RAPTOR_LEVEL_HIGH],
+                        on_error=lambda exc: [],
+                    )
+                )
             graph_response = fut_graph.result()
             if graph_response.error:
                 return router._execute_hybrid(
@@ -375,30 +495,37 @@ class RetrievalRouteExecutor:
                     query_embedding=query_embedding,
                     keywords=keywords,
                     inferred_relations=set(),
+                    query_variants=query_variants,
                 )
-            vector_response = fut_vec.result()
-            bm25_candidates = fut_bm25.result()
-        dense_candidates = router._vector_results_to_candidates(vector_response)
+            dense_responses = [fut.result() for fut in dense_futures]
+            bm25_candidate_lists = [fut.result() for fut in bm25_futures]
+        dense_candidate_lists = [router._dense_tsd_results_to_candidates(resp) for resp in dense_responses]
         graph_candidates = router._graph_response_to_candidates(graph_response)
-        merged = merge_candidates(bm25_candidates, dense_candidates, graph_candidates)
+        merged = merge_candidates(*bm25_candidate_lists, *dense_candidate_lists, graph_candidates)
         deduped = dedupe_candidates(merged)
         scored = router._apply_keyword_coverage_boost(deduped, keywords)
-        evidence_filtered, evidence_metadata = router._grade_and_filter_candidates(
+        evidence_filtered, evidence_metadata = _grade_with_secondary_search(
+            router,
             scored,
             query_text=query_text,
             keywords=keywords,
+            raptor_tree=raptor_tree,
+            has_raptor=has_raptor,
         )
         reranked = router._reranker.rerank(query=query_text, candidates=evidence_filtered, top_k=router.max_context_chunks)
-        chunks = [c.text for c in reranked if c.text]
+        kept = [c for c in reranked if c.text]
+        chunks = [c.text for c in kept]
+        chunk_block_ids = [list(c.block_ids) for c in kept]
         block_ids = router._collect_candidate_block_ids(reranked)
         block_source_map = _build_block_source_map_from_candidates(reranked)
         return RetrievalResult(
             context_chunks=chunks[: router.max_context_chunks],
+            context_chunk_block_ids=chunk_block_ids[: router.max_context_chunks],
             source_block_ids=block_ids,
             block_source_map=block_source_map,
             strategy_used=RetrievalStrategy.GRAPH_LOCAL,
             query_embedding=query_embedding,
-            vector_response=vector_response,
+            vector_response=None,
             graph_response=graph_response,
             graph_node_ids=list(graph_response.graph_node_ids),
             graph_edge_ids=list(graph_response.graph_edge_ids),

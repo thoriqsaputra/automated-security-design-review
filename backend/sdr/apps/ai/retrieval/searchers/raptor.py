@@ -99,6 +99,10 @@ class RAPTORSearchResponse:
     def get_context_chunks(self) -> List[str]:
         return [r.text for r in self.results if r.text]
 
+    def get_context_chunk_block_ids(self) -> List[List[str]]:
+        """Per-chunk source block ids, index-aligned with get_context_chunks()."""
+        return [list(r.source_block_ids) for r in self.results if r.text]
+
 
 # ---------------------------------------------------------------------------
 # RAPTOR Searcher

@@ -1,8 +1,10 @@
 import logging
+import time
 from typing import Dict, List, Optional, Any, Generator, Union
 
 from sdr.core.config import settings
 from sdr.apps.ai.client.base import AIResponse, AIProvider
+from sdr.apps.ai.client.llm_logger import log_llm_interaction
 from sdr.apps.ai.client.nvidia.service import NVIDIAAIService
 from sdr.apps.ai.client.openrouter.service import OpenRouterAIService
 from sdr.apps.ai.client.session import merge_request_metadata
@@ -48,6 +50,7 @@ class AIServiceManager:
             'fallback': getattr(settings, 'AI_MODEL_FALLBACK', 'meta/llama-3.1-8b-instruct'),
             'long_context': getattr(settings, 'AI_MODEL_LONG_CONTEXT', 'meta/llama-3.1-70b-instruct'),
             'parent_applicability': getattr(settings, 'AI_MODEL_PARENT_APPLICABILITY', 'meta/llama-3.1-8b-instruct'),
+            'query_expansion': getattr(settings, 'AI_MODEL_QUERY_EXPANSION', 'meta/llama-3.1-8b-instruct'),
         }
         return models.get(component)
 
@@ -128,7 +131,51 @@ class AIServiceManager:
             else:
                 request_kwargs['model'] = service.default_model
         request_kwargs.pop('component', None)
-        return service.chat_completion(**request_kwargs)
+
+        started_at = time.perf_counter()
+        result = service.chat_completion(**request_kwargs)
+
+        if isinstance(result, AIResponse):
+            log_llm_interaction(
+                component=component,
+                provider=provider,
+                request_kwargs=request_kwargs,
+                response=result,
+                duration_seconds=time.perf_counter() - started_at,
+            )
+            return result
+
+        return self._wrap_streaming_response(
+            result,
+            component=component,
+            provider=provider,
+            request_kwargs=request_kwargs,
+            started_at=started_at,
+        )
+
+    def _wrap_streaming_response(
+        self,
+        stream: Generator[str, None, None],
+        *,
+        component: Optional[str],
+        provider: AIProvider,
+        request_kwargs: Dict[str, Any],
+        started_at: float,
+    ) -> Generator[str, None, None]:
+        chunks: List[str] = []
+        try:
+            for chunk in stream:
+                if chunk:
+                    chunks.append(chunk)
+                yield chunk
+        finally:
+            log_llm_interaction(
+                component=component,
+                provider=provider,
+                request_kwargs=request_kwargs,
+                streamed_content="".join(chunks),
+                duration_seconds=time.perf_counter() - started_at,
+            )
 
     def _maybe_fallback_provider(
         self,

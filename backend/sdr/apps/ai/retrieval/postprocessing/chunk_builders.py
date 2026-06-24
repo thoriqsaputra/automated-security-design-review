@@ -84,6 +84,16 @@ def collect_block_ids_from_vector(vector_response: VectorSearchResponse) -> List
     return []
 
 
+def build_chunk_block_ids_from_graph(graph_response: GraphSearchResponse) -> List[List[str]]:
+    """Per-chunk source block ids, index-aligned with build_chunks_from_graph()."""
+    block_ids: List[List[str]] = []
+    for result in graph_response.results:
+        block_ids.append(list(result.source_block_ids))
+    for path_result in graph_response.path_results:
+        block_ids.append(list(path_result.source_block_ids))
+    return block_ids
+
+
 def graph_response_to_candidates(graph_response: GraphSearchResponse) -> List[RetrievalCandidate]:
     candidates: List[RetrievalCandidate] = []
     for idx, result in enumerate(graph_response.results):
@@ -116,6 +126,7 @@ def graph_response_to_candidates(graph_response: GraphSearchResponse) -> List[Re
 
 
 __all__ = [
+    "build_chunk_block_ids_from_graph",
     "build_chunks_from_graph",
     "build_chunks_from_vector",
     "collect_block_ids_from_vector",

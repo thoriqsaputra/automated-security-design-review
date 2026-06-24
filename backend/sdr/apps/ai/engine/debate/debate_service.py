@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import difflib
 import logging
+import re
 import time
 from typing import Any, Callable, Dict, List, Optional
 
@@ -151,6 +153,7 @@ class DebateService:
                 hunter_result.citations,
                 retrieved_chunk_ids,
                 "hunter",
+                context_chunk_map=context_chunk_map,
             )
             hunter_result = self._stabilize_hunter_grounding(
                 hunter_result,
@@ -172,6 +175,7 @@ class DebateService:
                     rejected_ids=[c.block_id for c in hunter_rejected],
                     hunter_call_count=hunter_call_count,
                     retrieved_chunk_ids=retrieved_chunk_ids,
+                    context_chunk_map=context_chunk_map,
                     stream_handler=(lambda chunk: agent_chunk_handler("hunter", chunk)) if agent_chunk_handler else None,
                 )
             if agent_completed_handler:
@@ -207,10 +211,15 @@ class DebateService:
                 critic_result.valid_citations,
                 retrieved_chunk_ids,
                 "critic",
+                context_chunk_map=context_chunk_map,
             )
             critic_result.invalid_citation_ids = self._merge_invalid_ids(
                 critic_result.invalid_citation_ids,
                 [citation.block_id for citation in critic_rejected],
+            )
+            critic_result = self._stabilize_critic_grounding(
+                critic_result,
+                rejected_citations=critic_rejected,
             )
             if agent_completed_handler:
                 agent_completed_handler("critic", critic_result.logic_summary or critic_result.reasoning)
@@ -301,6 +310,14 @@ class DebateService:
                     "verdict": hunter_result.verdict,
                     "confidence": hunter_result.confidence,
                     "citation_ids": [c.block_id for c in hunter_result.citations],
+                },
+                "hunter_diagnostics": {
+                    "available_block_ids": list(retrieved_chunk_ids),
+                    "examined_citation_ids": [c.block_id for c in hunter_result.citations],
+                    "zero_citation_not_met": (
+                        hunter_result.verdict == "not_met" and not hunter_result.citations
+                    ),
+                    "evidence_found": hunter_result.evidence_found,
                 },
                 "critic_verification": {
                     "valid_ids": [c.block_id for c in critic_result.valid_citations],
@@ -411,6 +428,7 @@ class DebateService:
                 hunter_result.citations,
                 retrieved_chunk_ids,
                 "hunter_batch",
+                context_chunk_map=context_chunk_map,
             )
             hunter_result = self._stabilize_hunter_grounding(
                 hunter_result,
@@ -447,10 +465,15 @@ class DebateService:
                 critic_result.valid_citations,
                 retrieved_chunk_ids,
                 "critic_batch",
+                context_chunk_map=context_chunk_map,
             )
             critic_result.invalid_citation_ids = self._merge_invalid_ids(
                 critic_result.invalid_citation_ids,
                 [citation.block_id for citation in rejected],
+            )
+            critic_result = self._stabilize_critic_grounding(
+                critic_result,
+                rejected_citations=rejected,
             )
             critic_results[child_id] = critic_result
             critic_rejected_by_child[child_id] = rejected
@@ -721,6 +744,28 @@ class DebateService:
         result.evidence_assessment = reason
         return result
 
+    def _stabilize_critic_grounding(
+        self,
+        result: CriticResult,
+        *,
+        rejected_citations: Optional[List[Any]] = None,
+    ) -> CriticResult:
+        if result.revised_verdict != VERDICT_MET or result.valid_citations:
+            return result
+
+        rejected_ids = [getattr(citation, "block_id", None) for citation in (rejected_citations or []) if getattr(citation, "block_id", None)]
+        reason = "Critic returned met without validated citations; downgraded to not_met."
+        if rejected_ids:
+            reason = f"{reason} Rejected citation ids: {', '.join(rejected_ids)}."
+
+        result.revised_verdict = VERDICT_NOT_MET
+        result.revised_confidence = min(float(result.revised_confidence or 0.0), 0.45)
+        result.outcome = OUTCOME_OVERTURN
+        result.decision = "reject"
+        result.reasoning = reason
+        result.logic_summary = reason
+        return result
+
     def _retry_hunter_for_citations(
         self,
         *,
@@ -733,6 +778,7 @@ class DebateService:
         rejected_ids: List[str],
         hunter_call_count: int,
         retrieved_chunk_ids: set,
+        context_chunk_map: Optional[Dict[str, Any]] = None,
         stream_handler: Optional[Callable[[str], None]] = None,
     ) -> tuple[HunterResult, int]:
         valid_ids_str = ", ".join(sorted(retrieved_chunk_ids)) or "none"
@@ -766,7 +812,10 @@ class DebateService:
         hunter_call_count += 1
         retry_result = self._normalize_reasoning_payload(retry_result)
         retry_result.citations, _ = self._validate_citations(
-            retry_result.citations, retrieved_chunk_ids, "hunter_citation_retry"
+            retry_result.citations,
+            retrieved_chunk_ids,
+            "hunter_citation_retry",
+            context_chunk_map=context_chunk_map,
         )
         retry_result = self._stabilize_hunter_grounding(retry_result)
         self.logger.info(
@@ -922,20 +971,57 @@ class DebateService:
             )
         return payload
 
-    def _validate_citations(self, citations, allowed_ids, agent_name):
+    @staticmethod
+    def _normalize_quote_text(text: str) -> str:
+        return re.sub(r"\s+", " ", (text or "").strip().casefold())
+
+    def _is_quote_grounded(self, quoted_text: str, block_text: str) -> bool:
+        normalized_quote = self._normalize_quote_text(quoted_text)
+        if not normalized_quote:
+            return True
+        normalized_block = self._normalize_quote_text(block_text)
+        if not normalized_block:
+            return False
+        if normalized_quote in normalized_block:
+            return True
+        # Fallback for minor OCR/transcription noise: the quote must be covered
+        # by a single contiguous match in the source block, not merely similar
+        # in aggregate (which would also accept a quote spliced together from a
+        # neighboring chunk that happens to share most of its wording).
+        matcher = difflib.SequenceMatcher(None, normalized_quote, normalized_block, autojunk=False)
+        match = matcher.find_longest_match(0, len(normalized_quote), 0, len(normalized_block))
+        coverage = match.size / len(normalized_quote)
+        return coverage >= 0.85
+
+    def _validate_citations(self, citations, allowed_ids, agent_name, context_chunk_map=None):
         allowed = set(allowed_ids)
         valid = []
         rejected = []
+        unknown_id_count = 0
+        ungrounded_quote_count = 0
         for citation in citations:
-            if citation.block_id in allowed:
-                valid.append(citation)
-            else:
+            if citation.block_id not in allowed:
                 rejected.append(citation)
-        if rejected:
+                unknown_id_count += 1
+                continue
+            if context_chunk_map is not None:
+                block_text = (context_chunk_map.get(citation.block_id) or {}).get("text", "")
+                if not self._is_quote_grounded(getattr(citation, "quoted_text", ""), block_text):
+                    rejected.append(citation)
+                    ungrounded_quote_count += 1
+                    continue
+            valid.append(citation)
+        if unknown_id_count:
             self.logger.warning(
                 "DebateService._validate_citations: agent=%s rejected=%d unknown ids",
                 agent_name,
-                len(rejected),
+                unknown_id_count,
+            )
+        if ungrounded_quote_count:
+            self.logger.warning(
+                "DebateService._validate_citations: agent=%s rejected=%d quote not grounded in source text",
+                agent_name,
+                ungrounded_quote_count,
             )
         return valid, rejected
 

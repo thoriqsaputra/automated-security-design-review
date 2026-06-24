@@ -58,6 +58,8 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ./backend/.env
+    volumes:
+      - ./backend/llm_logs:/app/llm_logs
     depends_on:
       postgres:
         condition: service_healthy
@@ -84,6 +86,8 @@ services:
       dockerfile: Dockerfile
     env_file:
       - ./backend/.env
+    volumes:
+      - ./backend/llm_logs:/app/llm_logs
     command:
       [
         "sh",
