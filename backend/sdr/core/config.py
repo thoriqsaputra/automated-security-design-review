@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     OPENROUTER_DEFAULT_MODEL: str = Field(default="meta-llama/llama-3.1-70b-instruct")
     OPENROUTER_FAST_MODEL: str = Field(default="meta-llama/llama-3.1-8b-instruct")
 
+    ROUTELLM_API_KEY: str | None = Field(default=None)
+    ROUTELLM_DEFAULT_MODEL: str = Field(default="gpt-4o")
+    ROUTELLM_FAST_MODEL: str = Field(default="gpt-4o-mini")
+
     AI_MODEL_STANDARD_EXTRACTION: str = Field(default="meta/llama-3.1-8b-instruct")
     AI_MODEL_DIAGRAM_REQUIREMENT_EXTRACTION: str = Field(default="meta/llama-3.1-8b-instruct")
     AI_STANDARD_EXTRACTION_MAX_WORKERS: int = Field(default=3)
@@ -59,6 +63,9 @@ class Settings(BaseSettings):
     AI_MODEL_HUNTER: str = Field(default="meta/llama-3.1-70b-instruct")
     AI_MODEL_CRITIC: str = Field(default="meta/llama-3.1-70b-instruct")
     AI_MODEL_MEDIATOR: str = Field(default="meta/llama-3.1-70b-instruct")
+    # Deliberately a different model family from Hunter/Critic/Mediator so the eval
+    # harness doesn't grade answers with the same model that produced them.
+    AI_MODEL_EVAL_JUDGE: str = Field(default="anthropic/claude-sonnet-4.5")
     AI_MODEL_VISION: str = Field(default="meta/llama-3.2-90b-vision-instruct")
     AI_MODEL_CODING_GRAPH: str = Field(default="meta/llama-3.1-70b-instruct")
     AI_MODEL_EMBEDDING: str = Field(default="nvidia/nv-embedqa-e5-v5")
@@ -75,6 +82,8 @@ class Settings(BaseSettings):
     AI_NVIDIA_429_COOLDOWN_SECONDS: float = Field(default=5.0)
     AI_OPENROUTER_RPM_LIMIT: int = Field(default=12)
     AI_OPENROUTER_REASONING_EFFORT: str = Field(default="low")
+    AI_ROUTELLM_RPM_LIMIT: int = Field(default=12)
+
 
     AI_DEBATE_MAX_HUNTER_CALLS_PER_PARAMETER: int = Field(default=8)
     AI_DEBATE_MAX_DEBATE_ROUNDS: int = Field(default=1)
@@ -113,6 +122,8 @@ class Settings(BaseSettings):
 
     AI_RAPTOR_SUMMARY_MAX_CONCURRENCY: int = Field(default=3)
     AI_RAPTOR_EMBED_MAX_CONCURRENCY: int = Field(default=4)
+    AI_RAPTOR_LEAF_TOKEN_BUDGET: int = Field(default=800)
+    AI_RAPTOR_LEAF_MAX_PAGES: int = Field(default=3)
     AI_GRAPH_EXTRACTION_MAX_CONCURRENCY: int = Field(default=4)
     AI_GRAPH_EMBED_MAX_CONCURRENCY: int = Field(default=4)
     AI_RETRIEVAL_HYBRID_MAX_WORKERS: int = Field(default=3)

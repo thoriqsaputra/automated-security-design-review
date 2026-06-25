@@ -34,10 +34,18 @@ def text_hash(text: str) -> str:
 
 
 def _key_for_candidate(candidate: RetrievalCandidate) -> str:
-    if candidate.block_ids:
-        return f"block:{candidate.block_ids[0]}"
+    # Prefer the underlying node's own stable id — searchers that reference
+    # the same RAPTOR/graph node (e.g. BM25 and dense both finding the same
+    # leaf) set the identical id, so this still merges genuine cross-searcher
+    # duplicates. Keying on block_ids[0] alone is unsound: a level-0 leaf and
+    # an unrelated level-1+ summary node can share a first block id (the
+    # summary's source_block_ids are a union starting with that same leaf's
+    # ids), which would wrongly merge them and let the summary's much wider
+    # block-id breadth leak onto the leaf's precise, literal candidate.
     if candidate.id:
         return f"id:{candidate.id}"
+    if candidate.block_ids:
+        return f"block:{candidate.block_ids[0]}"
     return f"txt:{text_hash(candidate.text)}"
 
 
