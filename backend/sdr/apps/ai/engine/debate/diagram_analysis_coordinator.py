@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, List, Optional
+from typing import Any, List
 
 from sdr.apps.ai.agents.vision import DiagramInput
 
@@ -30,45 +30,6 @@ class DiagramAnalysisCoordinator:
         )
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
-    def _build_graph_context(self, diagram: DiagramInput, graph, fallback: str) -> str:
-        """Return graph-retrieved component context for this diagram, falling back to plain text."""
-        if not self.config.vision_use_graph_context or graph is None:
-            return fallback
-        query = " ".join(filter(None, [diagram.caption, diagram.surrounding_text])).strip()
-        if not query:
-            return fallback
-        try:
-            from sdr.apps.ai.retrieval.searchers.graph import GraphSearcher
-            response = GraphSearcher().search(parameter_text=query, graph=graph)
-            if response.error or response.is_empty:
-                return fallback
-            lines: List[str] = ["Component relationships relevant to this diagram:"]
-            for result in response.results[: self.config.vision_graph_context_top_k]:
-                entity_line = f"- {result.entity_name} ({result.entity_type})"
-                if result.entity.description:
-                    entity_line += f": {result.entity.description}"
-                lines.append(entity_line)
-                for rel in result.relevant_relations[:3]:
-                    rel_line = f"    → {rel.relation_type} → {rel.target_entity_id}"
-                    parts = []
-                    if rel.protocol:
-                        parts.append(f"protocol={rel.protocol}")
-                    if rel.is_encrypted is not None:
-                        parts.append(f"encrypted={'yes' if rel.is_encrypted else 'no'}")
-                    if rel.requires_auth is not None:
-                        parts.append(f"auth={'yes' if rel.requires_auth else 'no'}")
-                    if rel.description:
-                        parts.append(rel.description)
-                    if parts:
-                        rel_line += f" [{', '.join(parts)}]"
-                    lines.append(rel_line)
-            return "\n".join(lines)
-        except Exception as exc:
-            self.logger.warning(
-                "DiagramAnalysisCoordinator._build_graph_context: graph retrieval failed, using fallback: %s", exc
-            )
-            return fallback
-
     def run(
         self,
         *,
@@ -78,7 +39,6 @@ class DiagramAnalysisCoordinator:
         ingestion_job,
         summary,
         cancel_check=None,
-        graph=None,
     ) -> None:
         if not self.config.vision_enabled:
             self.logger.info("DiagramAnalysisCoordinator.run: vision disabled — skipping")
@@ -140,7 +100,7 @@ class DiagramAnalysisCoordinator:
                 getattr(category, "code", None),
             )
             return
-        fallback_tsd_context = tsd_document.full_text[:3000] if hasattr(tsd_document, "full_text") else ""
+        tsd_context = tsd_document.full_text[:3000] if hasattr(tsd_document, "full_text") else ""
 
         diagram_outputs = []
         with ThreadPoolExecutor(
@@ -160,7 +120,6 @@ class DiagramAnalysisCoordinator:
                     diagram.diagram_id,
                     len(requirements),
                 )
-                tsd_context = self._build_graph_context(diagram, graph, fallback_tsd_context)
                 future = executor.submit(
                     self.diagram_debate_service.run_diagram_debate,
                     diagram=diagram,

@@ -74,8 +74,6 @@ class CategoryAnalysisCoordinator:
             len(parameters),
         )
 
-        tsd_graph = getattr(indexes, "tsd_graph", None)
-
         if analysis_mode == "diagram_only":
             self.run_state.update_stage(review, summary, "7_diagram_debate")
             self.diagram_analysis.run(
@@ -85,7 +83,6 @@ class CategoryAnalysisCoordinator:
                 ingestion_job=ingestion_job,
                 summary=summary,
                 cancel_check=lambda: self.run_state.is_cancelled(review),
-                graph=tsd_graph,
             )
             return
 
@@ -107,7 +104,6 @@ class CategoryAnalysisCoordinator:
                         ingestion_job=ingestion_job,
                         summary=summary,
                         cancel_check=lambda: self.run_state.is_cancelled(review),
-                        graph=tsd_graph,
                     )
                 except BaseException as exc:  # noqa: BLE001 - re-raised on join below
                     diagram_errors.append(exc)
