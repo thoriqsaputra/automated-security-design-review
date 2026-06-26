@@ -125,6 +125,13 @@ def main():
             "category": real_category,
             "ingestion_job": real_ingestion_job,
         }
+        raptor_only_overrides = {
+            "raptor_tree": raptor_tree,
+            "graph": None,
+            "force_strategy": RetrievalStrategy.RAPTOR_HIGH,
+            "category": real_category,
+            "ingestion_job": real_ingestion_job,
+        }
         hybrid_overrides = {
             "category": real_category,
             "ingestion_job": real_ingestion_job,
@@ -132,7 +139,7 @@ def main():
 
         router = HybridRetrievalRouter()
 
-        vector_results, hybrid_results = [], []
+        vector_results, raptor_results, hybrid_results = [], [], []
         buckets = {"front": [], "middle": [], "back": [], "unknown": []}
 
         for i, item in enumerate(dataset):
@@ -146,6 +153,9 @@ def main():
                 v = runner_mod.evaluate_question(
                     item, router, _Indexes(), db=db, retrieval_overrides=vector_only_overrides
                 )
+                r = runner_mod.evaluate_question(
+                    item, router, _Indexes(), db=db, retrieval_overrides=raptor_only_overrides
+                )
                 h = runner_mod.evaluate_question(
                     item, router, _Indexes(), db=db, retrieval_overrides=hybrid_overrides
                 )
@@ -154,41 +164,57 @@ def main():
                 continue
 
             vector_results.append(v)
+            raptor_results.append(r)
             hybrid_results.append(h)
-            buckets[bucket].append((v, h))
+            buckets[bucket].append((v, r, h))
 
         summary = {
             "total_questions": len(hybrid_results),
             "vector_only": _aggregate(vector_results),
+            "raptor_only": _aggregate(raptor_results),
             "hybrid": _aggregate(hybrid_results),
             "by_position_bucket": {
                 bucket: {
-                    "vector_only": _aggregate([v for v, h in pairs]),
-                    "hybrid": _aggregate([h for v, h in pairs]),
+                    "vector_only": _aggregate([v for v, r, h in pairs]),
+                    "raptor_only": _aggregate([r for v, r, h in pairs]),
+                    "hybrid": _aggregate([h for v, r, h in pairs]),
                 }
                 for bucket, pairs in buckets.items()
                 if pairs
             },
             "vector_only_results": vector_results,
+            "raptor_only_results": raptor_results,
             "hybrid_results": hybrid_results,
         }
 
-        delta = {
-            metric: summary["hybrid"][metric] - summary["vector_only"][metric]
-            for metric in ("context_precision", "context_recall", "faithfulness", "faithfulness_deterministic")
+        metrics = ("context_precision", "context_recall", "faithfulness", "faithfulness_deterministic")
+        summary["delta_raptor_minus_vector"] = {
+            m: summary["raptor_only"][m] - summary["vector_only"][m] for m in metrics
         }
-        summary["delta_hybrid_minus_vector_only"] = delta
+        summary["delta_hybrid_minus_raptor"] = {
+            m: summary["hybrid"][m] - summary["raptor_only"][m] for m in metrics
+        }
+        summary["delta_hybrid_minus_vector_only"] = {
+            m: summary["hybrid"][m] - summary["vector_only"][m] for m in metrics
+        }
 
     output_path = os.path.join(os.path.dirname(__file__), args.output)
     with open(output_path, "w") as f:
         json.dump(summary, f, indent=2)
 
     logger.info("Ablation complete.")
-    logger.info(f"Vector-only: {summary['vector_only']}")
-    logger.info(f"Hybrid:      {summary['hybrid']}")
-    logger.info(f"Delta (hybrid - vector_only): {delta}")
+    logger.info(f"Vector-only:  {summary['vector_only']}")
+    logger.info(f"RAPTOR-only:  {summary['raptor_only']}")
+    logger.info(f"Hybrid:       {summary['hybrid']}")
+    logger.info(f"Delta RAPTOR - Vector: {summary['delta_raptor_minus_vector']}")
+    logger.info(f"Delta Hybrid - RAPTOR: {summary['delta_hybrid_minus_raptor']}")
+    logger.info(f"Delta Hybrid - Vector: {summary['delta_hybrid_minus_vector_only']}")
     for bucket, vals in summary["by_position_bucket"].items():
-        logger.info(f"  [{bucket}] vector_only={vals['vector_only']} hybrid={vals['hybrid']}")
+        logger.info(
+            f"  [{bucket}] vector={vals['vector_only']['context_recall']:.3f} "
+            f"raptor={vals['raptor_only']['context_recall']:.3f} "
+            f"hybrid={vals['hybrid']['context_recall']:.3f}"
+        )
     logger.info(f"Results saved to {output_path}")
 
 

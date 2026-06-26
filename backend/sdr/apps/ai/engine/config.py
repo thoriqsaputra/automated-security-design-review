@@ -25,6 +25,8 @@ class AnalysisPipelineConfig:
     vision_min_diagram_bytes: int = 512
     vision_diagram_requirements_max_items: int = 15
     vision_max_concurrency: int = 2
+    vision_use_graph_context: bool = True
+    vision_graph_context_top_k: int = 5
 
     @classmethod
     def from_settings(cls) -> "AnalysisPipelineConfig":
@@ -77,4 +79,6 @@ class AnalysisPipelineConfig:
                 getattr(settings, "AI_VISION_DIAGRAM_REQUIREMENTS_MAX_ITEMS", 15)
             ),
             vision_max_concurrency=int(getattr(settings, "AI_VISION_MAX_CONCURRENCY", 2)),
+            vision_use_graph_context=bool(getattr(settings, "AI_VISION_USE_GRAPH_CONTEXT", True)),
+            vision_graph_context_top_k=int(getattr(settings, "AI_VISION_GRAPH_CONTEXT_TOP_K", 5)),
         )
