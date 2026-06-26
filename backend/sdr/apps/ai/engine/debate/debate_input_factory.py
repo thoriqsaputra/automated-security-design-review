@@ -11,9 +11,23 @@ from sdr.apps.standards.utils import build_parameter_analysis_text
 from sdr.apps.ai.engine.preparation.contract_synthesizer import ContractSynthesizer
 from sdr.apps.ai.engine.classification.domain_classification import DOMAIN_KEYWORDS, classify_requirement_domain
 from sdr.apps.ai.engine.dto import DebateInput
-from sdr.apps.ai.retrieval.searchers.graph import _extract_keywords
-
 logger = logging.getLogger(__name__)
+
+_STOPWORDS = frozenset({
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "may", "might", "must", "shall", "can", "of", "in", "on",
+    "at", "to", "for", "with", "by", "from", "as", "or", "and", "that",
+    "this", "it", "its", "not", "all", "any", "if", "when", "which",
+    "used", "use", "using", "verify", "ensure", "check", "confirm",
+})
+
+
+def _extract_keywords(text: str) -> list:
+    """Simple keyword extractor — splits on non-alpha chars, drops stopwords."""
+    import re as _re
+    words = _re.split(r"[^a-zA-Z]+", text or "")
+    return [w for w in words if len(w) >= 4 and w.lower() not in _STOPWORDS]
 
 
 class DebateInputFactory:
@@ -167,7 +181,7 @@ class DebateInputFactory:
         block_source_map = (retrieval_metadata or {}).get("block_source_map") or {}
         for idx, chunk in enumerate(context_chunks, start=1):
             evidence_kind = self.classify_context_chunk_text(chunk)
-            chunk_id = f"graph_summary_{idx}" if evidence_kind == "graph_summary" else f"chunk_{idx}"
+            chunk_id = f"chunk_{idx}"
             real_block_ids = (
                 chunk_block_ids[idx - 1] if chunk_block_ids and idx - 1 < len(chunk_block_ids) else []
             )
@@ -313,8 +327,6 @@ class DebateInputFactory:
             return "empty"
         if text.startswith("--- VECTOR RESULT"):
             return "baseline_requirement"
-        if text.startswith("--- GRAPH RESULT") or text.startswith("--- GRAPH PATH") or lowered.startswith("graph node:"):
-            return "graph_summary"
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         if len(text) < 120 and len(lines) <= 2:
             return "heading_only"

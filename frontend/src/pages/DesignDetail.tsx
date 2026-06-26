@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Check, ChevronDown, FileText, Network, Play, Search, Waypoints } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, FileText, Network, Play, Search } from 'lucide-react';
 import type { JsonRecord, RetrievalVisualization } from '../api/reviews';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import Card from '../components/ui/Card';
 import StatusBadge from '../components/ui/StatusBadge';
-import GraphRagView from '../components/flow/GraphRagView';
 import RaptorTreeView from '../components/flow/RaptorTreeView';
 import { getDesign, retryDesignPreparation, type DesignDetail } from '../api/designs';
 import { listCategories, type StandardCategory } from '../api/standards';
@@ -208,7 +207,7 @@ export default function DesignDetailPage() {
     if (design.preparation_status === 'stale') {
       return 'Preparation is stale and must be rebuilt.';
     }
-    return 'Preparing RAPTOR and Graph indexes for debate.';
+    return 'Preparing RAPTOR index for debate.';
   }, [design]);
 
   const preparationProgress = useMemo(() => {
@@ -237,10 +236,6 @@ export default function DesignDetailPage() {
 
   const raptorProgress = useMemo(
     () => getStepProgress(preparationProgress, 'raptor_index'),
-    [preparationProgress],
-  );
-  const graphProgress = useMemo(
-    () => getStepProgress(preparationProgress, 'graph_index'),
     [preparationProgress],
   );
   const preparationSnapshot = useMemo(() => {
@@ -348,21 +343,6 @@ export default function DesignDetailPage() {
                     />
                   </div>
                   <p className="mt-1 text-xs text-text-muted">{raptorProgress.label}</p>
-                </div>
-              )}
-              {graphProgress && (
-                <div className="rounded-xl border border-surface-border bg-surface-base px-3 py-2">
-                  <div className="mb-1 flex items-center justify-between text-xs text-text-muted">
-                    <span>Graph</span>
-                    <span>{graphProgress.progressPercent}%</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-surface-border overflow-hidden">
-                    <div
-                      className="h-full bg-burgundy transition-all duration-500 ease-out"
-                      style={{ width: `${Math.max(4, graphProgress.progressPercent)}%` }}
-                    />
-                  </div>
-                  <p className="mt-1 text-xs text-text-muted">{graphProgress.label}</p>
                 </div>
               )}
             </div>
@@ -558,7 +538,7 @@ export default function DesignDetailPage() {
             <div>
               <h2 className="text-lg font-semibold text-text-primary">Prepared Retrieval Structures</h2>
               <p className="mt-1 text-sm text-text-muted">
-                Inspect the RAPTOR summary tree and GraphRAG entity network built from this uploaded TSD.
+                Inspect the RAPTOR summary tree built from this uploaded TSD.
               </p>
             </div>
             {preparationSnapshot.generated_at && (
@@ -568,30 +548,17 @@ export default function DesignDetailPage() {
             )}
           </div>
 
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <Card className="flex items-center gap-3">
-              <Network size={18} className="text-flame shrink-0" />
-              <div>
-                <p className="text-sm font-semibold text-text-primary">
-                  RAPTOR status: {preparationSnapshot.raptor?.status || 'unknown'}
-                </p>
-                <p className="text-xs text-text-muted">
-                  {preparationSnapshot.raptor?.total_nodes || 0} node(s) ready for visualization
-                </p>
-              </div>
-            </Card>
-            <Card className="flex items-center gap-3">
-              <Waypoints size={18} className="text-flame shrink-0" />
-              <div>
-                <p className="text-sm font-semibold text-text-primary">
-                  GraphRAG status: {preparationSnapshot.graph?.status || 'unknown'}
-                </p>
-                <p className="text-xs text-text-muted">
-                  {preparationSnapshot.graph?.total_entities || 0} entity(ies), {preparationSnapshot.graph?.total_relations || 0} relation(s)
-                </p>
-              </div>
-            </Card>
-          </div>
+          <Card className="flex items-center gap-3">
+            <Network size={18} className="text-flame shrink-0" />
+            <div>
+              <p className="text-sm font-semibold text-text-primary">
+                RAPTOR status: {preparationSnapshot.raptor?.status || 'unknown'}
+              </p>
+              <p className="text-xs text-text-muted">
+                {preparationSnapshot.raptor?.total_nodes || 0} node(s) ready for visualization
+              </p>
+            </div>
+          </Card>
 
           {preparationSnapshot.raptor?.status === 'ready' ? (
             <RaptorTreeView snapshot={preparationSnapshot.raptor} />
@@ -599,16 +566,6 @@ export default function DesignDetailPage() {
             <Card>
               <p className="py-4 text-center text-sm text-text-muted">
                 RAPTOR tree was not available for this prepared TSD.
-              </p>
-            </Card>
-          )}
-
-          {preparationSnapshot.graph?.status === 'ready' ? (
-            <GraphRagView snapshot={preparationSnapshot.graph} />
-          ) : (
-            <Card>
-              <p className="py-4 text-center text-sm text-text-muted">
-                GraphRAG network was not available for this prepared TSD.
               </p>
             </Card>
           )}

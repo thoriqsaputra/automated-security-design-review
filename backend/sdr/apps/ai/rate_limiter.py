@@ -247,6 +247,9 @@ def get_rate_limiter(
             elif provider_key == "openrouter":
                 default_rpm = settings.AI_OPENROUTER_RPM_LIMIT
                 default_cooldown = settings.AI_NVIDIA_429_COOLDOWN_SECONDS
+            elif provider_key == "routellm":
+                default_rpm = settings.AI_ROUTELLM_RPM_LIMIT
+                default_cooldown = settings.AI_NVIDIA_429_COOLDOWN_SECONDS
             else:
                 default_rpm = settings.AI_NVIDIA_RPM_LIMIT
                 default_cooldown = settings.AI_NVIDIA_429_COOLDOWN_SECONDS

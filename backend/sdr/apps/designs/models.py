@@ -102,7 +102,6 @@ class DesignPreparation(Base):
     embedding_model_dim: Mapped[int] = mapped_column(Integer, default=1024)
     tsd_document_object_key: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     raptor_artifact_object_key: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
-    graph_artifact_object_key: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     retrieval_snapshot_object_key: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     stats_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict)
     progress_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict)
@@ -120,19 +119,6 @@ class DesignPreparation(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
-    graph_entities = relationship(
-        "DesignPreparationGraphEntity",
-        back_populates="preparation",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-    graph_relations = relationship(
-        "DesignPreparationGraphRelation",
-        back_populates="preparation",
-        cascade="all, delete-orphan",
-        passive_deletes=True,
-    )
-
     __table_args__ = (
         Index("idx_designpreparation_design_active", "design_id", "is_active"),
         Index(
@@ -179,76 +165,6 @@ class DesignPreparationRaptorNode(Base):
             postgresql_ops={"embedding": "vector_cosine_ops"},
         ),
         Index("idx_designprep_raptor_preparation_node", "preparation_id", "node_id", unique=True),
-    )
-
-
-class DesignPreparationGraphEntity(Base):
-    __tablename__ = "designs_designpreparationgraphentity"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    preparation_id: Mapped[int] = mapped_column(
-        ForeignKey("designs_designpreparation.id", ondelete="CASCADE"),
-        index=True,
-    )
-    entity_id: Mapped[str] = mapped_column(String(255))
-    name: Mapped[str] = mapped_column(String(255))
-    entity_type: Mapped[str] = mapped_column(String(64))
-    source_block_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
-    source_pages: Mapped[list[int]] = mapped_column(JSONB, default=list)
-    content_hash: Mapped[str] = mapped_column(String(64), index=True)
-    embedding = mapped_column(Vector(1024), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-    preparation = relationship("DesignPreparation", back_populates="graph_entities")
-
-    __table_args__ = (
-        Index("idx_designprep_graph_entity_preparation_type", "preparation_id", "entity_type"),
-        Index(
-            "idx_designprep_graph_entity_embedding_hnsw",
-            "embedding",
-            postgresql_using="hnsw",
-            postgresql_with={"m": 16, "ef_construction": 64},
-            postgresql_ops={"embedding": "vector_cosine_ops"},
-        ),
-        Index("idx_designprep_graph_entity_preparation_entity", "preparation_id", "entity_id", unique=True),
-    )
-
-
-class DesignPreparationGraphRelation(Base):
-    __tablename__ = "designs_designpreparationgraphrelation"
-
-    id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    preparation_id: Mapped[int] = mapped_column(
-        ForeignKey("designs_designpreparation.id", ondelete="CASCADE"),
-        index=True,
-    )
-    relation_id: Mapped[str] = mapped_column(String(255))
-    source_entity_id: Mapped[str] = mapped_column(String(255))
-    target_entity_id: Mapped[str] = mapped_column(String(255))
-    relation_type: Mapped[str] = mapped_column(String(64))
-    relation_text: Mapped[str] = mapped_column(String, default="")
-    protocol: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    requires_auth: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
-    is_encrypted: Mapped[Optional[bool]] = mapped_column(Boolean, nullable=True)
-    source_block_ids: Mapped[list[str]] = mapped_column(JSONB, default=list)
-    source_pages: Mapped[list[int]] = mapped_column(JSONB, default=list)
-    content_hash: Mapped[str] = mapped_column(String(64), index=True)
-    embedding = mapped_column(Vector(1024), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
-
-    preparation = relationship("DesignPreparation", back_populates="graph_relations")
-
-    __table_args__ = (
-        Index("idx_designprep_graph_relation_preparation_source", "preparation_id", "source_entity_id"),
-        Index("idx_designprep_graph_relation_preparation_target", "preparation_id", "target_entity_id"),
-        Index(
-            "idx_designprep_graph_relation_embedding_hnsw",
-            "embedding",
-            postgresql_using="hnsw",
-            postgresql_with={"m": 16, "ef_construction": 64},
-            postgresql_ops={"embedding": "vector_cosine_ops"},
-        ),
-        Index("idx_designprep_graph_relation_preparation_relation", "preparation_id", "relation_id", unique=True),
     )
 
 

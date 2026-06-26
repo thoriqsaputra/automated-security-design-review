@@ -1,13 +1,13 @@
 """
 Cross-Boundary Threat Accuracy eval (ASVS V1 Architecture + V9 Communications).
 
-Measures how much GraphRAG contributes to retrieval quality specifically for
+Measures how much RAPTOR contributes to retrieval quality specifically for
 architecture and communications security requirements — the categories that
 require understanding trust boundaries and inter-component data flows.
 
 For each ASVS V1/V9 requirement:
-  - Condition A: full hybrid including graph (current default)
-  - Condition B: hybrid WITHOUT graph (raptor+vector only, graph=None)
+  - Condition A: full RAPTOR hybrid (current default)
+  - Condition B: vector-only (raptor_tree=None, force_strategy=VECTOR_ONLY)
 
 Metrics: context_recall and faithfulness (LLM) + faithfulness_deterministic,
 reported per category (V1, V9, combined) and per condition with delta.
@@ -38,6 +38,7 @@ from sdr.apps.standards.models import (
     StandardIngestionJob,
 )
 from sdr.apps.ai.retrieval.routing.router import HybridRetrievalRouter
+from sdr.apps.ai.retrieval.core.types import RetrievalStrategy
 from sdr.apps.ai.client.manager import ai_service_manager
 from sdr.apps.ai.evaluations.judges import (
     judge_context_recall,
@@ -63,16 +64,17 @@ ANSWER_PROMPT_TEMPLATE = (
 )
 
 
-def _run_condition(router, child, category, ingestion_job, raptor_indexes, use_graph):
-    """Run one retrieval+answer+judge cycle for a single requirement + graph condition."""
+def _run_condition(router, child, category, ingestion_job, indexes, use_raptor: bool):
+    """Run one retrieval+answer+judge cycle for a single requirement + RAPTOR condition."""
     retrieve_kwargs = {
         "parameter": child,
         "category": category,
         "ingestion_job": ingestion_job,
         "override_query_text": child.requirement_text,
-        "raptor_tree": raptor_indexes.raptor_tree,
-        "graph": raptor_indexes.tsd_graph if use_graph else None,
+        "raptor_tree": indexes.raptor_tree if use_raptor else None,
     }
+    if not use_raptor:
+        retrieve_kwargs["force_strategy"] = RetrievalStrategy.VECTOR_ONLY
     result = router.retrieve(**retrieve_kwargs)
 
     retrieved_context = "\n---\n".join(result.context_chunks)
@@ -122,15 +124,14 @@ def _aggregate(results):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Cross-boundary V1/V9 accuracy eval.")
+    parser = argparse.ArgumentParser(description="Cross-boundary V1/V9 accuracy eval (RAPTOR vs vector-only).")
     parser.add_argument("--design-id", type=int, required=True)
     parser.add_argument("--output", type=str, default="eval_cross_boundary_v1_v9.json")
     parser.add_argument(
         "--raptor-tree-pickle",
         type=str,
         default=None,
-        help="Path to pickled RAPTORTree (use the page-aware-packing fixed tree, "
-        "e.g. /tmp/new_raptor_tree.pkl in the container).",
+        help="Path to pickled RAPTORTree.",
     )
     parser.add_argument(
         "--sample", type=int, default=SAMPLE_PER_SECTION,
@@ -171,7 +172,6 @@ def main():
             sections[label] = {"children": children, "ingestion_job": ingestion_job, "parent_title": parent.title}
             logger.info(f"Loaded {label} ({parent.title}): {len(children)} requirements, job_id={ingestion_job.id}")
 
-        # category is web_application (category_id=1) for both V1 and V9
         from sdr.apps.standards.models import StandardCategory
         category = db.query(StandardCategory).filter_by(id=1).first()
 
@@ -192,15 +192,14 @@ def main():
                     "requirement": child.requirement_text,
                 }
                 try:
-                    row["with_graph"] = _run_condition(
-                        router, child, category, ingestion_job, indexes, use_graph=True
+                    row["with_raptor"] = _run_condition(
+                        router, child, category, ingestion_job, indexes, use_raptor=True
                     )
-                    row["without_graph"] = _run_condition(
-                        router, child, category, ingestion_job, indexes, use_graph=False
+                    row["without_raptor"] = _run_condition(
+                        router, child, category, ingestion_job, indexes, use_raptor=False
                     )
-                    # Per-metric delta: with_graph minus without_graph
                     row["delta"] = {
-                        m: round(row["with_graph"][m] - row["without_graph"][m], 4)
+                        m: round(row["with_raptor"][m] - row["without_raptor"][m], 4)
                         for m in ("context_recall", "faithfulness", "faithfulness_deterministic")
                     }
                 except Exception as e:
@@ -208,7 +207,6 @@ def main():
                     row["error"] = str(e)
                 all_results.append(row)
 
-        # Aggregate per section and combined
         def _agg_by_condition(results, condition):
             return _aggregate([r[condition] for r in results if condition in r])
 
@@ -216,26 +214,26 @@ def main():
 
         for label in sections:
             sec_results = [r for r in all_results if r["section"] == label]
-            wg = _agg_by_condition(sec_results, "with_graph")
-            nog = _agg_by_condition(sec_results, "without_graph")
+            wr = _agg_by_condition(sec_results, "with_raptor")
+            nor = _agg_by_condition(sec_results, "without_raptor")
             summary["sections"][label] = {
-                "with_graph": wg,
-                "without_graph": nog,
+                "with_raptor": wr,
+                "without_raptor": nor,
                 "delta": {
-                    m: round(wg.get(m, 0) - nog.get(m, 0), 4)
+                    m: round(wr.get(m, 0) - nor.get(m, 0), 4)
                     for m in ("context_recall", "faithfulness", "faithfulness_deterministic")
                 },
                 "parent_title": sections[label]["parent_title"],
             }
 
-        valid = [r for r in all_results if "with_graph" in r]
+        valid = [r for r in all_results if "with_raptor" in r]
         summary["combined"] = {
-            "with_graph": _agg_by_condition(valid, "with_graph"),
-            "without_graph": _agg_by_condition(valid, "without_graph"),
+            "with_raptor": _agg_by_condition(valid, "with_raptor"),
+            "without_raptor": _agg_by_condition(valid, "without_raptor"),
             "delta": {
                 m: round(
-                    _agg_by_condition(valid, "with_graph").get(m, 0)
-                    - _agg_by_condition(valid, "without_graph").get(m, 0),
+                    _agg_by_condition(valid, "with_raptor").get(m, 0)
+                    - _agg_by_condition(valid, "without_raptor").get(m, 0),
                     4,
                 )
                 for m in ("context_recall", "faithfulness", "faithfulness_deterministic")
@@ -251,12 +249,12 @@ def main():
     for label, sec in summary["sections"].items():
         logger.info(
             f"  {label} ({sec['parent_title']}): "
-            f"recall {sec['with_graph'].get('context_recall')} vs {sec['without_graph'].get('context_recall')} "
+            f"recall {sec['with_raptor'].get('context_recall')} vs {sec['without_raptor'].get('context_recall')} "
             f"(delta {sec['delta']['context_recall']:+.4f})"
         )
     logger.info(
-        f"  Combined: recall {summary['combined']['with_graph'].get('context_recall')} "
-        f"vs {summary['combined']['without_graph'].get('context_recall')} "
+        f"  Combined: recall {summary['combined']['with_raptor'].get('context_recall')} "
+        f"vs {summary['combined']['without_raptor'].get('context_recall')} "
         f"(delta {summary['combined']['delta']['context_recall']:+.4f})"
     )
     logger.info(f"Results saved to {output_path}")

@@ -15,7 +15,6 @@ from sdr.apps.ai.agents.base import (
 from sdr.apps.ai.retrieval.core import RetrievalResult
 from sdr.apps.ai.tsd_processing.ingestor import TSDDocument
 from sdr.apps.ai.tsd_processing.raptor import RAPTORTree
-from sdr.apps.ai.tsd_processing.graph_builder import TSDGraph
 from sdr.apps.standards.models import (
     CategoryParameterChild,
     StandardCategory,
@@ -38,7 +37,6 @@ class IngestionOutput(BaseModel):
 class RetrievalIndexes(BaseModel):
     """Pre-built retrieval indexes from RetrievalService."""
     raptor_tree: Optional[RAPTORTree] = None
-    tsd_graph: Optional[TSDGraph] = None
 
     class Config:
         arbitrary_types_allowed = True

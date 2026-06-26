@@ -1,5 +1,5 @@
 """
-Ablation: Dense Vector-only retrieval vs Hybrid (Vector + RAPTOR + GraphRAG).
+Ablation: Dense Vector-only retrieval vs Hybrid (Vector + RAPTOR).
 
 Runs the same eval dataset through two retrieval configurations and reports
 the standard four metrics for each, plus a breakdown by document position
@@ -103,7 +103,7 @@ def main():
             raptor_tree = indexes.raptor_tree
 
         class _Indexes:
-            tsd_graph = indexes.tsd_graph
+            pass
 
         _Indexes.raptor_tree = raptor_tree
 
@@ -120,14 +120,12 @@ def main():
         )
         vector_only_overrides = {
             "raptor_tree": None,
-            "graph": None,
             "force_strategy": RetrievalStrategy.VECTOR_ONLY,
             "category": real_category,
             "ingestion_job": real_ingestion_job,
         }
         raptor_only_overrides = {
             "raptor_tree": raptor_tree,
-            "graph": None,
             "force_strategy": RetrievalStrategy.RAPTOR_HIGH,
             "category": real_category,
             "ingestion_job": real_ingestion_job,

@@ -116,15 +116,15 @@ def test_citation_source_map_includes_retrieval_origin():
             "context_chunk_map": {
                 "p2_b4": {
                     "section": "Transport Security",
-                    "retrieval_origin": "graph",
-                    "retrieval_origin_label": "Graph",
+                    "retrieval_origin": "raptor",
+                    "retrieval_origin_label": "RAPTOR",
                 }
             }
         },
     )
 
-    assert source_map["p2_b4"]["retrieval_origin"] == "graph"
-    assert source_map["p2_b4"]["retrieval_origin_label"] == "Graph"
+    assert source_map["p2_b4"]["retrieval_origin"] == "raptor"
+    assert source_map["p2_b4"]["retrieval_origin_label"] == "RAPTOR"
 
 
 def test_finding_and_citation_expose_evidence_source_provenance():
@@ -135,8 +135,8 @@ def test_finding_and_citation_expose_evidence_source_provenance():
             "structured_citations": [
                 {
                     "chunk_id": "p2_b4",
-                    "retrieval_origin": "graph",
-                    "retrieval_origin_label": "Graph",
+                    "retrieval_origin": "raptor",
+                    "retrieval_origin_label": "RAPTOR",
                 }
             ]
         },
@@ -151,6 +151,6 @@ def test_finding_and_citation_expose_evidence_source_provenance():
 
     assert finding.has_citations is True
     assert finding.citation_count == 1
-    assert finding.evidence_sources == [{"key": "graph", "label": "Graph", "count": 1}]
-    assert citation.retrieval_origin == "graph"
-    assert citation.retrieval_origin_label == "Graph"
+    assert finding.evidence_sources == [{"key": "raptor", "label": "RAPTOR", "count": 1}]
+    assert citation.retrieval_origin == "raptor"
+    assert citation.retrieval_origin_label == "RAPTOR"

@@ -1014,8 +1014,7 @@ def _compute_median(values: List[float]) -> float:
 # ---------------------------------------------------------------------------
 
 __all__ = [
-    # Dataclasses — imported by raptor.py, graph_builder.py,
-    # analysis_service.py, and agents/vision.py
+    # Dataclasses — imported by raptor.py, analysis_service.py, and agents/vision.py
     "TextBlock",
     "DiagramBlock",
     "TSDPage",

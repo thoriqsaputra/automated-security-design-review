@@ -79,7 +79,6 @@ def evaluate_question(
 
     retrieve_kwargs = {
         "raptor_tree": indexes.raptor_tree,
-        "graph": indexes.tsd_graph,
     }
 
     if source == "real_review":

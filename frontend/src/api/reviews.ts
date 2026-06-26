@@ -105,41 +105,10 @@ export interface RaptorSnapshot {
   nodes: RaptorNodeSnapshot[];
 }
 
-export interface GraphNodeSnapshot {
-  id: string;
-  label: string;
-  entity_type: string;
-  source_pages: number[];
-  source_block_count: number;
-  degree: number;
-  in_degree: number;
-  out_degree: number;
-}
-
-export interface GraphEdgeSnapshot {
-  source: string;
-  target: string;
-  relation_type: string | null;
-  confidence: number;
-  protocol: string | null;
-  is_encrypted: boolean | null;
-  requires_auth: boolean | null;
-  source_pages: number[];
-}
-
-export interface GraphSnapshot {
-  status: string;
-  total_entities: number;
-  total_relations: number;
-  nodes: GraphNodeSnapshot[];
-  edges: GraphEdgeSnapshot[];
-}
-
 export interface RetrievalVisualization {
   status: string;
   generated_at: string | null;
   raptor: RaptorSnapshot | null;
-  graph: GraphSnapshot | null;
 }
 
 export interface Review {

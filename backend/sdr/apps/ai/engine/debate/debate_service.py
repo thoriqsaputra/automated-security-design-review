@@ -1,12 +1,11 @@
 from __future__ import annotations
 
-import difflib
 import logging
-import re
 import time
 from typing import Any, Callable, Dict, List, Optional
 
 from sdr.core.config import settings
+from sdr.apps.ai.retrieval.postprocessing.quote_grounding import is_quote_grounded
 
 from sdr.apps.ai.agents.base import (
     OUTCOME_OVERTURN,
@@ -778,27 +777,8 @@ class DebateService:
             )
         return payload
 
-    @staticmethod
-    def _normalize_quote_text(text: str) -> str:
-        return re.sub(r"\s+", " ", (text or "").strip().casefold())
-
     def _is_quote_grounded(self, quoted_text: str, block_text: str) -> bool:
-        normalized_quote = self._normalize_quote_text(quoted_text)
-        if not normalized_quote:
-            return True
-        normalized_block = self._normalize_quote_text(block_text)
-        if not normalized_block:
-            return False
-        if normalized_quote in normalized_block:
-            return True
-        # Fallback for minor OCR/transcription noise: the quote must be covered
-        # by a single contiguous match in the source block, not merely similar
-        # in aggregate (which would also accept a quote spliced together from a
-        # neighboring chunk that happens to share most of its wording).
-        matcher = difflib.SequenceMatcher(None, normalized_quote, normalized_block, autojunk=False)
-        match = matcher.find_longest_match(0, len(normalized_quote), 0, len(normalized_block))
-        coverage = match.size / len(normalized_quote)
-        return coverage >= 0.85
+        return is_quote_grounded(quoted_text, block_text)
 
     def _validate_citations(self, citations, allowed_ids, agent_name, context_chunk_map=None):
         allowed = set(allowed_ids)
@@ -838,9 +818,7 @@ class DebateService:
             if payload.get("citation_grade", True) is False:
                 continue
             evidence_kind = str(payload.get("evidence_kind") or "").lower()
-            if evidence_kind in {"graph_summary", "baseline_requirement"}:
-                continue
-            if str(block_id).startswith("graph_summary_"):
+            if evidence_kind in {"baseline_requirement"}:
                 continue
             ids.append(block_id)
         return ids

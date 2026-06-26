@@ -94,9 +94,6 @@ _IMPLEMENTATION_TERMS = {
 
 _WEAK_CHUNK_PREFIXES = (
     "--- VECTOR RESULT",
-    "--- GRAPH RESULT",
-    "--- GRAPH PATH",
-    "GRAPH NODE:",
 )
 
 
@@ -116,8 +113,13 @@ class EvidenceGrader:
             return "empty", "empty chunk"
         if candidate.metadata.get("non_tsd_evidence"):
             return "baseline_requirement", "standard baseline text is not TSD evidence"
-        if text.startswith(_WEAK_CHUNK_PREFIXES) or lowered.startswith("graph node:"):
-            return "graph_summary", "graph summary is structural context, not implementation evidence"
+        if text.startswith(_WEAK_CHUNK_PREFIXES):
+            return "weak_header", "chunk starts with a retrieval result header, not implementation evidence"
+        if candidate.metadata.get("level", 0) > 0:
+            return (
+                "hierarchical_summary",
+                "LLM-synthesized summary spanning multiple sections — not literal source text",
+            )
         lines = [line.strip() for line in text.splitlines() if line.strip()]
         if len(text) < 120 and len(lines) <= 2:
             return "heading_only", "short heading-like chunk has no implementation detail"
@@ -162,10 +164,27 @@ class EvidenceGrader:
             graded.append(candidate)
 
         implementation = [c for c in graded if c.metadata.get("evidence_kind") == "implementation_evidence"]
-        fallback = [c for c in graded if c.metadata.get("evidence_kind") != "implementation_evidence"]
+        hierarchical_summary = [c for c in graded if c.metadata.get("evidence_kind") == "hierarchical_summary"]
+        fallback = [
+            c
+            for c in graded
+            if c.metadata.get("evidence_kind") not in {"implementation_evidence", "hierarchical_summary"}
+        ]
         implementation.sort(key=lambda c: c.score, reverse=True)
+        hierarchical_summary.sort(key=lambda c: c.score, reverse=True)
         fallback.sort(key=lambda c: c.score, reverse=True)
-        selected = implementation + fallback
+        # `fallback` (weak_context/heading_only) is still literal TSD text,
+        # just without a strong keyword/implementation signal — it's more
+        # trustworthy and precise than a hierarchical RAPTOR summary (an LLM
+        # paraphrase spanning many blocks), so summaries are the last resort,
+        # only filling slots when nothing literal remains at all.
+        #
+        # Deliberately NOT truncated to max_context_chunks here — the caller
+        # reranks within each tier first (on the full tier, not a pre-cut
+        # slice) and only truncates after reranking, so a genuinely better
+        # candidate beyond an early per-tier cutoff still gets a chance to
+        # surface instead of being discarded before reranking ever runs.
+        selected = implementation + fallback + hierarchical_summary
 
         if not selected and candidates:
             selected = sorted(
@@ -178,14 +197,14 @@ class EvidenceGrader:
             "evidence_quality": {
                 "counts": counts,
                 "implementation_evidence_count": len(implementation),
-                "selected_count": len(selected[: self.max_context_chunks]),
+                "selected_count": min(len(selected), self.max_context_chunks),
                 "rejected": rejected[:20],
                 "applicability_terms": sorted(applicability_terms),
                 "applicability_signal": bool(applicability_terms),
                 "query_hash": hashlib.sha256((query_text or "").encode("utf-8")).hexdigest()[:12],
             }
         }
-        return selected[: self.max_context_chunks], metadata
+        return selected, metadata
 
     def apply_keyword_coverage_boost(
         self,
@@ -200,7 +219,12 @@ class EvidenceGrader:
             text_lower = (candidate.text or "").lower()
             coverage = sum(1 for kw in keyword_set if kw in text_lower)
             candidate.metadata["keyword_coverage"] = coverage
-            candidate.score = float(candidate.score) + (0.05 * coverage)
+            # A hierarchical summary naturally mentions more keywords just by
+            # covering more of the document — scale the boost down by its
+            # block-id breadth so it can't out-rank a narrow literal excerpt
+            # purely on keyword density.
+            breadth = max(1, len(candidate.block_ids))
+            candidate.score = float(candidate.score) + (0.05 * coverage / breadth)
             boosted.append(candidate)
         return boosted
 

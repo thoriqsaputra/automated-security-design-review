@@ -17,7 +17,6 @@ from sdr.apps.ai.engine.preparation.ingestion_service import IngestionService
 from sdr.apps.ai.engine.preparation.retrieval_service import RetrievalService
 from sdr.apps.ai.engine.reporting.retrieval_snapshot_builder import RetrievalSnapshotBuilder
 from sdr.apps.ai.tsd_processing.document_models import DiagramBlock, TSDDocument, TSDPage, TextBlock
-from sdr.apps.ai.tsd_processing.graph_builder import GraphEntity, GraphRelation, TSDGraph
 from sdr.apps.ai.tsd_processing.raptor import RAPTORNode, RAPTORTree
 from sdr.apps.workspace.services.storage import storage_service
 from sdr.core.config import settings
@@ -25,8 +24,6 @@ from sdr.core.config import settings
 from .models import (
     Design,
     DesignPreparation,
-    DesignPreparationGraphEntity,
-    DesignPreparationGraphRelation,
     DesignPreparationRaptorNode,
 )
 
@@ -57,7 +54,6 @@ def default_preparation_progress() -> Dict[str, Any]:
             "document_ingestion": {"status": "pending", "progress_percent": 0, "label": "Queued"},
             "tsd_screening": {"status": "pending", "progress_percent": 0, "label": "Queued"},
             "raptor_index": {"status": "pending", "progress_percent": 0, "label": "Queued"},
-            "graph_index": {"status": "pending", "progress_percent": 0, "label": "Queued"},
             "artifact_persistence": {"status": "pending", "progress_percent": 0, "label": "Queued"},
         },
     }
@@ -124,17 +120,13 @@ class PreparationProgressTracker:
             phase="building_indexes",
             percentage=25,
             status_label="Building retrieval indexes",
-            current_step="Starting RAPTOR and Graph indexing",
+            current_step="Starting RAPTOR indexing",
         )
         self._update_step("raptor_index", status="running", progress_percent=0, label="Starting RAPTOR indexing")
-        self._update_step("graph_index", status="running", progress_percent=0, label="Starting Graph indexing")
         self._persist(force=True)
 
     def update_raptor(self, payload: Dict[str, Any]) -> None:
         self._update_parallel_step("raptor_index", payload, default_label="Building RAPTOR index")
-
-    def update_graph(self, payload: Dict[str, Any]) -> None:
-        self._update_parallel_step("graph_index", payload, default_label="Building Graph index")
 
     def mark_persisting(self) -> None:
         self._update_phase(
@@ -185,26 +177,13 @@ class PreparationProgressTracker:
             self._update_step(key, status=mapped_status, progress_percent=progress_percent, label=label)
 
             raptor_progress = int(self.payload["steps"]["raptor_index"]["progress_percent"] or 0)
-            graph_progress = int(self.payload["steps"]["graph_index"]["progress_percent"] or 0)
-            combined = int(round((raptor_progress * 0.5) + (graph_progress * 0.5)))
-            overall = min(90, 25 + int(round(0.65 * combined)))
+            overall = min(90, 25 + int(round(0.65 * raptor_progress)))
             self.payload["phase"] = "building_indexes"
             self.payload["percentage"] = overall
-            self.payload["status_label"] = f"Building retrieval indexes • {combined}%"
-            self.payload["current_step"] = self._combined_index_label()
+            self.payload["status_label"] = f"Building retrieval indexes • {raptor_progress}%"
+            self.payload["current_step"] = self.payload["steps"]["raptor_index"].get("label") or "Building RAPTOR index"
             self.payload["updated_at"] = _utc_now().isoformat()
         self._persist()
-
-    def _combined_index_label(self) -> str:
-        raptor = self.payload["steps"]["raptor_index"]
-        graph = self.payload["steps"]["graph_index"]
-        if raptor.get("status") == "completed" and graph.get("status") == "completed":
-            return "RAPTOR and Graph indexes ready"
-        if raptor.get("status") == "completed":
-            return graph.get("label") or "Finishing Graph indexing"
-        if graph.get("status") == "completed":
-            return raptor.get("label") or "Finishing RAPTOR indexing"
-        return "Building RAPTOR and Graph indexes"
 
     def _update_phase(self, *, phase: str, percentage: int, status_label: str, current_step: str) -> None:
         with self._lock:
@@ -360,7 +339,6 @@ class DesignPreparationStore:
         preparation.prepared_at = preparation.completed_at
         preparation.tsd_document_object_key = artifact_keys.get("tsd_document")
         preparation.raptor_artifact_object_key = artifact_keys.get("raptor")
-        preparation.graph_artifact_object_key = artifact_keys.get("graph")
         preparation.retrieval_snapshot_object_key = artifact_keys.get("snapshot")
         preparation.stats_json = stats_json
 
@@ -381,14 +359,9 @@ class DesignPreparationStore:
 
         tsd_document_payload = self._load_artifact(preparation.tsd_document_object_key)
         raptor_payload = self._load_artifact(preparation.raptor_artifact_object_key)
-        graph_payload = self._load_artifact(preparation.graph_artifact_object_key)
         tsd_document = deserialize_tsd_document(tsd_document_payload)
         raptor_tree = deserialize_raptor_tree(raptor_payload)
-        tsd_graph = deserialize_graph(graph_payload)
-        return preparation, tsd_document, RetrievalIndexes(
-            raptor_tree=raptor_tree,
-            tsd_graph=tsd_graph,
-        )
+        return preparation, tsd_document, RetrievalIndexes(raptor_tree=raptor_tree)
 
     def run_preparation(self, db: Session, *, design: Design, preparation: DesignPreparation) -> Dict[str, Any]:
         self.mark_running(design, preparation)
@@ -424,7 +397,6 @@ class DesignPreparationStore:
                 output.tsd_document,
                 progress_callbacks={
                     "raptor": progress_tracker.update_raptor,
-                    "graph": progress_tracker.update_graph,
                 },
             )
             snapshot = self.snapshot_builder.build_snapshot(indexes)
@@ -438,8 +410,6 @@ class DesignPreparationStore:
                 "total_text_blocks": output.tsd_document.total_text_blocks,
                 "total_diagrams": output.tsd_document.total_diagrams,
                 "raptor_total_nodes": int(getattr(indexes.raptor_tree, "total_nodes", 0) or 0),
-                "graph_total_entities": int(getattr(indexes.tsd_graph, "total_entities", 0) or 0),
-                "graph_total_relations": int(getattr(indexes.tsd_graph, "total_relations", 0) or 0),
             }
             self.mark_ready(
                 design,
@@ -474,7 +444,6 @@ class DesignPreparationStore:
         artifact_keys = {
             "tsd_document": f"{base_prefix}/tsd_document.json.zst",
             "raptor": f"{base_prefix}/raptor_tree.json.zst",
-            "graph": f"{base_prefix}/graph.json.zst",
             "snapshot": f"{base_prefix}/retrieval_snapshot.json.zst",
         }
         _eager_load_diagram_images(output.tsd_document)
@@ -488,11 +457,6 @@ class DesignPreparationStore:
             artifact_keys["raptor"],
             "application/zstd",
         )
-        storage_service.upload_file(
-            compress_json_bytes(serialize_graph(indexes.tsd_graph)),
-            artifact_keys["graph"],
-            "application/zstd",
-        )
         if snapshot is not None:
             storage_service.upload_file(
                 compress_json_bytes(snapshot),
@@ -503,8 +467,6 @@ class DesignPreparationStore:
 
     def _replace_vector_rows(self, db: Session, preparation: DesignPreparation, indexes: RetrievalIndexes) -> None:
         db.execute(delete(DesignPreparationRaptorNode).where(DesignPreparationRaptorNode.preparation_id == preparation.id))
-        db.execute(delete(DesignPreparationGraphEntity).where(DesignPreparationGraphEntity.preparation_id == preparation.id))
-        db.execute(delete(DesignPreparationGraphRelation).where(DesignPreparationGraphRelation.preparation_id == preparation.id))
 
         for node in (indexes.raptor_tree.get_all_nodes() if indexes.raptor_tree else []):
             db.add(
@@ -523,44 +485,6 @@ class DesignPreparationStore:
                     has_embedding=bool(node.has_embedding),
                 )
             )
-        if indexes.tsd_graph:
-            for entity in indexes.tsd_graph.entities.values():
-                db.add(
-                    DesignPreparationGraphEntity(
-                        preparation_id=preparation.id,
-                        entity_id=entity.entity_id,
-                        name=entity.name,
-                        entity_type=entity.entity_type,
-                        source_block_ids=list(entity.source_block_ids or []),
-                        source_pages=list(entity.source_pages or []),
-                        content_hash=self._content_hash(entity.name),
-                        embedding=(list(entity.embedding) if entity.embedding else None),
-                    )
-                )
-            if indexes.tsd_graph.graph is not None:
-                for source_id, target_id, edge_data in indexes.tsd_graph.graph.edges(data=True):
-                    relation: GraphRelation = edge_data.get("relation_obj")
-                    if relation is None:
-                        continue
-                    db.add(
-                        DesignPreparationGraphRelation(
-                            preparation_id=preparation.id,
-                            relation_id=self._relation_id(relation),
-                            source_entity_id=source_id,
-                            target_entity_id=target_id,
-                            relation_type=relation.relation_type,
-                            relation_text=relation.description or "",
-                            protocol=relation.protocol,
-                            requires_auth=relation.requires_auth,
-                            is_encrypted=relation.is_encrypted,
-                            source_block_ids=list(relation.source_block_ids or []),
-                            source_pages=list(relation.source_pages or []),
-                            content_hash=self._content_hash(
-                                f"{source_id}|{target_id}|{relation.relation_type}|{relation.description or ''}"
-                            ),
-                            embedding=(list(relation.embedding) if relation.embedding else None),
-                        )
-                    )
         db.flush()
 
     def _load_artifact(self, object_key: Optional[str]) -> Dict[str, Any]:
@@ -602,17 +526,6 @@ class DesignPreparationStore:
 
     def _content_hash(self, value: str) -> str:
         return hashlib.sha256((value or "").encode("utf-8")).hexdigest()
-
-    def _relation_id(self, relation: GraphRelation) -> str:
-        seed = "|".join(
-            [
-                relation.source_entity_id,
-                relation.target_entity_id,
-                relation.relation_type,
-                relation.description or "",
-            ]
-        )
-        return hashlib.sha256(seed.encode("utf-8")).hexdigest()
 
 
 class _NoopWorkflowRepository:
@@ -810,149 +723,3 @@ def deserialize_raptor_tree(payload: Dict[str, Any]) -> RAPTORTree:
         max_level=int(payload.get("max_level") or 0),
         build_stats=dict(payload.get("build_stats") or {}),
     )
-
-
-def serialize_graph(graph: Optional[TSDGraph]) -> Dict[str, Any]:
-    if not graph:
-        return {
-            "document_name": "",
-            "entities": [],
-            "relations": [],
-            "total_entities": 0,
-            "total_relations": 0,
-            "build_stats": {},
-            "embedding_stats": {},
-            "entity_to_block_ids": {},
-            "block_id_to_entities": {},
-            "edge_to_block_ids": {},
-            "raptor_node_to_entities": {},
-            "entity_to_raptor_node_ids": {},
-        }
-    relations: List[Dict[str, Any]] = []
-    if graph.graph is not None:
-        for source_id, target_id, edge_data in graph.graph.edges(data=True):
-            relation: GraphRelation = edge_data.get("relation_obj")
-            if relation is None:
-                continue
-            relations.append(
-                {
-                    "source_entity_id": relation.source_entity_id,
-                    "target_entity_id": relation.target_entity_id,
-                    "relation_type": relation.relation_type,
-                    "description": relation.description,
-                    "is_encrypted": relation.is_encrypted,
-                    "requires_auth": relation.requires_auth,
-                    "protocol": relation.protocol,
-                    "confidence": relation.confidence,
-                    "source_pages": list(relation.source_pages or []),
-                    "source_block_ids": list(relation.source_block_ids or []),
-                    "grounded_texts": list(relation.grounded_texts or []),
-                    "sensitivity": relation.sensitivity,
-                    "tenant_id": relation.tenant_id,
-                    "embedding": list(relation.embedding or []),
-                    "has_embedding": bool(relation.has_embedding),
-                }
-            )
-    return {
-        "document_name": graph.document_name,
-        "entities": [
-            {
-                "entity_id": entity.entity_id,
-                "name": entity.name,
-                "entity_type": entity.entity_type,
-                "description": entity.description,
-                "source_pages": list(entity.source_pages or []),
-                "source_block_ids": list(entity.source_block_ids or []),
-                "grounded_texts": list(entity.grounded_texts or []),
-                "sensitivity": entity.sensitivity,
-                "tenant_id": entity.tenant_id,
-                "embedding": list(entity.embedding or []),
-                "has_embedding": bool(entity.has_embedding),
-            }
-            for entity in graph.entities.values()
-        ],
-        "relations": relations,
-        "total_entities": graph.total_entities,
-        "total_relations": graph.total_relations,
-        "build_stats": dict(graph.build_stats or {}),
-        "embedding_stats": dict(graph.embedding_stats or {}),
-        "entity_to_block_ids": {k: sorted(v) for k, v in (graph.entity_to_block_ids or {}).items()},
-        "block_id_to_entities": {k: sorted(v) for k, v in (graph.block_id_to_entities or {}).items()},
-        "edge_to_block_ids": {
-            f"{source}|{target}": sorted(block_ids)
-            for (source, target), block_ids in (graph.edge_to_block_ids or {}).items()
-        },
-        "raptor_node_to_entities": {k: sorted(v) for k, v in (graph.raptor_node_to_entities or {}).items()},
-        "entity_to_raptor_node_ids": {k: sorted(v) for k, v in (graph.entity_to_raptor_node_ids or {}).items()},
-    }
-
-
-def deserialize_graph(payload: Dict[str, Any]) -> TSDGraph:
-    graph = TSDGraph(document_name=str(payload.get("document_name") or ""))
-    for item in payload.get("entities", []) or []:
-        entity = GraphEntity(
-            entity_id=str(item.get("entity_id") or ""),
-            name=str(item.get("name") or ""),
-            entity_type=str(item.get("entity_type") or ""),
-            description=item.get("description"),
-            source_pages=list(item.get("source_pages") or []),
-            source_block_ids=list(item.get("source_block_ids") or []),
-            grounded_texts=list(item.get("grounded_texts") or []),
-            sensitivity=str(item.get("sensitivity") or "internal"),
-            tenant_id=item.get("tenant_id"),
-            embedding=list(item.get("embedding") or []),
-            has_embedding=bool(item.get("has_embedding")),
-        )
-        graph.entities[entity.entity_id] = entity
-        if graph.graph is not None:
-            graph.graph.add_node(entity.entity_id, entity_type=entity.entity_type, entity_obj=entity)
-    for item in payload.get("relations", []) or []:
-        relation = GraphRelation(
-            source_entity_id=str(item.get("source_entity_id") or ""),
-            target_entity_id=str(item.get("target_entity_id") or ""),
-            relation_type=str(item.get("relation_type") or ""),
-            description=item.get("description"),
-            is_encrypted=item.get("is_encrypted"),
-            requires_auth=item.get("requires_auth"),
-            protocol=item.get("protocol"),
-            confidence=float(item.get("confidence") or 0.0),
-            source_pages=list(item.get("source_pages") or []),
-            source_block_ids=list(item.get("source_block_ids") or []),
-            grounded_texts=list(item.get("grounded_texts") or []),
-            sensitivity=str(item.get("sensitivity") or "internal"),
-            tenant_id=item.get("tenant_id"),
-            embedding=list(item.get("embedding") or []),
-            has_embedding=bool(item.get("has_embedding")),
-        )
-        if graph.graph is not None:
-            graph.graph.add_edge(
-                relation.source_entity_id,
-                relation.target_entity_id,
-                relation_type=relation.relation_type,
-                description=relation.description,
-                is_encrypted=relation.is_encrypted,
-                requires_auth=relation.requires_auth,
-                protocol=relation.protocol,
-                confidence=relation.confidence,
-                weight=relation.weight,
-                source_pages=relation.source_pages,
-                source_block_ids=relation.source_block_ids,
-                grounded_texts=relation.grounded_texts,
-                sensitivity=relation.sensitivity,
-                tenant_id=relation.tenant_id,
-                relation_obj=relation,
-            )
-    graph.total_entities = int(payload.get("total_entities") or len(graph.entities))
-    graph.total_relations = int(payload.get("total_relations") or (graph.graph.number_of_edges() if graph.graph is not None else 0))
-    graph.build_stats = dict(payload.get("build_stats") or {})
-    graph.embedding_stats = dict(payload.get("embedding_stats") or {})
-    graph.entity_to_block_ids = {k: set(v or []) for k, v in (payload.get("entity_to_block_ids") or {}).items()}
-    graph.block_id_to_entities = {k: set(v or []) for k, v in (payload.get("block_id_to_entities") or {}).items()}
-    graph.edge_to_block_ids = {
-        tuple(key.split("|", 1)): set(value or [])
-        for key, value in (payload.get("edge_to_block_ids") or {}).items()
-        if "|" in key
-    }
-    graph.raptor_node_to_entities = {k: set(v or []) for k, v in (payload.get("raptor_node_to_entities") or {}).items()}
-    graph.entity_to_raptor_node_ids = {k: set(v or []) for k, v in (payload.get("entity_to_raptor_node_ids") or {}).items()}
-    return graph

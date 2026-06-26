@@ -7,26 +7,15 @@ from sdr.apps.ai.client import get_embedding
 from sdr.apps.ai.engine.classification.query_expansion import expand_retrieval_query_variants
 from sdr.apps.ai.retrieval.core import AdvancedRetrievalConfig, RetrievalCandidate, RetrievalResult, RetrievalStrategy
 from sdr.apps.ai.retrieval.postprocessing.chunk_builders import (
-    build_chunk_block_ids_from_graph,
-    build_chunks_from_graph,
     build_chunks_from_vector,
     collect_block_ids_from_vector,
-    graph_response_to_candidates,
 )
 from sdr.apps.ai.retrieval.postprocessing.evidence_grader import EvidenceGrader
 from sdr.apps.ai.retrieval.postprocessing.reranker import SafeOptionalReranker
 from sdr.apps.ai.retrieval.routing.executors import RetrievalRouteExecutor
 from sdr.apps.ai.retrieval.routing.strategy_selector import RetrievalStrategySelector
-from sdr.apps.ai.retrieval.searchers.graph import (
-    GraphSearchResponse,
-    GraphSearcher,
-    _extract_keywords,
-    _infer_relation_types_from_parameter,
-)
-from sdr.apps.ai.retrieval.searchers.keyword import KeywordSearcher
 from sdr.apps.ai.retrieval.searchers.raptor import RAPTORSearchResponse, RAPTORSearcher
 from sdr.apps.ai.retrieval.searchers.vector import VectorSearchResponse, VectorSearcher
-from sdr.apps.ai.tsd_processing.graph_builder import TSDGraph
 from sdr.apps.ai.tsd_processing.raptor import RAPTORTree
 from sdr.apps.standards.models import CategoryParameterChild, StandardCategory, StandardIngestionJob
 from sdr.apps.standards.utils import build_parameter_analysis_text
@@ -36,28 +25,41 @@ logger = logging.getLogger(__name__)
 
 _VECTOR_TOP_K = 8
 _RAPTOR_TOP_K = 5
-_GRAPH_TOP_K = 6
 _MAX_CONTEXT_CHUNKS = 12
 _EMBEDDING_DIMENSIONS = 1024
+
+# Simple keyword extractor used for BM25 coverage boost — splits on
+# non-alpha characters and drops short / stopword tokens.
+_STOPWORDS = frozenset({
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "may", "might", "must", "shall", "can", "of", "in", "on",
+    "at", "to", "for", "with", "by", "from", "as", "or", "and", "that",
+    "this", "it", "its", "not", "all", "any", "if", "when", "which",
+    "used", "use", "using", "verify", "ensure", "check", "confirm",
+})
+
+
+def _extract_keywords(text: str) -> List[str]:
+    import re as _re
+    words = _re.split(r"[^a-zA-Z]+", text or "")
+    return [w for w in words if len(w) >= 4 and w.lower() not in _STOPWORDS]
+
 
 class HybridRetrievalRouter:
     def __init__(
         self,
         vector_top_k: int = _VECTOR_TOP_K,
         raptor_top_k: int = _RAPTOR_TOP_K,
-        graph_top_k: int = _GRAPH_TOP_K,
         max_context_chunks: int = _MAX_CONTEXT_CHUNKS,
         advanced_config: Optional[AdvancedRetrievalConfig] = None,
     ) -> None:
         self.vector_top_k = vector_top_k
         self.raptor_top_k = raptor_top_k
-        self.graph_top_k = graph_top_k
         self.max_context_chunks = max_context_chunks
         self.advanced_config = advanced_config or AdvancedRetrievalConfig.from_settings()
         self._vector_searcher = VectorSearcher()
         self._raptor_searcher = RAPTORSearcher()
-        self._graph_searcher = GraphSearcher()
-        self._keyword_searcher = KeywordSearcher()
         self._reranker = SafeOptionalReranker(
             enable_cross_encoder=self.advanced_config.enable_cross_encoder_rerank,
         )
@@ -71,7 +73,6 @@ class HybridRetrievalRouter:
         parameter: CategoryParameterChild,
         category: StandardCategory,
         raptor_tree: Optional[RAPTORTree] = None,
-        graph: Optional[TSDGraph] = None,
         ingestion_job: Optional[StandardIngestionJob] = None,
         force_strategy: Optional[RetrievalStrategy] = None,
         override_query_text: Optional[str] = None,
@@ -84,17 +85,11 @@ class HybridRetrievalRouter:
 
         query_embedding = self._generate_query_embedding(query_text)
         keywords = _extract_keywords(query_text)
-        inferred_relations = _infer_relation_types_from_parameter(keywords)
-        query_entities = self._extract_query_entities(query_text)
-        query_type = self._classify_query_type(query_text, keywords, inferred_relations, query_entities)
+
         strategy = force_strategy or self._select_strategy(
             query_text=query_text,
             keywords=keywords,
-            inferred_relations=inferred_relations,
-            query_entities=query_entities,
-            query_type=query_type,
             raptor_tree=raptor_tree,
-            graph=graph,
         )
 
         try:
@@ -109,30 +104,6 @@ class HybridRetrievalRouter:
                 return self._execute_raptor_low(query_text=query_text, raptor_tree=raptor_tree, query_embedding=query_embedding)
             if strategy == RetrievalStrategy.RAPTOR_HIGH:
                 return self._execute_raptor_high(query_text=query_text, raptor_tree=raptor_tree, query_embedding=query_embedding)
-            if strategy == RetrievalStrategy.GRAPH_TRAVERSE:
-                return self._execute_graph_traverse(
-                    query_text=query_text,
-                    graph=graph,
-                    raptor_tree=raptor_tree,
-                    query_embedding=query_embedding,
-                )
-            if strategy == RetrievalStrategy.GRAPH_LOCAL:
-                query_variants = self._get_query_variants(
-                    parameter=parameter,
-                    ingestion_job=ingestion_job,
-                    query_text=query_text,
-                )
-                return self._execute_graph_local(
-                    query_text=query_text,
-                    category=category,
-                    ingestion_job=ingestion_job,
-                    raptor_tree=raptor_tree,
-                    graph=graph,
-                    query_embedding=query_embedding,
-                    keywords=keywords,
-                    query_entities=query_entities,
-                    query_variants=query_variants,
-                )
             query_variants = self._get_query_variants(
                 parameter=parameter,
                 ingestion_job=ingestion_job,
@@ -143,10 +114,8 @@ class HybridRetrievalRouter:
                 category=category,
                 ingestion_job=ingestion_job,
                 raptor_tree=raptor_tree,
-                graph=graph,
                 query_embedding=query_embedding,
                 keywords=keywords,
-                inferred_relations=inferred_relations,
                 query_variants=query_variants,
             )
         except Exception as exc:
@@ -154,24 +123,22 @@ class HybridRetrievalRouter:
             self.logger.exception("HybridRetrievalRouter.retrieve: %s for parameter id=%s", msg, parameter.id)
             return RetrievalResult(error=msg, strategy_used=strategy, query_embedding=query_embedding)
 
-    def _select_strategy(self, **kwargs) -> RetrievalStrategy:
-        kwargs.pop("query_text", None)
-        return self._strategy_helper().select_strategy(
+    def _select_strategy(self, *, query_text: str, keywords: List[str], raptor_tree) -> RetrievalStrategy:
+        from sdr.apps.ai.retrieval.core.types import QueryType
+        # inferred_relations is used only by classify_query_type for REASONING_BASED detection
+        inferred_relations: Set[str] = set()
+        _relation_keywords = {"authenticate", "authorize", "encrypt", "protocol", "communicate", "connect"}
+        for kw in keywords:
+            if kw.lower() in _relation_keywords:
+                inferred_relations.add(kw.lower())
+        qtype = self._strategy_selector.classify_query_type(query_text, keywords, inferred_relations)
+        return self._strategy_selector.select_strategy(
             advanced_config=self.advanced_config,
-            **kwargs,
+            keywords=keywords,
+            inferred_relations=inferred_relations,
+            query_type=qtype,
+            raptor_tree=raptor_tree,
         )
-
-    def _extract_query_entities(self, query_text: str) -> List[str]:
-        return self._strategy_helper().extract_query_entities(query_text, _extract_keywords)
-
-    def _classify_query_type(
-        self,
-        query_text: str,
-        keywords: List[str],
-        inferred_relations: Set[str],
-        query_entities: Optional[List[str]] = None,
-    ):
-        return self._strategy_helper().classify_query_type(query_text, keywords, inferred_relations, query_entities)
 
     def _execute_vector_only(self, **kwargs) -> RetrievalResult:
         return self._executor().execute_vector_only(self, **kwargs)
@@ -182,17 +149,8 @@ class HybridRetrievalRouter:
     def _execute_raptor_high(self, **kwargs) -> RetrievalResult:
         return self._executor().execute_raptor_high(self, **kwargs)
 
-    def _execute_graph_traverse(self, **kwargs) -> RetrievalResult:
-        return self._executor().execute_graph_traverse(self, **kwargs)
-
     def _execute_hybrid(self, **kwargs) -> RetrievalResult:
         return self._executor().execute_hybrid(self, **kwargs)
-
-    def _execute_graph_local(self, **kwargs) -> RetrievalResult:
-        return self._executor().execute_graph_local(self, **kwargs)
-
-    def _graph_response_to_candidates(self, graph_response: GraphSearchResponse) -> List[RetrievalCandidate]:
-        return graph_response_to_candidates(graph_response)
 
     def _classify_candidate_evidence(self, candidate: RetrievalCandidate, *, keywords: List[str]):
         return self._grader().classify_candidate_evidence(candidate, keywords=keywords)
@@ -205,12 +163,6 @@ class HybridRetrievalRouter:
 
     def _build_chunks_from_vector(self, vector_response: VectorSearchResponse) -> List[str]:
         return build_chunks_from_vector(vector_response)
-
-    def _build_chunks_from_graph(self, graph_response: GraphSearchResponse) -> List[str]:
-        return build_chunks_from_graph(graph_response)
-
-    def _build_chunk_block_ids_from_graph(self, graph_response: GraphSearchResponse) -> List[List[str]]:
-        return build_chunk_block_ids_from_graph(graph_response)
 
     def _collect_block_ids_from_vector(self, vector_response: VectorSearchResponse) -> List[str]:
         return collect_block_ids_from_vector(vector_response)
@@ -292,27 +244,6 @@ class HybridRetrievalRouter:
                     block_ids.append(block_id)
         return block_ids
 
-    def _normalize_embedding_diagnostics(self, result: RetrievalResult, graph: Optional[TSDGraph]) -> Dict[str, Any]:
-        metadata = dict(getattr(result, "evidence_metadata", {}) or {})
-        graph_stats = metadata.get("graph_embedding_stats")
-        if not isinstance(graph_stats, dict):
-            graph_stats = getattr(graph, "embedding_stats", {}) or {}
-        normalized = {
-            "graph_embedding_rerank_applied": bool(metadata.get("graph_embedding_rerank_applied", False)),
-            "graph_result_count": int(metadata.get("graph_result_count", len(getattr(getattr(result, "graph_response", None), "results", []) or []))),
-            "graph_embedding_stats": {
-                "entity_attempted": int(graph_stats.get("entity_attempted", 0)),
-                "entity_succeeded": int(graph_stats.get("entity_succeeded", 0)),
-                "entity_failed": int(graph_stats.get("entity_failed", 0)),
-                "relation_attempted": int(graph_stats.get("relation_attempted", 0)),
-                "relation_succeeded": int(graph_stats.get("relation_succeeded", 0)),
-                "relation_failed": int(graph_stats.get("relation_failed", 0)),
-            },
-        }
-        metadata.update(normalized)
-        result.evidence_metadata = metadata
-        return normalized
-
     def _get_query_variants(
         self,
         *,
@@ -342,13 +273,6 @@ class HybridRetrievalRouter:
             self.logger.error("HybridRetrievalRouter._generate_query_embedding: unexpected error: %s", exc)
             return []
 
-    def _strategy_helper(self) -> RetrievalStrategySelector:
-        helper = getattr(self, "_strategy_selector", None)
-        if helper is None:
-            helper = RetrievalStrategySelector()
-            self._strategy_selector = helper
-        return helper
-
     def _executor(self) -> RetrievalRouteExecutor:
         helper = getattr(self, "_route_executor", None)
         if helper is None:
@@ -368,7 +292,6 @@ def retrieve_context_for_parameter(
     parameter: CategoryParameterChild,
     category: StandardCategory,
     raptor_tree: Optional[RAPTORTree] = None,
-    graph: Optional[TSDGraph] = None,
     ingestion_job: Optional[StandardIngestionJob] = None,
     force_strategy: Optional[RetrievalStrategy] = None,
 ) -> RetrievalResult:
@@ -377,7 +300,6 @@ def retrieve_context_for_parameter(
         parameter=parameter,
         category=category,
         raptor_tree=raptor_tree,
-        graph=graph,
         ingestion_job=ingestion_job,
         force_strategy=force_strategy,
     )

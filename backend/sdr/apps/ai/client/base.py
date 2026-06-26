@@ -8,6 +8,7 @@ from langchain_core.messages import SystemMessage, HumanMessage, AIMessage, Base
 class AIProvider(Enum):
     NVIDIA = "nvidia"
     OPENROUTER = "openrouter"
+    ROUTELLM = "routellm"
     LOCAL = "local"
 
 @dataclass

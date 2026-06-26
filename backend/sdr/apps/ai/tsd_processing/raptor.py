@@ -198,6 +198,10 @@ class RAPTORTreeBuilder:
         )
         self._last_summary_concurrency_stats: Dict[str, Any] = {}
         self._last_embed_concurrency_stats: Dict[str, Any] = {}
+        self.leaf_token_budget = int(
+            getattr(settings, "AI_RAPTOR_LEAF_TOKEN_BUDGET", _LEVEL_TOKEN_BUDGETS[0])
+        )
+        self.leaf_max_pages = int(getattr(settings, "AI_RAPTOR_LEAF_MAX_PAGES", 3))
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -435,27 +439,31 @@ class RAPTORTreeBuilder:
                 if block.is_valid() and block.block_id in allowed_block_ids
             ]
 
+            page_entry = {
+                "text": page_text,
+                "block_ids": page_block_ids,
+                "page_number": page.page_number,
+            }
+
             if (
                 section_groups
                 and section_groups[-1]["heading_key"] == heading_key
                 and not heading_key.startswith("__page_")
             ):
-                section_groups[-1]["texts"].append(page_text)
-                section_groups[-1]["block_ids"].extend(page_block_ids)
-                section_groups[-1]["page_numbers"].append(page.page_number)
+                section_groups[-1]["pages"].append(page_entry)
             else:
                 section_groups.append(
                     {
                         "heading_key": heading_key,
-                        "texts": [page_text],
-                        "block_ids": list(page_block_ids),
-                        "page_numbers": [page.page_number],
+                        "pages": [page_entry],
                     }
                 )
 
         leaf_nodes: List[RAPTORNode] = []
         node_idx = 0
-        token_budget = _LEVEL_TOKEN_BUDGETS[0]
+        token_budget = self.leaf_token_budget
+        char_budget = token_budget * 4  # 1 token ≈ 4 chars, matches _split_text_to_budget
+        max_pages = max(1, self.leaf_max_pages)
 
         for group in section_groups:
             heading_key = group["heading_key"]
@@ -463,25 +471,76 @@ class RAPTORTreeBuilder:
                 None if heading_key.startswith("__page_") else heading_key
             )
 
-            group_text = "\n\n".join(group["texts"])
-            group_block_ids = list(dict.fromkeys(group["block_ids"]))
-            group_page_numbers = sorted(set(group["page_numbers"]))
+            # Pack whole pages into each leaf node, up to the token budget,
+            # so a leaf's source_block_ids only ever reflects the pages
+            # actually contributing to its text — never the whole (possibly
+            # many-page) section group. A single page whose own text exceeds
+            # the budget falls back to word-splitting just that page, so the
+            # worst-case over-attribution is bounded to one page instead of
+            # an entire multi-page section.
+            current_texts: List[str] = []
+            current_block_ids: List[str] = []
+            current_page_numbers: List[int] = []
+            current_char_count = 0
 
-            # Split into sub-chunks if the group exceeds the token budget
-            sub_chunks = _split_text_to_budget(group_text, token_budget)
-
-            for chunk_text in sub_chunks:
+            def flush():
+                nonlocal node_idx
+                if not current_texts:
+                    return
                 leaf_nodes.append(
                     RAPTORNode(
                         node_id=f"level0_node{node_idx}",
                         level=0,
-                        text=chunk_text,
-                        source_block_ids=group_block_ids,
-                        page_numbers=group_page_numbers,
+                        text="\n\n".join(current_texts),
+                        source_block_ids=list(dict.fromkeys(current_block_ids)),
+                        page_numbers=sorted(set(current_page_numbers)),
                         section_heading=section_heading,
                     )
                 )
                 node_idx += 1
+
+            for page_entry in group["pages"]:
+                page_text = page_entry["text"]
+                page_len = len(page_text)
+
+                if page_len > char_budget:
+                    # This single page alone exceeds the budget — flush
+                    # whatever's pending, then split this page on its own.
+                    flush()
+                    current_texts, current_block_ids, current_page_numbers = [], [], []
+                    current_char_count = 0
+                    for chunk_text in _split_text_to_budget(page_text, token_budget):
+                        leaf_nodes.append(
+                            RAPTORNode(
+                                node_id=f"level0_node{node_idx}",
+                                level=0,
+                                text=chunk_text,
+                                source_block_ids=list(dict.fromkeys(page_entry["block_ids"])),
+                                page_numbers=[page_entry["page_number"]],
+                                section_heading=section_heading,
+                            )
+                        )
+                        node_idx += 1
+                    continue
+
+                # Flush on char budget OR a hard page-count cap — the latter
+                # guards against sparse, block-dense pages (e.g. tables with
+                # many short labelled fields) that could otherwise pack well
+                # past a sane page count under char budget alone.
+                if current_texts and (
+                    current_char_count + page_len > char_budget
+                    or len(current_page_numbers) >= max_pages
+                ):
+                    flush()
+                    current_texts, current_block_ids, current_page_numbers = [], [], []
+                    current_char_count = 0
+
+                current_texts.append(page_text)
+                current_block_ids.extend(page_entry["block_ids"])
+                current_page_numbers.append(page_entry["page_number"])
+                current_char_count += page_len
+
+            flush()
 
         self.logger.debug(
             "RAPTORTreeBuilder._build_leaf_nodes: created %d leaf node(s) "

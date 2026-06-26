@@ -7,6 +7,7 @@ from sdr.apps.ai.client.base import AIResponse, AIProvider
 from sdr.apps.ai.client.llm_logger import log_llm_interaction
 from sdr.apps.ai.client.nvidia.service import NVIDIAAIService
 from sdr.apps.ai.client.openrouter.service import OpenRouterAIService
+from sdr.apps.ai.client.routellm.service import RouteLLMAIService
 from sdr.apps.ai.client.session import merge_request_metadata
 
 logger = logging.getLogger(__name__)
@@ -15,6 +16,7 @@ class AIServiceManager:
     def __init__(self):
         self.nvidia_service = None
         self.openrouter_service = None
+        self.routellm_service = None
         self._initialize_services()
         
 
@@ -33,6 +35,13 @@ class AIServiceManager:
             logger.info("AIServiceManager: Initialized OpenRouter service")
         else:
             logger.warning("AIServiceManager: OpenRouter API Key missing. Service unavailable.")
+            
+        routellm = RouteLLMAIService()
+        if routellm.is_available():
+            self.routellm_service = routellm
+            logger.info("AIServiceManager: Initialized RouteLLM service")
+        else:
+            logger.warning("AIServiceManager: RouteLLM API Key missing. Service unavailable.")
 
     def _get_model_setting(self, component: str) -> Optional[str]:
         models = {
@@ -50,6 +59,7 @@ class AIServiceManager:
             'long_context': getattr(settings, 'AI_MODEL_LONG_CONTEXT', 'meta/llama-3.1-70b-instruct'),
             'parent_applicability': getattr(settings, 'AI_MODEL_PARENT_APPLICABILITY', 'meta/llama-3.1-8b-instruct'),
             'query_expansion': getattr(settings, 'AI_MODEL_QUERY_EXPANSION', 'meta/llama-3.1-8b-instruct'),
+            'eval_judge': getattr(settings, 'AI_MODEL_EVAL_JUDGE', 'meta/llama-3.1-70b-instruct'),
         }
         return models.get(component)
 
@@ -63,12 +73,16 @@ class AIServiceManager:
             provider_str = provider_str.strip().lower()
             if provider_str == 'openrouter':
                 return AIProvider.OPENROUTER
+            elif provider_str == 'routellm':
+                return AIProvider.ROUTELLM
             elif provider_str == 'nvidia':
                 return AIProvider.NVIDIA
 
         return AIProvider.NVIDIA
 
     def _get_service_for_provider(self, provider: AIProvider):
+        if provider == AIProvider.ROUTELLM and self.routellm_service:
+            return self.routellm_service
         if provider == AIProvider.OPENROUTER and self.openrouter_service:
             return self.openrouter_service
         if provider == AIProvider.NVIDIA and self.nvidia_service:
@@ -77,6 +91,8 @@ class AIServiceManager:
         # Fallback to whichever is available
         if self.openrouter_service:
             return self.openrouter_service
+        if self.routellm_service:
+            return self.routellm_service
         if self.nvidia_service:
             return self.nvidia_service
         return None
@@ -89,6 +105,7 @@ class AIServiceManager:
                 provider_str = provider_str.strip().lower()
                 if (
                     (provider == AIProvider.OPENROUTER and provider_str == "openrouter")
+                    or (provider == AIProvider.ROUTELLM and provider_str == "routellm")
                     or (provider == AIProvider.NVIDIA and provider_str == "nvidia")
                 ):
                     return model_str.strip()
@@ -100,6 +117,10 @@ class AIServiceManager:
             if component in {"standard_extraction"}:
                 return getattr(settings, 'OPENROUTER_FAST_MODEL', 'meta-llama/llama-3.1-8b-instruct')
             return getattr(settings, 'OPENROUTER_DEFAULT_MODEL', 'meta-llama/llama-3.1-70b-instruct')
+        if provider == AIProvider.ROUTELLM:
+            if component in {"standard_extraction"}:
+                return getattr(settings, 'ROUTELLM_FAST_MODEL', 'gpt-4o-mini')
+            return getattr(settings, 'ROUTELLM_DEFAULT_MODEL', 'gpt-4o')
         
         return getattr(settings, 'DEFAULT_LLM_MODEL', 'meta/llama-3.1-70b-instruct')
 
@@ -187,9 +208,13 @@ class AIServiceManager:
                 return err()
             return self._build_error_response(target_provider, "No AI providers available")
 
-        actual_provider = (
-            AIProvider.OPENROUTER if isinstance(service, OpenRouterAIService) else AIProvider.NVIDIA
-        )
+        if isinstance(service, OpenRouterAIService):
+            actual_provider = AIProvider.OPENROUTER
+        elif isinstance(service, RouteLLMAIService): # Need to import RouteLLMAIService if not already, but it's at the top
+            actual_provider = AIProvider.ROUTELLM
+        else:
+            actual_provider = AIProvider.NVIDIA
+
         request_kwargs: Dict[str, Any] = dict(kwargs)
         if args:
             request_kwargs["messages"] = args[0]

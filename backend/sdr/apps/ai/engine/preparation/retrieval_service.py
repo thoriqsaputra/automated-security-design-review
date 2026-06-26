@@ -16,12 +16,9 @@ from sdr.apps.ai.tsd_processing.content_filter import (
     iter_filtered_scope_parts,
 )
 from sdr.apps.ai.tsd_processing.raptor import RAPTORTree, RAPTORTreeBuilder
-from sdr.apps.ai.tsd_processing.graph_builder import TSDGraph, TSDGraphBuilder
 from sdr.apps.ai.tsd_processing.prepared_view import prepare_tsd_view
-from sdr.apps.ai.tsd_processing.raptor_graph_linker import RaptorGraphLinker
 from sdr.apps.ai.retrieval.core import RetrievalCandidate, RetrievalResult
 from sdr.apps.ai.retrieval.routing.router import HybridRetrievalRouter
-from sdr.apps.ai.retrieval.searchers.graph import _extract_keywords
 from sdr.apps.ai.utils.parsing import strip_thinking_block
 from sdr.apps.ai.client import chat_completion
 from sdr.apps.standards.models import (
@@ -47,14 +44,10 @@ class RetrievalService:
     def __init__(
         self,
         raptor_builder: Optional[RAPTORTreeBuilder] = None,
-        graph_builder: Optional[TSDGraphBuilder] = None,
         router: Optional[HybridRetrievalRouter] = None,
-        linker: Optional[RaptorGraphLinker] = None,
     ) -> None:
         self.raptor_builder = raptor_builder or RAPTORTreeBuilder()
-        self.graph_builder = graph_builder or TSDGraphBuilder()
         self.router = router or HybridRetrievalRouter()
-        self.linker = linker or RaptorGraphLinker()
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     def get_retrieve_many_max_concurrency(self, override: Optional[int] = None) -> int:
@@ -83,47 +76,18 @@ class RetrievalService:
         progress_callbacks = progress_callbacks or {}
         total_started = time.monotonic()
         prepared_view = prepare_tsd_view(tsd_document)
-        with ThreadPoolExecutor(max_workers=2, thread_name_prefix="ThreadPoolExecutor-6") as executor:
-            raptor_future = executor.submit(
-                self._build_raptor_tree,
-                tsd_document,
-                progress_callbacks.get("raptor"),
-                prepared_view,
-            )
-            graph_future = executor.submit(
-                self._build_graph,
-                tsd_document,
-                progress_callbacks.get("graph"),
-                prepared_view,
-            )
-            raptor_tree = raptor_future.result()
-            tsd_graph = graph_future.result()
-
-        linking_seconds = 0.0
-        if tsd_graph and not tsd_graph.is_empty() and raptor_tree and not raptor_tree.is_empty():
-            try:
-                link_started = time.monotonic()
-                self.linker.link(tsd_graph, raptor_tree)
-                linking_seconds = time.monotonic() - link_started
-            except Exception:
-                self.logger.exception("RetrievalService.build_indexes: failed to build RAPTOR-graph cross indexes")
-
+        raptor_tree = self._build_raptor_tree(
+            tsd_document,
+            progress_callbacks.get("raptor"),
+            prepared_view,
+        )
         total_seconds = time.monotonic() - total_started
-        graph_build_stats = getattr(tsd_graph, "build_stats", {}) or {}
         self.logger.info(
-            "RetrievalService.build_indexes: timing total=%.4fs raptor_total=%.4fs graph_extraction_merge=%.4fs graph_entity_embedding=%.4fs graph_relation_embedding=%.4fs raptor_graph_linking=%.4fs",
+            "RetrievalService.build_indexes: timing total=%.4fs raptor_total=%.4fs",
             total_seconds,
             float(getattr(raptor_tree, "build_seconds", 0.0) or 0.0),
-            float(graph_build_stats.get("extraction_merge_seconds", 0.0) or 0.0),
-            float(graph_build_stats.get("entity_embedding_seconds", 0.0) or 0.0),
-            float(graph_build_stats.get("relation_embedding_seconds", 0.0) or 0.0),
-            linking_seconds,
         )
-
-        return RetrievalIndexes(
-            raptor_tree=raptor_tree,
-            tsd_graph=tsd_graph,
-        )
+        return RetrievalIndexes(raptor_tree=raptor_tree)
 
     def retrieve_for_parameter(
         self,
@@ -145,28 +109,9 @@ class RetrievalService:
             parameter=parameter,
             category=category,
             raptor_tree=indexes.raptor_tree,
-            graph=indexes.tsd_graph,
             ingestion_job=ingestion_job,
             override_query_text=override_query_text,
         )
-        if hasattr(self.router, "_normalize_embedding_diagnostics"):
-            diagnostics = self.router._normalize_embedding_diagnostics(
-                result=result,
-                graph=indexes.tsd_graph,
-            )
-        else:
-            diagnostics = {
-                "graph_embedding_rerank_applied": False,
-                "graph_result_count": 0,
-                "graph_embedding_stats": {
-                    "entity_succeeded": 0,
-                    "entity_attempted": 0,
-                    "entity_failed": 0,
-                    "relation_succeeded": 0,
-                    "relation_attempted": 0,
-                    "relation_failed": 0,
-                },
-            }
 
         # If router selected VECTOR_ONLY and there is no RAPTOR/Graph index
         # available, avoid letting parameter-baseline text (vector matches)
@@ -177,7 +122,6 @@ class RetrievalService:
             if (
                 result.strategy_used == result.strategy_used.VECTOR_ONLY
                 and (not indexes.raptor_tree or indexes.raptor_tree.is_empty())
-                and (not indexes.tsd_graph or indexes.tsd_graph.is_empty())
             ):
                 if tsd_document is not None and getattr(tsd_document, "full_text", None):
                     from sdr.apps.ai.utils.chunking import chunk_text_with_context
@@ -228,21 +172,11 @@ class RetrievalService:
         strategy_value = getattr(result.strategy_used, "value", result.strategy_used)
         self.logger.info(
             "RetrievalService.retrieve_for_parameter: [SUCCESS] "
-            "parameter id=%s strategy=%s context_chunks=%d diagram_block_ids=%d "
-            "graph_embed_rerank=%s graph_result_count=%d "
-            "entity_embed=%d/%d(failed=%d) relation_embed=%d/%d(failed=%d)",
+            "parameter id=%s strategy=%s context_chunks=%d diagram_block_ids=%d",
             parameter.id,
             strategy_value if strategy_value else "unknown",
             len(result.context_chunks or []),
             len(result.get_diagram_block_ids() or []),
-            diagnostics["graph_embedding_rerank_applied"],
-            diagnostics["graph_result_count"],
-            diagnostics["graph_embedding_stats"]["entity_succeeded"],
-            diagnostics["graph_embedding_stats"]["entity_attempted"],
-            diagnostics["graph_embedding_stats"]["entity_failed"],
-            diagnostics["graph_embedding_stats"]["relation_succeeded"],
-            diagnostics["graph_embedding_stats"]["relation_attempted"],
-            diagnostics["graph_embedding_stats"]["relation_failed"],
         )
 
         return result
@@ -485,35 +419,3 @@ class RetrievalService:
                 )
             return None
 
-    def _build_graph(self, tsd_document: TSDDocument, progress_callback=None, prepared_view=None) -> Optional[TSDGraph]:
-        try:
-            self.logger.info(
-                "RetrievalService._build_graph: building for '%s'",
-                tsd_document.document_name,
-            )
-            graph = self.graph_builder.build(tsd_document, progress_callback=progress_callback, prepared_view=prepared_view)
-            if graph.is_empty():
-                self.logger.warning(
-                    "RetrievalService._build_graph: empty graph for '%s'",
-                    tsd_document.document_name,
-                )
-                return None
-            self.logger.info(
-                "RetrievalService._build_graph: [SUCCESS] %d entity(ies) %d relation(s)",
-                graph.total_entities,
-                graph.total_relations,
-            )
-            return graph
-        except Exception as exc:
-            self.logger.exception(
-                "RetrievalService._build_graph: failed: %s", exc
-            )
-            if progress_callback:
-                progress_callback(
-                    {
-                        "status": "failed",
-                        "progress_percent": 100,
-                        "current_step": "GraphRAG index failed",
-                    }
-                )
-            return None

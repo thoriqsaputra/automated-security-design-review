@@ -789,9 +789,9 @@ class PersistenceService:
         if payload.get("citation_grade", True) is False:
             return False
         evidence_kind = str(payload.get("evidence_kind") or "").lower()
-        if evidence_kind in {"graph_summary", "baseline_requirement"}:
+        if evidence_kind in {"baseline_requirement"}:
             return False
-        return not str(block_id).startswith("graph_summary_")
+        return True
 
     def _normalize_quote_text(self, value: Any) -> str:
         return re.sub(r"\s+", " ", str(value or "")).strip().lower()
