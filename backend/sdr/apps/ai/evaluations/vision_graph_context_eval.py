@@ -109,13 +109,19 @@ def _draw_box(draw, x, y, label, font):
     draw.text((x + (BOX_W - tw) / 2, y + (BOX_H - th) / 2), label, fill="black", font=font)
 
 
-def _draw_arrow(draw, x1, x2, y_base):
+def _draw_arrow(draw, x1, x2, y_base, font, label=None):
     mid = y_base + BOX_H / 2
     draw.line([x1, mid, x2, mid], fill="black", width=2)
     draw.polygon([(x2, mid - 6), (x2, mid + 6), (x2 + 10, mid)], fill="black")
+    if label:
+        lx = (x1 + x2) / 2
+        bbox = draw.textbbox((0, 0), label, font=font)
+        tw = bbox[2] - bbox[0]
+        draw.text((lx - tw / 2, mid - 18), label, fill="#cc0000", font=font)
 
 
-def _draw_network_diagram(stages):
+def _draw_network_diagram(stages, arrow_labels=None):
+    """arrow_labels: dict mapping (src_idx, dst_idx) → label string."""
     img = Image.new("RGB", CANVAS_SIZE, "white")
     draw = ImageDraw.Draw(img)
     font = _font()
@@ -126,26 +132,31 @@ def _draw_network_diagram(stages):
         _draw_box(draw, x, Y, label, font)
         x += BOX_W + GAP
     for i in range(len(positions) - 1):
-        _draw_arrow(draw, positions[i] + BOX_W, positions[i + 1], Y)
+        arrow_label = (arrow_labels or {}).get(i)
+        _draw_arrow(draw, positions[i] + BOX_W, positions[i + 1], Y, font, label=arrow_label)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
-# Synthetic ambiguous scenarios: the image shows unlabeled component flows;
-# security properties are ONLY available in the graph context strings below.
+# Synthetic scenarios: images have protocol labels ON the arrows so the Hunter
+# has visual evidence to cite. Graph context is consistent with those labels and
+# adds semantic enrichment (component descriptions, relation types). Baseline
+# uses empty tsd_context — forces the Hunter to work from image alone.
+# This isolates graph context's contribution to grounding quality.
 SYNTHETIC_SCENARIOS = [
     {
         "diagram_id": "syn_http_unencrypted",
-        "stages": ["Client App", "API Gateway", "Backend Service"],
+        "stages": ["Client App", "API Gateway", "Backend"],
+        # Arrow 0: Client App→API Gateway labeled "HTTP"; Arrow 1: API Gateway→Backend labeled "HTTP"
+        "arrow_labels": {0: "HTTP", 1: "HTTP"},
         "caption": "Figure 1: API Communication Flow",
         "surrounding_text": "",
         "baseline_context": "",
-        # Graph context reveals HTTP (unencrypted) — should trigger not_met for TLS requirement
         "graph_context": (
             "Component relationships relevant to this diagram:\n"
             "- API Gateway (service): Routes client requests to backend services\n"
-            "    → communicates_with → Backend Service [protocol=HTTP, encrypted=no, auth=yes]\n"
+            "    → communicates_with → Backend [protocol=HTTP, encrypted=no, auth=yes]\n"
             "- Client App (client): Mobile application\n"
             "    → connects_to → API Gateway [protocol=HTTP, encrypted=no]"
         ),
@@ -153,14 +164,15 @@ SYNTHETIC_SCENARIOS = [
             ordinal=1,
             stable_key="SYN-TLS-1",
             requirement_text="Verify that all communication between components uses encrypted channels (TLS/HTTPS). Unencrypted HTTP must not be used for any data in transit.",
-            verification_hint="Look for protocol labels on arrows or connections. HTTP (non-TLS) connections are a finding.",
+            verification_hint="Look for protocol labels on arrows. HTTP (non-TLS) connections are a finding.",
         ),
-        "expected_graph_verdict": "not_met",
-        "expected_baseline_verdict": None,  # unclear from image alone
+        "expected_verdict": "not_met",
     },
     {
         "diagram_id": "syn_auth_missing",
         "stages": ["Mobile App", "User Service", "Database"],
+        # Arrow 0: Mobile→UserService labeled "HTTPS no-auth"; Arrow 1: UserService→Database labeled "TCP no-auth"
+        "arrow_labels": {0: "HTTPS no-auth", 1: "TCP no-auth"},
         "caption": "Figure 2: User Data Flow",
         "surrounding_text": "",
         "baseline_context": "",
@@ -175,15 +187,16 @@ SYNTHETIC_SCENARIOS = [
         "requirement": SimpleNamespace(
             ordinal=2,
             stable_key="SYN-AUTH-1",
-            requirement_text="Verify that all inter-service connections require authentication. Unauthenticated service-to-service calls must not be permitted.",
-            verification_hint="Check whether auth=yes appears on all inter-service connections.",
+            requirement_text="Verify that all inter-service connections require mutual authentication. Unauthenticated service-to-service calls must not be permitted.",
+            verification_hint="Look for auth labels on arrows. 'no-auth' connections are a finding.",
         ),
-        "expected_graph_verdict": "not_met",
-        "expected_baseline_verdict": None,
+        "expected_verdict": "not_met",
     },
     {
         "diagram_id": "syn_fully_secured",
         "stages": ["Client", "TLS Proxy", "App Server", "DB"],
+        # All arrows labeled HTTPS/TLS
+        "arrow_labels": {0: "HTTPS", 1: "TLS 1.3", 2: "TLS 1.2"},
         "caption": "Figure 3: Secured Service Topology",
         "surrounding_text": "",
         "baseline_context": "",
@@ -200,10 +213,9 @@ SYNTHETIC_SCENARIOS = [
             ordinal=3,
             stable_key="SYN-TLS-2",
             requirement_text="Verify that all communication between components uses encrypted channels (TLS/HTTPS). Unencrypted HTTP must not be used for any data in transit.",
-            verification_hint="Look for protocol labels. TLS/HTTPS on all connections is required.",
+            verification_hint="Look for protocol labels on arrows. HTTPS/TLS on all connections means the requirement is met.",
         ),
-        "expected_graph_verdict": "met",
-        "expected_baseline_verdict": None,
+        "expected_verdict": "met",
     },
 ]
 
@@ -316,9 +328,9 @@ def main():
                 "graph_context_chars": len(graph_ctx),
             })
 
-    # --- Synthetic ambiguous diagrams (always run, no DB needed) ---
+    # --- Synthetic diagrams with labeled arrows (always run, no DB needed) ---
     for scenario in SYNTHETIC_SCENARIOS:
-        image_b64 = _draw_network_diagram(scenario["stages"])
+        image_b64 = _draw_network_diagram(scenario["stages"], arrow_labels=scenario.get("arrow_labels"))
         diagram = DiagramInput(
             diagram_id=scenario["diagram_id"],
             image_b64=image_b64,
@@ -327,13 +339,13 @@ def main():
             surrounding_text=scenario["surrounding_text"],
         )
         reqs = [scenario["requirement"]]
-        logger.info(f"[Synthetic] {scenario['diagram_id']}")
+        logger.info(f"[Synthetic] {scenario['diagram_id']} (expected={scenario['expected_verdict']})")
         baseline = _run_one(service, diagram, reqs, "baseline", scenario["baseline_context"])
         enhanced = _run_one(service, diagram, reqs, "graph_enhanced", scenario["graph_context"])
         results.append({
             "type": "synthetic",
             "diagram_id": scenario["diagram_id"],
-            "expected_graph_verdict": scenario["expected_graph_verdict"],
+            "expected_verdict": scenario["expected_verdict"],
             "baseline": baseline,
             "graph_enhanced": enhanced,
             "verdict_agreement": baseline["verdict"] == enhanced["verdict"],
@@ -356,10 +368,14 @@ def main():
 
     verdict_agreement_rate = sum(1 for r in results if r.get("verdict_agreement")) / len(results) if results else 0
 
-    # For synthetic: check how often graph-enhanced gets the expected verdict
-    synthetic = [r for r in results if r["type"] == "synthetic" and "expected_graph_verdict" in r]
+    # For synthetic: check how often each condition matches the expected verdict
+    synthetic = [r for r in results if r["type"] == "synthetic" and "expected_verdict" in r]
+    baseline_accuracy_on_synthetic = (
+        sum(1 for r in synthetic if r["baseline"]["verdict"] == r["expected_verdict"])
+        / len(synthetic) if synthetic else None
+    )
     graph_accuracy_on_synthetic = (
-        sum(1 for r in synthetic if r["graph_enhanced"]["verdict"] == r["expected_graph_verdict"])
+        sum(1 for r in synthetic if r["graph_enhanced"]["verdict"] == r["expected_verdict"])
         / len(synthetic) if synthetic else None
     )
 
@@ -368,7 +384,8 @@ def main():
         "real_diagrams": sum(1 for r in results if r["type"] == "real"),
         "synthetic_diagrams": sum(1 for r in results if r["type"] == "synthetic"),
         "verdict_agreement_rate": round(verdict_agreement_rate, 4),
-        "graph_accuracy_on_synthetic_expected": graph_accuracy_on_synthetic,
+        "baseline_accuracy_on_synthetic": baseline_accuracy_on_synthetic,
+        "graph_accuracy_on_synthetic": graph_accuracy_on_synthetic,
         "baseline": _agg("baseline"),
         "graph_enhanced": _agg("graph_enhanced"),
         "results": results,
@@ -384,11 +401,13 @@ def main():
         json.dump(summary, f, indent=2)
 
     logger.info("Vision graph context eval complete.")
-    logger.info(f"  Baseline faithfulness_det:      {summary['baseline'].get('faithfulness_deterministic')}")
+    logger.info(f"  Baseline faithfulness_det:       {summary['baseline'].get('faithfulness_deterministic')}")
     logger.info(f"  Graph-enhanced faithfulness_det: {summary['graph_enhanced'].get('faithfulness_deterministic')}")
     logger.info(f"  Verdict agreement rate: {verdict_agreement_rate:.2f}")
+    if baseline_accuracy_on_synthetic is not None:
+        logger.info(f"  Baseline accuracy on synthetic: {baseline_accuracy_on_synthetic:.2f}")
     if graph_accuracy_on_synthetic is not None:
-        logger.info(f"  Graph accuracy on synthetic expected verdicts: {graph_accuracy_on_synthetic:.2f}")
+        logger.info(f"  Graph accuracy on synthetic:    {graph_accuracy_on_synthetic:.2f}")
     logger.info(f"Results saved to {output_path}")
 
 

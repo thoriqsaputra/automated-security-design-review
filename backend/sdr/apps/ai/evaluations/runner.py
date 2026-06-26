@@ -113,11 +113,10 @@ def evaluate_question(
     chunk_block_ids = result.context_chunk_block_ids or [[] for _ in result.context_chunks]
     retrieved_block_ids = sorted({bid for group in chunk_block_ids for bid in group})
     retrieved_context = "\n---\n".join(result.context_chunks)
-    retrieved_context_blocks = {
-        bid: text
-        for text, group in zip(result.context_chunks, chunk_block_ids)
-        for bid in group
-    }
+    # Use chunk-index keys so RAPTOR leaf + summary nodes sharing the same
+    # block_ids don't overwrite each other — faithfulness checks need each
+    # chunk's own text, not whichever summary happened to be written last.
+    retrieved_context_blocks = {i: text for i, text in enumerate(result.context_chunks)}
 
     # 2. Answer (Hunter)
     answer_prompt = (

@@ -75,13 +75,8 @@ def _run_condition(router, child, category, ingestion_job, raptor_indexes, use_g
     }
     result = router.retrieve(**retrieve_kwargs)
 
-    chunk_block_ids = result.context_chunk_block_ids or [[] for _ in result.context_chunks]
     retrieved_context = "\n---\n".join(result.context_chunks)
-    retrieved_context_blocks = {
-        bid: text
-        for text, group in zip(result.context_chunks, chunk_block_ids)
-        for bid in group
-    }
+    retrieved_context_blocks = {i: text for i, text in enumerate(result.context_chunks)}
 
     answer_prompt = ANSWER_PROMPT_TEMPLATE.format(
         context=retrieved_context, question=child.requirement_text
