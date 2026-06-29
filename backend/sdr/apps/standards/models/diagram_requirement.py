@@ -49,6 +49,10 @@ class CategoryDiagramRequirement(Base, StandardsBigIntBase):
     # Parent section title (e.g. "V1 Architecture")
     parent_section: Mapped[str] = mapped_column(String(255))
 
+    # Which diagram type this requirement targets: "data_flow", "sequence", or "architecture".
+    # Empty string means the LLM did not return a valid type.
+    diagram_type: Mapped[str] = mapped_column(String(64), server_default="", default="")
+
     # Ordering within the category baseline
     ordinal: Mapped[int] = mapped_column(Integer, default=0)
 

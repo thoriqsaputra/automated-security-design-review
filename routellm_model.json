@@ -1,0 +1,803 @@
+[
+  {
+    "model_name": "route-llm",
+    "price": {
+      "input": "$3.00/M",
+      "output": "$15.00/M"
+    }
+  },
+  {
+    "model_name": "gpt-4o",
+    "price": {
+      "input": "$2.50/M",
+      "output": "$10.00/M"
+    }
+  },
+  {
+    "model_name": "gpt-4o-mini",
+    "price": {
+      "input": "$0.15/M",
+      "output": "$0.60/M"
+    }
+  },
+  {
+    "model_name": "gpt-audio-1.5",
+    "price": {
+      "input_token": "$0.000000",
+      "output_token": "$0.000000",
+      "context_length": "$1280.00",
+      "max_completion_tokens": "$163.84"
+    }
+  },
+  {
+    "model_name": "gpt-audio-mini",
+    "price": {
+      "input_token": "$0.000000",
+      "output_token": "$0.000000",
+      "context_length": "$1280.00",
+      "max_completion_tokens": "$163.84"
+    }
+  },
+  {
+    "model_name": "o4-mini",
+    "price": {
+      "input": "$1.10/M",
+      "output": "$4.40/M"
+    }
+  },
+  {
+    "model_name": "o3-pro",
+    "price": {
+      "input": "$20.00/M",
+      "output": "$40.00/M"
+    }
+  },
+  {
+    "model_name": "o3",
+    "price": {
+      "input": "$2.00/M",
+      "output": "$8.00/M"
+    }
+  },
+  {
+    "model_name": "o3-mini",
+    "price": {
+      "input": "$1.10/M",
+      "output": "$4.40/M"
+    }
+  },
+  {
+    "model_name": "gpt-4.1",
+    "price": {
+      "input": "$2.00/M",
+      "output": "$8.00/M"
+    }
+  },
+  {
+    "model_name": "gpt-4.1-mini",
+    "price": {
+      "input": "$0.40/M",
+      "output": "$1.60/M"
+    }
+  },
+  {
+    "model_name": "gpt-4.1-nano",
+    "price": {
+      "input": "$0.10/M",
+      "output": "$0.40/M"
+    }
+  },
+  {
+    "model_name": "gpt-5",
+    "price": {
+      "input": "$1.25/M",
+      "output": "$10.00/M"
+    }
+  },
+  {
+    "model_name": "gpt-5-mini",
+    "price": {
+      "input": "$0.25/M",
+      "output": "$2.00/M"
+    }
+  },
+  {
+    "model_name": "gpt-5-nano",
+    "price": {
+      "input": "$0.05/M",
+      "output": "$0.40/M"
+    }
+  },
+  {
+    "model_name": "gpt-5-codex",
+    "price": {
+      "input": "$1.25/M",
+      "output": "$10.00/M"
+    }
+  },
+  {
+    "model_name": "gpt-5.1",
+    "price": {
+      "input": "$1.25/M",
+      "output": "$10.00/M"
+    }
+  },
+  {
+    "model_name": "gpt-5.1-codex",
+    "price": {
+      "input": "$1.25/M",
+      "output": "$10.00/M"
+    }
+  },
+  {
+    "model_name": "gpt-5.1-chat-latest",
+    "price": {
+      "input": "$1.25/M",
+      "output": "$10.00/M"
+    }
+  },
+  {
+    "model_name": "gpt-5.2",
+    "price": {
+      "input": "$1.75/M",
+      "output": "$14.00/M"
+    }
+  },
+  {
+    "model_name": "gpt-5.2-chat-latest",
+    "price": {
+      "input": "$1.75/M",
+      "output": "$14.00/M"
+    }
+  },
+  {
+    "model_name": "gpt-5.2-codex",
+    "price": {
+      "input": "$1.75/M",
+      "output": "$14.00/M"
+    }
+  },
+  {
+    "model_name": "gpt-5.3-chat-latest",
+    "price": {
+      "input": "$1.75/M",
+      "output": "$14.00/M"
+    }
+  },
+  {
+    "model_name": "gpt-5.3-codex",
+    "price": {
+      "input": "$1.75/M",
+      "output": "$14.00/M"
+    }
+  },
+  {
+    "model_name": "gpt-5.4",
+    "price": {
+      "input": "$2.50/M",
+      "output": "$15.00/M"
+    }
+  },
+  {
+    "model_name": "gpt-5.4-nano",
+    "price": {
+      "input": "$0.20/M",
+      "output": "$1.25/M"
+    }
+  },
+  {
+    "model_name": "gpt-5.4-mini",
+    "price": {
+      "input": "$0.75/M",
+      "output": "$4.50/M"
+    }
+  },
+  {
+    "model_name": "gpt-5.5",
+    "price": {
+      "input": "$5.00/M",
+      "output": "$30.00/M"
+    }
+  },
+  {
+    "model_name": "chat-latest",
+    "price": {
+      "input": "$5.00/M",
+      "output": "$30.00/M"
+    }
+  },
+  {
+    "model_name": "openai/gpt-oss-120b",
+    "price": {
+      "input": "$0.08/M",
+      "output": "$0.44/M"
+    }
+  },
+  {
+    "model_name": "claude-opus-4-1-20250805",
+    "price": {
+      "input": "$15.00/M",
+      "output": "$75.00/M"
+    }
+  },
+  {
+    "model_name": "claude-sonnet-4-5-20250929",
+    "price": {
+      "input": "$3.00/M",
+      "output": "$15.00/M"
+    }
+  },
+  {
+    "model_name": "claude-haiku-4-5-20251001",
+    "price": {
+      "input": "$1.00/M",
+      "output": "$5.00/M"
+    }
+  },
+  {
+    "model_name": "claude-opus-4-5-20251101",
+    "price": {
+      "input": "$5.00/M",
+      "output": "$25.00/M"
+    }
+  },
+  {
+    "model_name": "claude-opus-4-6",
+    "price": {
+      "input": "$5.00/M",
+      "output": "$25.00/M"
+    }
+  },
+  {
+    "model_name": "claude-opus-4-7",
+    "price": {
+      "input": "$5.00/M",
+      "output": "$25.00/M"
+    }
+  },
+  {
+    "model_name": "claude-opus-4-8",
+    "price": {
+      "input": "$5.00/M",
+      "output": "$25.00/M"
+    }
+  },
+  {
+    "model_name": "claude-sonnet-4-6",
+    "price": {
+      "input": "$3.00/M",
+      "output": "$15.00/M"
+    }
+  },
+  {
+    "model_name": "meta-llama/Llama-4-Maverick-17B-128E-Instruct-FP8",
+    "price": {
+      "input": "$0.14/M",
+      "output": "$0.59/M"
+    }
+  },
+  {
+    "model_name": "meta-llama/Meta-Llama-3.1-8B-Instruct",
+    "price": {
+      "input": "$0.02/M",
+      "output": "$0.05/M"
+    }
+  },
+  {
+    "model_name": "meta-llama/Meta-Llama-3.3-70B-Instruct",
+    "price": {
+      "input": "$0.59/M",
+      "output": "$0.79/M"
+    }
+  },
+  {
+    "model_name": "gemini-2.5-pro",
+    "price": {
+      "input": "$1.25/M",
+      "output": "$10.00/M"
+    }
+  },
+  {
+    "model_name": "gemini-2.5-flash",
+    "price": {
+      "input": "$0.30/M",
+      "output": "$2.50/M"
+    }
+  },
+  {
+    "model_name": "gemini-2.5-flash-image",
+    "price": {
+      "input": "$0.30/M",
+      "output": "$30.00/M"
+    }
+  },
+  {
+    "model_name": "gemini-2.5-flash-preview-tts",
+    "price": {
+      "input_token": "$0.000000",
+      "output_token": "N/A",
+      "context_length": "$10485.76",
+      "max_completion_tokens": "$655.36"
+    }
+  },
+  {
+    "model_name": "gemini-2.5-pro-preview-tts",
+    "price": {
+      "input_token": "$0.000000",
+      "output_token": "N/A",
+      "context_length": "$20971.52",
+      "max_completion_tokens": "$655.36"
+    }
+  },
+  {
+    "model_name": "gemini-3-pro-image-preview",
+    "price": {
+      "input": "$2.00/M",
+      "output": "$12.00/M"
+    }
+  },
+  {
+    "model_name": "gemini-3.1-flash-image-preview",
+    "price": {
+      "input": "$0.50/M",
+      "output": "$3.00/M"
+    }
+  },
+  {
+    "model_name": "gemini-3.1-pro-preview",
+    "price": {
+      "input": "$2.00/M",
+      "output": "$12.00/M"
+    }
+  },
+  {
+    "model_name": "gemini-3-flash-preview",
+    "price": {
+      "input": "$0.50/M",
+      "output": "$3.00/M"
+    }
+  },
+  {
+    "model_name": "gemini-3.5-flash",
+    "price": {
+      "input": "$1.50/M",
+      "output": "$9.00/M"
+    }
+  },
+  {
+    "model_name": "gemini-3.1-flash-lite",
+    "price": {
+      "input": "$0.25/M",
+      "output": "$1.50/M"
+    }
+  },
+  {
+    "model_name": "Qwen/Qwen3-235B-A22B-Instruct-2507",
+    "price": {
+      "input": "$0.13/M",
+      "output": "$0.60/M"
+    }
+  },
+  {
+    "model_name": "Qwen/Qwen3-32B",
+    "price": {
+      "input": "$0.09/M",
+      "output": "$0.29/M"
+    }
+  },
+  {
+    "model_name": "Qwen/Qwen3-Coder-480B-A35B-Instruct",
+    "price": {
+      "input": "$0.29/M",
+      "output": "$1.20/M"
+    }
+  },
+  {
+    "model_name": "qwen3.6-plus",
+    "price": {
+      "input": "$0.50/M",
+      "output": "$3.00/M"
+    }
+  },
+  {
+    "model_name": "Qwen/Qwen3.6-27B",
+    "price": {
+      "input": "$0.32/M",
+      "output": "$3.20/M"
+    }
+  },
+  {
+    "model_name": "grok-2-1212",
+    "price": {
+      "input": "$2.00/M",
+      "output": "$10.00/M"
+    }
+  },
+  {
+    "model_name": "grok-3-mini",
+    "price": {
+      "input": "$0.30/M",
+      "output": "$0.50/M"
+    }
+  },
+  {
+    "model_name": "grok-4.20-beta-0309-non-reasoning",
+    "price": {
+      "input": "$2.00/M",
+      "output": "$6.00/M"
+    }
+  },
+  {
+    "model_name": "grok-4.3",
+    "price": {
+      "input": "$1.25/M",
+      "output": "$2.50/M"
+    }
+  },
+  {
+    "model_name": "moonshotai/Kimi-K2-Instruct",
+    "price": {
+      "input": "$0.15/M",
+      "output": "$8.00/M"
+    }
+  },
+  {
+    "model_name": "moonshotai/Kimi-K2.6",
+    "price": {
+      "input": "$0.95/M",
+      "output": "$4.00/M"
+    }
+  },
+  {
+    "model_name": "moonshotai/Kimi-K2.7-Code",
+    "price": {
+      "input": "$0.95/M",
+      "output": "$4.00/M"
+    }
+  },
+  {
+    "model_name": "deepseek-ai/DeepSeek-V3.2",
+    "price": {
+      "input": "$0.27/M",
+      "output": "$0.40/M"
+    }
+  },
+  {
+    "model_name": "deepseek-ai/DeepSeek-V4-Flash",
+    "price": {
+      "input": "$0.14/M",
+      "output": "$0.28/M"
+    }
+  },
+  {
+    "model_name": "deepseek-ai/DeepSeek-V4-Pro",
+    "price": {
+      "input": "$1.74/M",
+      "output": "$3.48/M"
+    }
+  },
+  {
+    "model_name": "zai-org/GLM-4.5",
+    "price": {
+      "input": "$0.60/M",
+      "output": "$2.20/M"
+    }
+  },
+  {
+    "model_name": "zai-org/GLM-4.6",
+    "price": {
+      "input": "$0.60/M",
+      "output": "$2.20/M"
+    }
+  },
+  {
+    "model_name": "zai-org/GLM-4.7",
+    "price": {
+      "input": "$0.60/M",
+      "output": "$2.20/M"
+    }
+  },
+  {
+    "model_name": "zai-org/GLM-5",
+    "price": {
+      "input": "$1.00/M",
+      "output": "$3.20/M"
+    }
+  },
+  {
+    "model_name": "zai-org/GLM-5.1",
+    "price": {
+      "input": "$1.40/M",
+      "output": "$4.40/M"
+    }
+  },
+  {
+    "model_name": "zai-org/GLM-5.2",
+    "price": {
+      "input": "$1.40/M",
+      "output": "$4.40/M"
+    }
+  },
+  {
+    "model_name": "google/gemma-4-31b-it",
+    "price": {
+      "input": "$0.14/M",
+      "output": "$0.40/M"
+    }
+  },
+  {
+    "model_name": "MiniMaxAI/MiniMax-M2.7",
+    "price": {
+      "input": "$0.30/M",
+      "output": "$1.20/M"
+    }
+  },
+  {
+    "model_name": "MiniMaxAI/MiniMax-M3",
+    "price": {
+      "input": "$0.30/M",
+      "output": "$1.20/M"
+    }
+  },
+  {
+    "model_name": "mimo-v2-pro",
+    "price": {
+      "input": "$1.00/M",
+      "output": "$3.00/M"
+    }
+  },
+  {
+    "model_name": "gpt_image15",
+    "price": {
+      "text_input": "$5.00/M",
+      "image_input": "$8.00/M",
+      "text_output": "$10.00/M",
+      "image_output": "$32.00/M"
+    }
+  },
+  {
+    "model_name": "gpt_image2",
+    "price": {
+      "text_input": "$5.00/M",
+      "image_input": "$8.00/M",
+      "text_output": "$10.00/M",
+      "image_output": "$30.00/M"
+    }
+  },
+  {
+    "model_name": "gpt_image2_edit",
+    "price": {
+      "text_input": "$5.00/M",
+      "image_input": "$8.00/M",
+      "text_output": "$10.00/M",
+      "image_output": "$30.00/M"
+    }
+  },
+  {
+    "model_name": "flux_kontext",
+    "price": {
+      "pro": "$0.0400",
+      "max": "$0.0800"
+    }
+  },
+  {
+    "model_name": "flux_kontext_edit",
+    "price": {
+      "pro": "$0.0400",
+      "max": "$0.0800"
+    }
+  },
+  {
+    "model_name": "flux_pro",
+    "price": {
+      "per_image": "$0.0400"
+    }
+  },
+  {
+    "model_name": "flux_pro_ultra",
+    "price": {
+      "per_image": "$0.0600"
+    }
+  },
+  {
+    "model_name": "imagen",
+    "price": {
+      "per_image": "$0.0500"
+    }
+  },
+  {
+    "model_name": "ideogram",
+    "price": {
+      "per_image": "$0.0600"
+    }
+  },
+  {
+    "model_name": "ideogram_character",
+    "price": {
+      "turbo": "$0.10",
+      "balanced": "$0.15",
+      "quality": "$0.20"
+    }
+  },
+  {
+    "model_name": "recraft",
+    "price": {
+      "per_image": "$0.0400"
+    }
+  },
+  {
+    "model_name": "recraft_svg",
+    "price": {
+      "per_image": "$0.0800"
+    }
+  },
+  {
+    "model_name": "recraft_vectorize",
+    "price": {
+      "per_image": "$0.0100"
+    }
+  },
+  {
+    "model_name": "dalle",
+    "price": {
+      "default_standard": "$0.0400",
+      "high_res_standard": "$0.0800",
+      "default_hd": "$0.0800",
+      "high_res_hd": "$0.12"
+    }
+  },
+  {
+    "model_name": "magnific",
+    "price": {
+      "2k": "$0.11",
+      "4k": "$0.22",
+      "8k": "$1.32",
+      "10k": "$1.32"
+    }
+  },
+  {
+    "model_name": "flux_pro_canny",
+    "price": {
+      "per_image": "$0.0500"
+    }
+  },
+  {
+    "model_name": "flux_pro_depth",
+    "price": {
+      "per_image": "$0.0500"
+    }
+  },
+  {
+    "model_name": "gpt_image_edit",
+    "price": {
+      "text_input": "$5.00/M",
+      "image_input": "$10.00/M",
+      "image_output": "$40.00/M"
+    }
+  },
+  {
+    "model_name": "midjourney",
+    "price": {
+      "v7_turbo": "$0.12",
+      "v6_turbo": "$0.14",
+      "fast": "$0.0700",
+      "relax": "$0.0400"
+    }
+  },
+  {
+    "model_name": "seedream",
+    "price": {
+      "per_image": "$0.0400"
+    }
+  },
+  {
+    "model_name": "dreamina",
+    "price": {
+      "per_image": "$0.0300"
+    }
+  },
+  {
+    "model_name": "nano_banana",
+    "price": {
+      "per_image": "$0.0390",
+      "input": "$0.30/M",
+      "output": "$30.23/M"
+    }
+  },
+  {
+    "model_name": "nano_banana_pro",
+    "price": {
+      "per_image": "$0.15",
+      "input": "$2.00/M",
+      "text_output": "$12.00/M",
+      "image_output": "$120.00/M",
+      "grounding": "$0.0150"
+    }
+  },
+  {
+    "model_name": "nano_banana2",
+    "price": {
+      "per_image": "$0.0600",
+      "input": "$0.25/M",
+      "text_output": "$1.50/M",
+      "image_output": "$60.00/M",
+      "grounding": "$0.0150"
+    }
+  },
+  {
+    "model_name": "nano_banana_lite",
+    "price": {
+      "per_image": "$0.0300",
+      "input": "$0.15/M",
+      "text_output": "$1.00/M",
+      "image_output": "$40.00/M",
+      "grounding": "$0.0150"
+    }
+  },
+  {
+    "model_name": "qwen_image_edit",
+    "price": {
+      "per_image": "$0.0300",
+      "unit": "N/A"
+    }
+  },
+  {
+    "model_name": "imagine_art",
+    "price": {
+      "per_image": "$0.0300"
+    }
+  },
+  {
+    "model_name": "hunyuan_image",
+    "price": {
+      "per_image": "$0.10"
+    }
+  },
+  {
+    "model_name": "flux2",
+    "price": {
+      "per_image": "$0.0096",
+      "edit": "$0.0120"
+    }
+  },
+  {
+    "model_name": "flux2_pro",
+    "price": {
+      "per_image": "$0.0300",
+      "input": "$15000.00/M"
+    }
+  },
+  {
+    "model_name": "grok_imagine_image",
+    "price": {
+      "per_image": "$0.0200",
+      "image_input": "$2000.00/M"
+    }
+  },
+  {
+    "model_name": "grok_imagine_image_quality",
+    "price": {
+      "1k": "$0.0500",
+      "2k": "$0.0700",
+      "image_input": "$10000.00/M"
+    }
+  },
+  {
+    "model_name": "wan27",
+    "price": {
+      "per_image": "$0.0300"
+    }
+  },
+  {
+    "model_name": "hume",
+    "price": "Free or Unspecified"
+  },
+  {
+    "model_name": "elevenlabs",
+    "price": "Free or Unspecified"
+  },
+  {
+    "model_name": "openai_tts",
+    "price": "Free or Unspecified"
+  }
+]

@@ -182,6 +182,9 @@ class SqlAlchemyReviewWorkflowRepository(ReviewWorkflowRepository):
                 .where(
                     CategoryParameterParent.category_id == category_id,
                     CategoryParameterParent.ingestion_job_id == ingestion_job_id,
+                    CategoryParameterChild.requirement_category == "design",
+                    CategoryParameterParent.is_active == True,
+                    CategoryParameterChild.is_active == True,
                 )
                 .order_by(CategoryParameterParent.title, CategoryParameterChild.ordinal)
             ).scalars().all()

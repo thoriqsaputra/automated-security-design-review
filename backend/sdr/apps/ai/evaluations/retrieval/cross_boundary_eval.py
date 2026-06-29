@@ -27,7 +27,7 @@ import re
 import sys
 from unittest.mock import MagicMock
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
 
 from sdr.core.database import SessionLocal
 from sdr.apps.designs.models import Design
@@ -40,12 +40,14 @@ from sdr.apps.standards.models import (
 from sdr.apps.ai.retrieval.routing.router import HybridRetrievalRouter
 from sdr.apps.ai.retrieval.core.types import RetrievalStrategy
 from sdr.apps.ai.client.manager import ai_service_manager
-from sdr.apps.ai.evaluations.judges import (
+from sdr.apps.ai.evaluations.shared.judges import (
     judge_context_recall,
     judge_faithfulness,
     judge_faithfulness_deterministic,
 )
 from sdr.apps.ai.evaluations.runner import _extract_answer_quotes, JUDGE_DISAGREEMENT_THRESHOLD
+
+from sdr.apps.ai.evaluations.shared import results_path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -241,7 +243,7 @@ def main():
         }
         summary["results"] = all_results
 
-    output_path = os.path.join(os.path.dirname(__file__), args.output)
+    output_path = results_path(args.output, subdir="retrieval")
     with open(output_path, "w") as f:
         json.dump(summary, f, indent=2)
 

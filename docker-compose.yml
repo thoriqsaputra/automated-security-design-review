@@ -60,6 +60,7 @@ services:
       - ./backend/.env
     volumes:
       - ./backend/llm_logs:/app/llm_logs
+      - ./backend/sdr/apps/ai/evaluations/results:/app/sdr/apps/ai/evaluations/results
     depends_on:
       postgres:
         condition: service_healthy

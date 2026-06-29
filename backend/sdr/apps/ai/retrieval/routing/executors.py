@@ -13,6 +13,21 @@ from sdr.core.config import settings
 
 logger = logging.getLogger(__name__)
 
+_STOPWORDS = frozenset({
+    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
+    "have", "has", "had", "do", "does", "did", "will", "would", "could",
+    "should", "may", "might", "must", "shall", "can", "of", "in", "on",
+    "at", "to", "for", "with", "by", "from", "as", "or", "and", "that",
+    "this", "it", "its", "not", "all", "any", "if", "when", "which",
+    "used", "use", "using", "verify", "ensure", "check", "confirm",
+})
+
+
+def _extract_keywords(text: str) -> List[str]:
+    import re as _re
+    words = _re.split(r"[^a-zA-Z]+", text or "")
+    return [w for w in words if len(w) >= 4 and w.lower() not in _STOPWORDS]
+
 
 def _grade_with_secondary_search(
     router,

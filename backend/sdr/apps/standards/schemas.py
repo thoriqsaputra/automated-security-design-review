@@ -79,6 +79,8 @@ class CategoryParameterChildSchema(BaseModel):
     details: str
     requirement_text_normalized: str
     ordinal: int
+    requirement_category: str = "design"
+    is_active: bool = True
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -89,6 +91,7 @@ class CategoryParameterParentSchema(BaseModel):
     title: str
     title_normalized: str
     description: Optional[str] = None
+    is_active: bool = True
     children: List[CategoryParameterChildSchema] = Field(default_factory=list)
 
     model_config = ConfigDict(from_attributes=True)
@@ -101,6 +104,7 @@ class CategoryDiagramRequirementSchema(BaseModel):
     requirement_text: str
     verification_hint: str
     parent_section: str
+    diagram_type: str = ""
     ordinal: int = 0
 
     model_config = ConfigDict(from_attributes=True)

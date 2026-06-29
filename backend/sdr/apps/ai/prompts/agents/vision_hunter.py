@@ -18,6 +18,7 @@ Output strict JSON only.
 
 
 _VISION_HUNTER_GUARDRAILS = """\
+- The diagram has been overlaid with numbered markers (e.g., [1], [2]). Red markers label text blocks; blue markers label non-text visual elements (shapes, icons, boxes). You MUST explicitly reference these marker numbers when identifying components or citing visual evidence. Populate "marker_ids_cited" with the integer IDs of every marker you referenced.
 - Use only explicit VISIBLE evidence from the diagram image.
 - Do not infer hidden connections, unseen controls, or off-screen components.
 - Crossing lines are NOT connections unless a clear junction/endpoint is shown.
@@ -95,6 +96,7 @@ Respond with a single JSON object:
   "overall_verdict": {_VERDICT_VALUES},
   "confidence": <float 0.0-1.0>,
   "visual_elements_cited": ["<specific visible element names>"],
+  "marker_ids_cited": [<int>, ...],
   "missing_controls": ["<explicit missing control if overall_verdict=not_met>"],
   "reasoning": "<summary reasoning for the overall verdict>"
 }}

@@ -24,7 +24,8 @@ from sdr.apps.ai.prompts.agents import (
     build_vision_critic_debate_prompt,
     build_vision_mediator_debate_prompt,
 )
-
+from sdr.apps.ai.tsd_processing.visual_marker import apply_visual_markers
+import base64
 
 class DiagramDebateService:
     """
@@ -85,6 +86,12 @@ class DiagramDebateService:
                 f"likely icon/logo, not architectural diagram."
             )
             return output
+
+        # Apply visual markers (Set-of-Mark) for better LLM grounding
+        image_bytes = apply_visual_markers(image_bytes)
+        
+        # Update the diagram object so the frontend gets the marked image
+        diagram.image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
         compact_reqs = _format_requirements_compact(requirements)
         detailed_reqs = _format_requirements_with_hints(requirements)
@@ -192,17 +199,32 @@ class DiagramDebateService:
         output.critic_result = critic_result
 
         self.logger.info(
-            "DiagramDebateService: VisionMediator diagram_id=%s",
+            "DiagramDebateService: VisionMediator diagram_id=%s critic_outcome=%s",
             diagram.diagram_id,
+            critic_outcome,
         )
         mediator_prompt = build_vision_mediator_debate_prompt(
             hunter_result=hunter_result,
             critic_result=critic_result,
         )
-        mediator_result = self._agent.run_text(
-            user_prompt=mediator_prompt,
-            system_prompt=VISION_MEDIATOR_DEBATE_SYSTEM_PROMPT,
-        )
+        # Give the Mediator the diagram image only when it needs to break a disagreement.
+        # This avoids paying the vision-token cost on every call.
+        if critic_outcome == "overturn":
+            self.logger.info(
+                "DiagramDebateService: Critic overturned Hunter — Mediator will see the diagram image diagram_id=%s",
+                diagram.diagram_id,
+            )
+            mediator_result = self._agent.run_multimodal(
+                user_prompt=mediator_prompt,
+                image_bytes=image_bytes,
+                image_format=image_format,
+                system_prompt=VISION_MEDIATOR_DEBATE_SYSTEM_PROMPT,
+            )
+        else:
+            mediator_result = self._agent.run_text(
+                user_prompt=mediator_prompt,
+                system_prompt=VISION_MEDIATOR_DEBATE_SYSTEM_PROMPT,
+            )
         if callable(cancel_check):
             try:
                 if cancel_check():

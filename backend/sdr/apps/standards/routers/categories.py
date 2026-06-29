@@ -13,6 +13,7 @@ from ..models import (
 )
 from ..schemas import (
     CategoryParameterParentSchema,
+    CategoryParameterChildSchema,
     StandardCategorySchema,
     CategoryCodeEnum,
     CategoryDiagramRequirementSchema,
@@ -147,3 +148,32 @@ def delete_parameter_child(child_id: int, db: Session = Depends(get_db)):
     db.delete(child)
     db.commit()
     return None
+
+@router.patch("/parameters/parent/{parent_id}/toggle-active", response_model=CategoryParameterParentSchema)
+def toggle_parameter_parent(parent_id: int, db: Session = Depends(get_db)):
+    """Toggle the active state of a parent parameter and all its children."""
+    parent = db.get(CategoryParameterParent, parent_id)
+    if not parent:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Parent parameter not found.")
+    
+    parent.is_active = not parent.is_active
+    # Cascade to children
+    for child in parent.children:
+        child.is_active = parent.is_active
+        
+    db.commit()
+    db.refresh(parent)
+    return parent
+
+
+@router.patch("/parameters/child/{child_id}/toggle-active", response_model=CategoryParameterChildSchema)
+def toggle_parameter_child(child_id: int, db: Session = Depends(get_db)):
+    """Toggle the active state of a child parameter."""
+    child = db.get(CategoryParameterChild, child_id)
+    if not child:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Child parameter not found.")
+    
+    child.is_active = not child.is_active
+    db.commit()
+    db.refresh(child)
+    return child

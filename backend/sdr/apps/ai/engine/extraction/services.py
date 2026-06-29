@@ -345,7 +345,10 @@ class DiagramRequirementExtractionService:
             )
             response = self.llm_client.complete_json(
                 system_prompt=DIAGRAM_REQ_EXTRACTION_SYSTEM_PROMPT,
-                user_prompt=build_diagram_req_extraction_prompt(requirements_text="\n".join(batch)),
+                user_prompt=build_diagram_req_extraction_prompt(
+                    requirements_text="\n".join(batch),
+                    diagram_types=self.config.diagram_types,
+                ),
                 component="diagram_requirement_extraction",
                 temperature=0.0,
                 max_tokens=8192,
@@ -376,6 +379,8 @@ class DiagramRequirementExtractionService:
                     continue
                 stable_key_val = str(item.get("stable_key", "")).strip() or f"D-batch{batch_index}-{item_index}"
                 stable_key_val = f"job{ingestion_job_id}-{stable_key_val}"
+                raw_diagram_type = str(item.get("diagram_type", "")).strip().lower()
+                diagram_type = raw_diagram_type if raw_diagram_type in self.config.diagram_types else ""
                 batch_results.append(
                     {
                         "category_id": category_id,
@@ -385,6 +390,7 @@ class DiagramRequirementExtractionService:
                         "requirement_text": req_text[:200],
                         "verification_hint": str(item.get("verification_hint", "")).strip(),
                         "parent_section": str(item.get("parent_section", "General")).strip()[:255],
+                        "diagram_type": diagram_type,
                     }
                 )
             self.logger.info(

@@ -12,6 +12,21 @@ RAPTOR_SUMMARISATION_SYSTEM_PROMPT = (
 )
 
 
+def build_raptor_leaf_context_prompt(
+    doc_title: str,
+    section_heading: str,
+    chunk_text: str,
+) -> str:
+    return (
+        f"Document: {doc_title}\n"
+        f"Section: {section_heading}\n\n"
+        f"Here is a chunk from this section:\n{chunk_text}\n\n"
+        "Write one or two sentences (maximum 60 words) describing what security topic this chunk covers "
+        "and which section it belongs to. This prefix will be prepended to the chunk to improve retrieval. "
+        "Do not copy the chunk text verbatim. Be specific about the security mechanism or control described."
+    )
+
+
 def build_raptor_summarisation_prompt(
     instruction: str,
     token_budget: int,

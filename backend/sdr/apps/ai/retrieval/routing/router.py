@@ -14,6 +14,7 @@ from sdr.apps.ai.retrieval.postprocessing.evidence_grader import EvidenceGrader
 from sdr.apps.ai.retrieval.postprocessing.reranker import SafeOptionalReranker
 from sdr.apps.ai.retrieval.routing.executors import RetrievalRouteExecutor
 from sdr.apps.ai.retrieval.routing.strategy_selector import RetrievalStrategySelector
+from sdr.apps.ai.retrieval.searchers.keyword import KeywordSearcher
 from sdr.apps.ai.retrieval.searchers.raptor import RAPTORSearchResponse, RAPTORSearcher
 from sdr.apps.ai.retrieval.searchers.vector import VectorSearchResponse, VectorSearcher
 from sdr.apps.ai.tsd_processing.raptor import RAPTORTree
@@ -60,6 +61,7 @@ class HybridRetrievalRouter:
         self.advanced_config = advanced_config or AdvancedRetrievalConfig.from_settings()
         self._vector_searcher = VectorSearcher()
         self._raptor_searcher = RAPTORSearcher()
+        self._keyword_searcher = KeywordSearcher()
         self._reranker = SafeOptionalReranker(
             enable_cross_encoder=self.advanced_config.enable_cross_encoder_rerank,
         )

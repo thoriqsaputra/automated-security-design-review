@@ -39,6 +39,8 @@ export default function CategoryDetail() {
     search,
     searchInput,
     setSearchInput,
+    categoryFilter,
+    setCategoryFilter,
     commitSearch,
     clearFilters,
     feedback,
@@ -48,9 +50,12 @@ export default function CategoryDetail() {
     handleCancelJob,
     handleDeleteParent,
     handleDeleteChild,
+    handleToggleParent,
+    handleToggleChild,
     filteredParameters,
     filteredDiagramRequirements,
     parameterCounts,
+    totalParameterCount,
     diagramCounts,
     paginatedJobs,
     totalJobsPages,
@@ -114,6 +119,9 @@ export default function CategoryDetail() {
         onSearchInputChange={setSearchInput}
         onSearchCommit={commitSearch}
         onClearFilters={clearFilters}
+        categoryFilter={categoryFilter}
+        onCategoryFilterChange={setCategoryFilter}
+        totalParameterCount={totalParameterCount}
         parameters={parameters}
         filteredParameters={filteredParameters}
         parameterCounts={parameterCounts}
@@ -125,7 +133,9 @@ export default function CategoryDetail() {
         onPageSizeChange={setPageSize}
         expandedParent={expandedParent}
         onToggleParent={(parentId) => setExpandedParent(expandedParent === parentId ? null : parentId)}
+        onToggleParentActive={(parentId) => void handleToggleParent(parentId)}
         onDeleteParent={(parentId) => void handleDeleteParent(parentId)}
+        onToggleChildActive={(childId) => void handleToggleChild(childId)}
         onDeleteChild={(childId) => void handleDeleteChild(childId)}
         diagramRequirements={diagramRequirements}
         filteredDiagramRequirements={filteredDiagramRequirements}

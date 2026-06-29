@@ -27,7 +27,8 @@ FROM python:3.14-slim AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    PATH="/app/.venv/bin:$PATH"
+    PATH="/app/.venv/bin:$PATH" \
+    HF_HOME=/app/.cache/huggingface
 
 
 
@@ -66,6 +67,10 @@ RUN mkdir -p /app/static /app/staticfiles /app/media /app/logs
 # Entrypoint setup
 COPY --chown=appuser:appuser entrypoint.sh /app/entrypoint.sh
 RUN dos2unix /app/entrypoint.sh && chmod +x /app/entrypoint.sh
+
+# Pre-download cross-encoder model into HF_HOME (/app/.cache/huggingface)
+# so it's baked into the image and available without runtime network access.
+RUN python3 -c "from sentence_transformers import CrossEncoder; CrossEncoder('cross-encoder/ms-marco-MiniLM-L-6-v2')"
 
 # Hand over ownership then switch user
 RUN chown -R appuser:appuser /app

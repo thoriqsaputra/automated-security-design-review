@@ -1,6 +1,6 @@
 from typing import Optional
 
-from sqlalchemy import Integer, String, ForeignKey, UniqueConstraint
+from sqlalchemy import Integer, String, ForeignKey, UniqueConstraint, Boolean
 from sqlalchemy.orm import Mapped, mapped_column, relationship, backref
 
 from sdr.core.database import Base
@@ -18,6 +18,7 @@ class CategoryParameterParent(Base, StandardsBigIntBase):
     title: Mapped[str] = mapped_column(String(255))
     title_normalized: Mapped[str] = mapped_column(String(255), index=True)
     description: Mapped[Optional[str]] = mapped_column(String, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
     # Relationships
     category = relationship("StandardCategory", backref="parent_parameters")
@@ -44,6 +45,8 @@ class CategoryParameterChild(Base, StandardsBigIntBase):
     details: Mapped[str] = mapped_column(String, default="")
     requirement_text_normalized: Mapped[str] = mapped_column(String)
     ordinal: Mapped[int] = mapped_column(Integer, default=0)
+    requirement_category: Mapped[str] = mapped_column(String(20), default="design", server_default="design", nullable=False)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
     # Relationships
     parent = relationship("CategoryParameterParent", back_populates="children")

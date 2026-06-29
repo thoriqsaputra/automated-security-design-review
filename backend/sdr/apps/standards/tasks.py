@@ -52,6 +52,10 @@ _OWASP_TOP_LEVEL_RE = re.compile(
     r"^(V\d+)(?:\s+\S|$)",
     re.IGNORECASE,
 )
+_DOCUMENT_TITLE_SECTION_RE = re.compile(
+    r"^\s*application\s+security\s+verification\s+standard\s*$",
+    re.IGNORECASE,
+)
 
 
 def _flatten_owasp_sections(
@@ -82,8 +86,23 @@ def _flatten_owasp_sections(
         # No OWASP-style structure detected — return as-is
         return requirements_by_section
 
+    # Synthesize missing top-level parents for orphaned sub-sections.
+    # Handles cases where the LLM emits V7.1, V7.2, ... without a V7 key.
+    for key in all_keys:
+        is_sub = re.match(r"^V(\d+)\.\d+", key.strip(), re.IGNORECASE)
+        if is_sub:
+            top_prefix = f"V{is_sub.group(1)}".upper()
+            if top_prefix not in top_level_map:
+                top_level_map[top_prefix] = top_prefix  # e.g. "V7"
+
     merged: Dict[str, Any] = {}
     for key, reqs in requirements_by_section.items():
+        if _DOCUMENT_TITLE_SECTION_RE.match(key.strip()):
+            logger.info(
+                "_flatten_owasp_sections: dropping document-title section '%s' (%d reqs)",
+                key, len(reqs or []),
+            )
+            continue
         is_sub = re.match(r"^V(\d+)\.\d+", key.strip(), re.IGNORECASE)
         if is_sub:
             # It's a sub-section (e.g., V1.1) -> fold into parent
@@ -209,7 +228,7 @@ def _should_auto_detect_asvs_page_ranges(source_doc: StandardSourceDocument) -> 
             getattr(source_doc, "document", None),
         )
         if part
-    ).lower()
+    ).lower().replace("_", " ")
     return "asvs" in candidate or "application security verification standard" in candidate
 
 
@@ -470,6 +489,11 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                             normalized = normalize_requirement_text(analysis_text)
                             
                             if not normalized:
+                                logger.warning(
+                                    "tasks.ingest: skipping requirement — normalized to empty | section=%s raw_text=%.120r details=%.80r",
+                                    section_name, raw_text, details,
+                                )
+                                summary['skipped'] = summary.get('skipped', 0) + 1
                                 continue
 
                             next_ordinal = ordinals_by_section.get(section_name, 0) + 1
@@ -477,6 +501,8 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
 
                             child_key = f'{stable_key(normalized)}-{str(source_doc.id)[:8]}-{next_ordinal:06d}'
                             
+                            _VALID_CATEGORIES = {"design", "code", "infrastructure", "process"}
+                            _raw_cat = str(req.get("requirement_category", "design")).lower().strip()
                             child = CategoryParameterChild(
                                 parent_id=parent.id,
                                 stable_key=child_key,
@@ -484,6 +510,7 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                                 details=details,
                                 requirement_text_normalized=normalized,
                                 ordinal=next_ordinal,
+                                requirement_category=_raw_cat if _raw_cat in _VALID_CATEGORIES else "design",
                             )
                             db.add(child)
                             db.flush()
@@ -491,7 +518,7 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                             summary['inserted'] += 1
 
                             items_to_embed.append({
-                                'child': child,
+                                'child_id': child.id,
                                 'text': normalized,
                                 'content_hash': child_key,
                             })
@@ -503,6 +530,7 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
             except Exception as exc:
                 summary['errors'] += 1
                 db.rollback()
+                items_to_embed.clear()
                 logger.exception('Exception processing source_doc=%s', source_doc.id)
                 try:
                     source_doc.status = StandardSourceDocument.STATUS_FAILED
@@ -612,6 +640,7 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                             requirement_text=dreq["requirement_text"],
                             verification_hint=dreq["verification_hint"],
                             parent_section=dreq["parent_section"],
+                            diagram_type=dreq.get("diagram_type", ""),
                             ordinal=dreq.get("ordinal", 0),
                         )
                         db.add(persisted)
@@ -633,7 +662,7 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                             continue
                         diagram_items_to_embed.append(
                             {
-                                "diagram_requirement": dreq,
+                                "diagram_requirement_id": dreq.id,
                                 "text": normalized_text,
                                 "content_hash": dreq.stable_key,
                             }

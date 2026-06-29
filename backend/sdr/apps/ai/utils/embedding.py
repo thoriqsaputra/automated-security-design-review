@@ -75,7 +75,7 @@ def generate_and_store_embeddings(
                 logger.warning(
                     "_generate_and_store_embeddings: skipping child_id=%s "
                     "— embedding returned empty for job=%s.",
-                    item["child"].id,
+                    item.get("child_id"),
                     job_id,
                 )
                 summary["embeddings_failed"] += 1
@@ -86,7 +86,7 @@ def generate_and_store_embeddings(
             embedding_objects.append(
                 CategoryParameterEmbedding(
                     parameter_type=param_type,
-                    child_id=item["child"].id if hasattr(item["child"], "id") else None,
+                    child_id=item.get("child_id"),
                     parent_id=None,
                     model_name=embedding_model_name,
                     model_dim=len(vector),
@@ -165,7 +165,7 @@ def generate_and_store_diagram_requirement_embeddings(
                 logger.warning(
                     "generate_and_store_diagram_requirement_embeddings: skipping diagram_requirement_id=%s "
                     "for job=%s because embedding returned empty.",
-                    getattr(item["diagram_requirement"], "id", None),
+                    item.get("diagram_requirement_id"),
                     job_id,
                 )
                 summary["diagram_requirement_embeddings_failed"] += 1
@@ -173,7 +173,7 @@ def generate_and_store_diagram_requirement_embeddings(
 
             embedding_objects.append(
                 CategoryDiagramRequirementEmbedding(
-                    diagram_requirement_id=item["diagram_requirement"].id,
+                    diagram_requirement_id=item.get("diagram_requirement_id"),
                     model_name=embedding_model_name,
                     model_dim=len(vector),
                     embedding=vector,

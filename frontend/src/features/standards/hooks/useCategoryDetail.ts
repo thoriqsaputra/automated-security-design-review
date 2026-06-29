@@ -7,6 +7,8 @@ import {
   deleteIngestionJob,
   deleteParameterChild,
   deleteParameterParent,
+  toggleParameterChild,
+  toggleParameterParent,
   getCategoryParameters,
   listIngestionJobs,
   type DiagramRequirement,
@@ -41,6 +43,7 @@ export function useCategoryDetail(code?: string) {
   const [diagramParamsPage, setDiagramParamsPage] = useState(1);
   const [search, setSearch] = useState('');
   const [searchInput, setSearchInput] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState<string>('design');
   const [feedback, setFeedback] = useState<string | null>(null);
 
   const jobsPerPage = 3;
@@ -120,13 +123,14 @@ export function useCategoryDetail(code?: string) {
     };
   }, [code]);
 
-  const [prevResetDeps, setPrevResetDeps] = useState([activeTab, pageSize, search]);
+  const [prevResetDeps, setPrevResetDeps] = useState([activeTab, pageSize, search, categoryFilter]);
   if (
     prevResetDeps[0] !== activeTab ||
     prevResetDeps[1] !== pageSize ||
-    prevResetDeps[2] !== search
+    prevResetDeps[2] !== search ||
+    prevResetDeps[3] !== categoryFilter
   ) {
-    setPrevResetDeps([activeTab, pageSize, search]);
+    setPrevResetDeps([activeTab, pageSize, search, categoryFilter]);
     setParamsPage(1);
     setDiagramParamsPage(1);
   }
@@ -200,6 +204,45 @@ export function useCategoryDetail(code?: string) {
     await loadInitial();
   };
 
+  const handleToggleParent = async (parentId: number) => {
+    try {
+      const response = await toggleParameterParent(parentId);
+      setParameters((prev) =>
+        prev.map((p) => {
+          if (p.id === parentId) {
+            return {
+              ...p,
+              is_active: response.data.is_active,
+              children: p.children.map((c) => ({ ...c, is_active: response.data.is_active })),
+            };
+          }
+          return p;
+        }),
+      );
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Failed to toggle parent.');
+    }
+  };
+
+  const handleToggleChild = async (childId: number) => {
+    try {
+      const response = await toggleParameterChild(childId);
+      setParameters((prev) =>
+        prev.map((p) => ({
+          ...p,
+          children: p.children.map((c) => (c.id === childId ? { ...c, is_active: response.data.is_active } : c)),
+        })),
+      );
+    } catch (error) {
+      setFeedback(error instanceof Error ? error.message : 'Failed to toggle child.');
+    }
+  };
+
+  const totalParameterCount = useMemo(
+    () => parameters.reduce((sum, p) => sum + p.children.length, 0),
+    [parameters],
+  );
+
   const filteredParameters = useMemo(() => {
     return parameters
       .map((parent) => {
@@ -209,12 +252,13 @@ export function useCategoryDetail(code?: string) {
           : true;
 
         const filteredChildren = parent.children.filter((child) => {
+          const matchCategory = categoryFilter === 'all' || child.requirement_category === categoryFilter;
           const matchSearch = search
             ? child.requirement_text.toLowerCase().includes(search.toLowerCase())
               || (child.details && child.details.toLowerCase().includes(search.toLowerCase()))
             : true;
 
-          return parentMatchesSearch || matchSearch;
+          return matchCategory && (parentMatchesSearch || matchSearch);
         });
 
         return {
@@ -223,8 +267,8 @@ export function useCategoryDetail(code?: string) {
           _matchesParent: parentMatchesSearch,
         };
       })
-      .filter((parent) => parent.children.length > 0 || parent._matchesParent) as ParameterParentWithMatch[];
-  }, [parameters, search]);
+      .filter((parent) => parent.children.length > 0) as ParameterParentWithMatch[];
+  }, [parameters, search, categoryFilter]);
 
   const filteredDiagramRequirements = useMemo(() => {
     return diagramRequirements.filter((requirement) => {
@@ -283,6 +327,8 @@ export function useCategoryDetail(code?: string) {
     search,
     searchInput,
     setSearchInput,
+    categoryFilter,
+    setCategoryFilter,
     commitSearch,
     clearFilters,
     feedback,
@@ -292,9 +338,12 @@ export function useCategoryDetail(code?: string) {
     handleCancelJob,
     handleDeleteParent,
     handleDeleteChild,
+    handleToggleParent,
+    handleToggleChild,
     filteredParameters,
     filteredDiagramRequirements,
     parameterCounts,
+    totalParameterCount,
     diagramCounts,
     paginatedJobs,
     totalJobsPages,

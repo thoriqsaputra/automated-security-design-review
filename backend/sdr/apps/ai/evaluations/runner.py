@@ -13,12 +13,12 @@ from sdr.core.database import SessionLocal
 from sdr.apps.designs.models import Design
 from sdr.apps.designs.preparation_store import DesignPreparationStore
 from sdr.apps.ai.retrieval.routing.router import HybridRetrievalRouter
-from sdr.apps.ai.evaluations.judges import (
+from sdr.apps.ai.evaluations.shared.judges import (
     judge_faithfulness,
     judge_context_recall,
     judge_faithfulness_deterministic,
 )
-from sdr.apps.ai.evaluations.metrics import calculate_context_precision
+from sdr.apps.ai.evaluations.shared.metrics import calculate_context_precision
 from sdr.apps.ai.client.manager import ai_service_manager
 from sdr.apps.standards.models import CategoryParameterChild, StandardCategory, StandardIngestionJob
 
@@ -57,8 +57,15 @@ def _load_real_review_context(db, item: dict):
 
 
 def _extract_answer_quotes(answer: str) -> list:
-    """Pulls out quoted substrings (the claimed evidence) from a Hunter-style answer."""
-    return re.findall(r'"([^"]+)"', answer or "")
+    """Pulls out evidence quotes from a Hunter-style answer.
+    Filters short strings (labels/terms) and strips chunk-separator bleed-in."""
+    quotes = re.findall(r'"([^"]+)"', answer or "")
+    cleaned = []
+    for q in quotes:
+        q = re.sub(r'\s*-{2,}\s*', ' ', q).strip()
+        if len(q) >= 15:
+            cleaned.append(q)
+    return cleaned
 
 
 def evaluate_question(
@@ -120,11 +127,12 @@ def evaluate_question(
     # 2. Answer (Hunter)
     answer_prompt = (
         "Based ONLY on the following context, answer this question as a security auditor. "
-        "Quote the exact supporting text in double quotes. Each quote must be a single, "
-        "exact, contiguous excerpt copied verbatim from one location in the context — do not "
-        "use ellipses (...) and do not combine multiple excerpts into one quoted string. If "
-        "you need to cite multiple separate excerpts, put each one in its own pair of double "
-        "quotes. If the context does not contain the answer, say 'I cannot determine'.\n\n"
+        "Quote the exact supporting text in double quotes. Each quote must be a character-for-character "
+        "verbatim copy — do not paraphrase, abbreviate, or change any word. Each quote must come from "
+        "a single contiguous location in the context — do not use ellipses (...) and do not combine "
+        "multiple excerpts into one quoted string. If you need to cite multiple separate excerpts, "
+        "put each one in its own pair of double quotes. Do NOT include the '---' chunk separator in "
+        "any quote. If the context does not contain the answer, say 'I cannot determine'.\n\n"
         f"Context:\n{retrieved_context}\n\nQuestion:\n{question}"
     )
 

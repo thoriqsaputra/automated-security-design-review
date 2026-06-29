@@ -24,6 +24,7 @@ Output strict JSON only.
 
 _VISION_CRITIC_DEBATE_GUARDRAILS = """\
 - Re-examine the diagram image for EACH claimed requirement.
+- The diagram has been overlaid with numbered markers (e.g., [1], [2]). Red markers label text blocks; blue markers label non-text visual elements. Ensure the Hunter explicitly cited correct marker numbers for its evidence. For each marker ID in the Hunter's "marker_ids_cited", verify that marker actually exists visibly in the diagram and that its content matches the claimed evidence. List any invalid citations in "invalid_marker_citations".
 - Use the verification_hint as your criteria: does the diagram show \
 what the hint says to look for?
 - If the Hunter claims "met" but the visual evidence doesn't match the \
@@ -103,6 +104,7 @@ Respond with a single JSON object:
     }}
   ],
   "hallucinated_claims": ["<specific unsupported claim from Hunter>"],
+  "invalid_marker_citations": ["<marker_id>: <why the cited marker is wrong or absent>"],
   "reasoning": "<overall reasoning for uphold/overturn>"
 }}
 

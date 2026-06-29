@@ -16,7 +16,7 @@ import pickle
 import re
 import sys
 
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../..")))
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
 
 from sdr.core.database import SessionLocal
 from sdr.apps.designs.models import Design
@@ -25,6 +25,8 @@ from sdr.apps.ai.retrieval.routing.router import HybridRetrievalRouter
 from sdr.apps.ai.retrieval.core.types import RetrievalStrategy
 from sdr.apps.standards.models import StandardCategory, StandardIngestionJob
 from sdr.apps.ai.evaluations import runner as runner_mod
+
+from sdr.apps.ai.evaluations.shared import results_path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -196,7 +198,7 @@ def main():
             m: summary["hybrid"][m] - summary["vector_only"][m] for m in metrics
         }
 
-    output_path = os.path.join(os.path.dirname(__file__), args.output)
+    output_path = results_path(args.output, subdir="retrieval")
     with open(output_path, "w") as f:
         json.dump(summary, f, indent=2)
 

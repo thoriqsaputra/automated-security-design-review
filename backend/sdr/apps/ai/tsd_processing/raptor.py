@@ -17,6 +17,7 @@ from sdr.apps.ai.utils.concurrency import ConcurrencyProbe
 from sdr.apps.ai.prompts.indexing import (
     RAPTOR_SUMMARISATION_SYSTEM_PROMPT,
     build_raptor_summarisation_prompt,
+    build_raptor_leaf_context_prompt,
 )
 
 logger = logging.getLogger(__name__)
@@ -202,6 +203,12 @@ class RAPTORTreeBuilder:
             getattr(settings, "AI_RAPTOR_LEAF_TOKEN_BUDGET", _LEVEL_TOKEN_BUDGETS[0])
         )
         self.leaf_max_pages = int(getattr(settings, "AI_RAPTOR_LEAF_MAX_PAGES", 3))
+        self.contextual_enrichment_enabled = bool(
+            getattr(settings, "AI_RAPTOR_CONTEXTUAL_ENRICHMENT_ENABLED", True)
+        )
+        self.context_concurrency = int(
+            getattr(settings, "AI_RAPTOR_CONTEXT_CONCURRENCY", 8)
+        )
 
     # ------------------------------------------------------------------
     # Public entry point
@@ -271,6 +278,11 @@ class RAPTORTreeBuilder:
             "RAPTORTreeBuilder.build: Level 0 — %d leaf node(s) created.",
             len(leaf_nodes),
         )
+
+        # Contextual enrichment: prepend a 1-2 sentence section context to each
+        # leaf before embedding so the vector captures both content and location.
+        if self.contextual_enrichment_enabled and leaf_nodes:
+            self._enrich_leaf_nodes_with_context(leaf_nodes, tsd_document)
 
         # Embed leaf nodes now (rather than only at the very end) so
         # clustering can group them by similarity instead of falling back
@@ -549,6 +561,65 @@ class RAPTORTreeBuilder:
             len(section_groups),
         )
         return leaf_nodes
+
+    # ------------------------------------------------------------------
+    # Contextual Enrichment
+    # ------------------------------------------------------------------
+
+    def _enrich_leaf_nodes_with_context(
+        self,
+        leaf_nodes: List[RAPTORNode],
+        tsd_document: TSDDocument,
+    ) -> None:
+        """Prepend a 1-2 sentence section context to each leaf node's text.
+        Runs concurrently using the same ThreadPoolExecutor pattern as
+        _summarise_clusters. Failures are caught per-node and logged as warnings
+        so one bad LLM response never aborts the full ingestion."""
+        doc_title = getattr(tsd_document, "title", None) or tsd_document.document_name or "Technical Security Design Document"
+        nodes_to_enrich = [n for n in leaf_nodes if n.text and n.text.strip()]
+        if not nodes_to_enrich:
+            return
+
+        self.logger.info(
+            "RAPTORTreeBuilder: enriching %d leaf node(s) with contextual prefix "
+            "(concurrency=%d).",
+            len(nodes_to_enrich),
+            self.context_concurrency,
+        )
+
+        with ThreadPoolExecutor(
+            max_workers=min(self.context_concurrency, len(nodes_to_enrich))
+        ) as executor:
+            futures = {
+                executor.submit(self._generate_leaf_context, node, doc_title): node
+                for node in nodes_to_enrich
+            }
+            for future in as_completed(futures):
+                node = futures[future]
+                try:
+                    prefix = future.result()
+                    if prefix and prefix.strip():
+                        node.text = f"{prefix.strip()}\n\n{node.text}"
+                except Exception:
+                    self.logger.warning(
+                        "Context prefix generation failed for node %s; keeping raw text.",
+                        node.node_id,
+                    )
+
+    def _generate_leaf_context(self, node: RAPTORNode, doc_title: str) -> str:
+        """Call LLM to produce a short context prefix for a single leaf node."""
+        prompt = build_raptor_leaf_context_prompt(
+            doc_title=doc_title,
+            section_heading=node.section_heading or "General",
+            chunk_text=node.text[:1500],
+        )
+        response = chat_completion(
+            messages=[{"role": "user", "content": prompt}],
+            component="tsd_ingestion",
+            temperature=0.0,
+            max_tokens=80,
+        )
+        return (response.content or "").strip() if not response.error else ""
 
     # ------------------------------------------------------------------
     # Clustering

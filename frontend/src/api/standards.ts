@@ -19,6 +19,8 @@ export interface ParameterChild {
   details: string;
   requirement_text_normalized: string;
   ordinal: number;
+  requirement_category: string;
+  is_active?: boolean;
 }
 
 export interface ParameterParent {
@@ -27,6 +29,7 @@ export interface ParameterParent {
   title: string;
   title_normalized: string;
   description: string | null;
+  is_active?: boolean;
   children: ParameterChild[];
 }
 
@@ -118,3 +121,10 @@ export const deleteParameterParent = (parentId: number) =>
 
 export const deleteParameterChild = (childId: number) =>
   api.delete(`/standards/categories/parameters/child/${childId}`);
+
+export const toggleParameterParent = (parentId: number) =>
+  api.patch<ParameterParent>(`/standards/categories/parameters/parent/${parentId}/toggle-active`);
+
+export const toggleParameterChild = (childId: number) =>
+  api.patch<ParameterChild>(`/standards/categories/parameters/child/${childId}/toggle-active`);
+

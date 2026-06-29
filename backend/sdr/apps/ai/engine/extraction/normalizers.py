@@ -27,7 +27,14 @@ _OWASP_SUBSECTION_HEADING_RE = re.compile(
     re.IGNORECASE,
 )
 _CONTROL_ID_RE = re.compile(r"\b(?:[A-Z]{2,}(?:-[A-Z0-9]+)+|\d+\.\d+\.\d+(?:\.\d+)*)\b")
+
+
 _DELETED_RESERVED_RE = re.compile(r"\[\s*(?:deleted|reserved|blank)\b", re.IGNORECASE)
+
+_ID_LEADING_RE = re.compile(
+    r"^\s*(?:V\d+(?:\.\d+)*\s*[-–]\s*)?"
+    r"(?:[A-Z]{2,}(?:-[A-Z0-9]+)+|\d+\.\d+\.\d+(?:\.\d+)*)\b",
+)
 
 
 def _count_tokens(text: str) -> int:
@@ -172,6 +179,9 @@ def _should_skip_requirement_item(item: Dict[str, Any]) -> bool:
         return True
     if _looks_like_owasp_subsection_heading(requirement):
         return True
+    marker = str(item.get("context_marker", "")).strip()
+    if requirement and not (_ID_LEADING_RE.match(requirement) or _CONTROL_ID_RE.search(marker)):
+        return True
     return False
 
 
@@ -196,13 +206,17 @@ def _requirement_richness(item: Dict[str, Any]) -> tuple:
 def canonicalize_requirement_items(items: List[Any]) -> List[Dict[str, Any]]:
     canonical_items: List[Dict[str, Any]] = []
     index_by_key: Dict[str, int] = {}
+    skipped = 0
     for item in items or []:
         if isinstance(item, dict):
+            req_text = str(item.get("requirement", "")).strip()
+            raw_cat = str(item.get("requirement_category", "design")).lower().strip()
             normalized_item = {
-                "requirement": str(item.get("requirement", "")).strip(),
+                "requirement": req_text,
                 "details": str(item.get("details", "")).strip(),
                 "verbatim_quote": str(item.get("verbatim_quote", "")).strip(),
                 "context_marker": str(item.get("context_marker", "")).strip(),
+                "requirement_category": raw_cat,
             }
         elif isinstance(item, str):
             text = str(item).strip()
@@ -211,10 +225,12 @@ def canonicalize_requirement_items(items: List[Any]) -> List[Dict[str, Any]]:
                 "details": "",
                 "verbatim_quote": "",
                 "context_marker": "",
+                "requirement_category": "design",
             }
         else:
             continue
         if _should_skip_requirement_item(normalized_item):
+            skipped += 1
             continue
         key = _canonical_requirement_key(normalized_item)
         existing_idx = index_by_key.get(key)
@@ -224,6 +240,11 @@ def canonicalize_requirement_items(items: List[Any]) -> List[Dict[str, Any]]:
             continue
         if _requirement_richness(normalized_item) > _requirement_richness(canonical_items[existing_idx]):
             canonical_items[existing_idx] = normalized_item
+    if skipped:
+        logger.info(
+            "canonicalize_requirement_items: skipped %d items (no control ID / deleted / heading)",
+            skipped,
+        )
     return canonical_items
 
 
@@ -259,6 +280,7 @@ def clean_structured_requirements(parsed: Any) -> Dict[str, List[Any]]:
                         "details": details,
                         "verbatim_quote": str(item.get("verbatim_quote", "")).strip(),
                         "context_marker": context_marker,
+                        "requirement_category": str(item.get("requirement_category", "design")).lower().strip(),
                     }
                 )
                 continue
