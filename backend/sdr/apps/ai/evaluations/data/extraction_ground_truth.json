@@ -1,0 +1,324 @@
+{
+  "version": "ASVS 4.0.3",
+  "note": "Hand-labeled ground truth for extraction category accuracy evaluation. Labels follow the TSD-anchored definition: 'design' means verifiable from the Technical Specification Document alone (architecture, data flows, trust boundaries, protocol choices, encryption strategy, access control model, key management). Extend this set for broader coverage.",
+  "category_definitions": {
+    "design": "TSD-verifiable: architecture, data flows, trust boundaries, protocol/encryption strategy, access control model, key/secret management approach",
+    "code": "Requires source code inspection: algorithm work factors, cookie flags, parameterized queries, output encoding specifics, OTP entropy",
+    "infrastructure": "Requires ops/config audit: CI/CD, debug mode, HTTP header values, TLS cipher testing, dependency version checks",
+    "process": "Requires organizational assessment: SDLC policy, threat modeling cadence, developer training, change management"
+  },
+  "items": [
+    {
+      "control_id": "1.1.1",
+      "requirement_excerpt": "Verify the use of a secure software development lifecycle",
+      "expected_category": "process",
+      "rationale": "Requires organizational SDLC policy assessment, not readable from a TSD"
+    },
+    {
+      "control_id": "1.1.2",
+      "requirement_excerpt": "Verify the use of threat modeling for every design change",
+      "expected_category": "process",
+      "rationale": "Threat modeling cadence is a process/practice, not a TSD artifact"
+    },
+    {
+      "control_id": "1.1.3",
+      "requirement_excerpt": "Verify that all user stories and features contain functional security constraints",
+      "expected_category": "process",
+      "rationale": "Story-level security constraints are a development process requirement"
+    },
+    {
+      "control_id": "1.1.4",
+      "requirement_excerpt": "Verify documentation and justification of all the application's trust boundaries",
+      "expected_category": "design",
+      "rationale": "Trust boundary documentation IS the TSD — directly verifiable from architecture diagrams"
+    },
+    {
+      "control_id": "1.1.5",
+      "requirement_excerpt": "Verify definition and security analysis of the application's high-level architecture",
+      "expected_category": "design",
+      "rationale": "High-level architecture with security analysis is a core TSD section"
+    },
+    {
+      "control_id": "1.1.6",
+      "requirement_excerpt": "Verify implementation of centralized, simple security controls",
+      "expected_category": "design",
+      "rationale": "Centralized security control placement is an architectural decision visible in TSD"
+    },
+    {
+      "control_id": "1.1.7",
+      "requirement_excerpt": "Verify availability of a secure coding checklist",
+      "expected_category": "process",
+      "rationale": "Coding checklists are a process/organizational artifact"
+    },
+    {
+      "control_id": "1.2.1",
+      "requirement_excerpt": "Verify the use of unique or special low-privilege operating system accounts",
+      "expected_category": "infrastructure",
+      "rationale": "OS-level account configuration is an infrastructure/ops concern"
+    },
+    {
+      "control_id": "1.2.2",
+      "requirement_excerpt": "Verify that communications between application components are authenticated",
+      "expected_category": "design",
+      "rationale": "Inter-component authentication is an architectural decision documented in TSD"
+    },
+    {
+      "control_id": "1.2.3",
+      "requirement_excerpt": "Verify that the application uses a single vetted authentication mechanism",
+      "expected_category": "design",
+      "rationale": "Choice of authentication mechanism is a design decision in TSD"
+    },
+    {
+      "control_id": "1.4.1",
+      "requirement_excerpt": "Verify that trusted enforcement points enforce access control",
+      "expected_category": "design",
+      "rationale": "Access control enforcement point placement (gateway, server-side) is architecture"
+    },
+    {
+      "control_id": "1.6.1",
+      "requirement_excerpt": "Verify that there is an explicit policy for management of cryptographic keys",
+      "expected_category": "design",
+      "rationale": "Key management policy/approach (key vault usage, rotation policy) is TSD-level"
+    },
+    {
+      "control_id": "1.6.2",
+      "requirement_excerpt": "Verify that consumers of cryptographic services protect key material",
+      "expected_category": "design",
+      "rationale": "How key material is protected by consuming components is an architectural concern"
+    },
+    {
+      "control_id": "1.9.1",
+      "requirement_excerpt": "Verify the application encrypts communications between components",
+      "expected_category": "design",
+      "rationale": "Inter-component encryption strategy (e.g. mTLS) is a TSD-documented design decision"
+    },
+    {
+      "control_id": "1.9.2",
+      "requirement_excerpt": "Verify that application components verify the authenticity of each side of a communication",
+      "expected_category": "code",
+      "rationale": "Validating TLS certificates and chains is an implementation detail checked in code"
+    },
+    {
+      "control_id": "1.14.1",
+      "requirement_excerpt": "Verify the segregation of components of differing trust levels",
+      "expected_category": "infrastructure",
+      "rationale": "Segregation via firewalls and API gateways is an infrastructure configuration"
+    },
+    {
+      "control_id": "2.1.1",
+      "requirement_excerpt": "Verify that user set passwords are at least 12 characters in length",
+      "expected_category": "code",
+      "rationale": "Password length enforcement is implemented in code; not visible in TSD"
+    },
+    {
+      "control_id": "2.1.7",
+      "requirement_excerpt": "Verify that passwords submitted during account registration are checked against a set of breached passwords",
+      "expected_category": "code",
+      "rationale": "Breach list checking is an implementation detail requiring source code review"
+    },
+    {
+      "control_id": "2.2.1",
+      "requirement_excerpt": "Verify that anti-automation controls are effective at mitigating breached credential testing",
+      "expected_category": "code",
+      "rationale": "Implementing soft lockouts and rate limiting logic requires code-level verification"
+    },
+    {
+      "control_id": "2.4.4",
+      "requirement_excerpt": "Verify that if bcrypt is used, the work factor should be as large as verification server performance will allow, with a minimum of 10",
+      "expected_category": "code",
+      "rationale": "bcrypt work factor is an implementation parameter requiring source code inspection"
+    },
+    {
+      "control_id": "2.5.1",
+      "requirement_excerpt": "Verify that a system generated initial activation or recovery secret is not sent in clear text",
+      "expected_category": "code",
+      "rationale": "Verifying recovery secret generation and dispatch logic requires code inspection"
+    },
+    {
+      "control_id": "2.10.1",
+      "requirement_excerpt": "Verify that integration secrets do not rely on unchanging passwords",
+      "expected_category": "design",
+      "rationale": "Policy that intra-service secrets avoid unchanging credentials is an architectural design decision"
+    },
+    {
+      "control_id": "3.2.1",
+      "requirement_excerpt": "Verify the application generates a new session token on user authentication",
+      "expected_category": "code",
+      "rationale": "Session token regeneration is an implementation behavior requiring code review"
+    },
+    {
+      "control_id": "3.4.1",
+      "requirement_excerpt": "Verify that cookie-based session tokens have the Secure attribute set",
+      "expected_category": "code",
+      "rationale": "Cookie attribute flags are set in code; not verifiable from TSD"
+    },
+    {
+      "control_id": "3.4.2",
+      "requirement_excerpt": "Verify that cookie-based session tokens have the HttpOnly attribute set",
+      "expected_category": "code",
+      "rationale": "HttpOnly flag is a code-level cookie configuration"
+    },
+    {
+      "control_id": "4.1.1",
+      "requirement_excerpt": "Verify that the application enforces access control rules on a trusted service layer",
+      "expected_category": "design",
+      "rationale": "Access control enforcement layer placement is an architectural decision in TSD"
+    },
+    {
+      "control_id": "4.2.1",
+      "requirement_excerpt": "Verify that sensitive data and APIs are protected against direct object reference attacks",
+      "expected_category": "code",
+      "rationale": "IDOR protection requires code-level access checks on each resource"
+    },
+    {
+      "control_id": "5.1.3",
+      "requirement_excerpt": "Verify that all input is validated using positive validation",
+      "expected_category": "code",
+      "rationale": "Input validation logic is implemented in code; requires source code review"
+    },
+    {
+      "control_id": "5.3.1",
+      "requirement_excerpt": "Verify that output encoding is relevant for the interpreter and context required",
+      "expected_category": "code",
+      "rationale": "Output encoding specifics (HTML, JS, URL context) are code implementation details"
+    },
+    {
+      "control_id": "5.5.1",
+      "requirement_excerpt": "Verify that serialized objects use integrity checks or are encrypted to prevent hostile object creation or data tampering",
+      "expected_category": "code",
+      "rationale": "Checking integrity or encryption logic of serialized objects requires source code review"
+    },
+    {
+      "control_id": "6.1.1",
+      "requirement_excerpt": "Verify that regulated private data is stored encrypted while at rest",
+      "expected_category": "design",
+      "rationale": "What data is classified as regulated PII and how it is stored encrypted is TSD-level design"
+    },
+    {
+      "control_id": "6.1.2",
+      "requirement_excerpt": "Verify that regulated health data is stored encrypted while at rest",
+      "expected_category": "design",
+      "rationale": "Health data encryption at rest is a data classification and storage design decision"
+    },
+    {
+      "control_id": "6.2.1",
+      "requirement_excerpt": "Verify that all cryptographic modules fail securely, and errors are handled in a way that does not enable Padding Oracle attacks",
+      "expected_category": "code",
+      "rationale": "Cryptographic error handling is an implementation-level concern requiring code review"
+    },
+    {
+      "control_id": "6.4.1",
+      "requirement_excerpt": "Verify that a secrets management solution such as a key vault is used to securely create, store, control access to and destroy secrets",
+      "expected_category": "infrastructure",
+      "rationale": "Integration and usage of a secrets management solution like a key vault is an infrastructure deployment configuration"
+    },
+    {
+      "control_id": "7.1.1",
+      "requirement_excerpt": "Verify that the application does not log credentials or payment details",
+      "expected_category": "code",
+      "rationale": "Ensuring credentials are omitted from logs requires inspecting logging implementation in code"
+    },
+    {
+      "control_id": "7.2.1",
+      "requirement_excerpt": "Verify that all authentication decisions are logged",
+      "expected_category": "code",
+      "rationale": "Verifying that authentication decisions are effectively logged requires source code inspection"
+    },
+    {
+      "control_id": "7.3.1",
+      "requirement_excerpt": "Verify that the application appropriately encodes user-supplied data to prevent log injection",
+      "expected_category": "code",
+      "rationale": "Log injection prevention is an implementation detail requiring code review"
+    },
+    {
+      "control_id": "7.4.1",
+      "requirement_excerpt": "Verify that a generic message is shown when an unexpected or security sensitive error occurs",
+      "expected_category": "code",
+      "rationale": "Error message content is a code-level implementation detail"
+    },
+    {
+      "control_id": "8.1.1",
+      "requirement_excerpt": "Verify the application protects sensitive data from being cached in server components",
+      "expected_category": "infrastructure",
+      "rationale": "Anti-caching for server components like load balancers is an infrastructure configuration"
+    },
+    {
+      "control_id": "8.3.1",
+      "requirement_excerpt": "Verify that sensitive data is sent to the server in the HTTP message body or headers",
+      "expected_category": "code",
+      "rationale": "How sensitive data is transmitted (body vs URL) is a code implementation decision"
+    },
+    {
+      "control_id": "9.1.1",
+      "requirement_excerpt": "Verify that TLS is used for all client connectivity",
+      "expected_category": "infrastructure",
+      "rationale": "Ensuring TLS is used without fallback requires server/infrastructure configuration"
+    },
+    {
+      "control_id": "9.1.2",
+      "requirement_excerpt": "Verify that only strong cipher suites are enabled",
+      "expected_category": "infrastructure",
+      "rationale": "Cipher suite configuration requires server/ops configuration audit, not TSD reading"
+    },
+    {
+      "control_id": "9.2.1",
+      "requirement_excerpt": "Verify that connections to and from the server use trusted TLS certificates",
+      "expected_category": "infrastructure",
+      "rationale": "Certificate trust verification is an infrastructure/deployment configuration"
+    },
+    {
+      "control_id": "10.1.1",
+      "requirement_excerpt": "Verify that a code analysis tool can detect potentially malicious code",
+      "expected_category": "process",
+      "rationale": "SAST/code analysis tool usage is a development process requirement"
+    },
+    {
+      "control_id": "10.3.2",
+      "requirement_excerpt": "Verify that the application employs integrity protections, such as code signing or sub-resource integrity",
+      "expected_category": "code",
+      "rationale": "Implementing subresource integrity (SRI) requires specific code-level attributes on script tags"
+    },
+    {
+      "control_id": "11.1.1",
+      "requirement_excerpt": "Verify the application will only process business logic flows in sequential step order",
+      "expected_category": "code",
+      "rationale": "Enforcing sequential business logic steps requires source code inspection"
+    },
+    {
+      "control_id": "12.1.1",
+      "requirement_excerpt": "Verify that the application will not accept large files that could fill up storage",
+      "expected_category": "code",
+      "rationale": "Rejecting large files requires inspecting the file upload handling code"
+    },
+    {
+      "control_id": "13.1.1",
+      "requirement_excerpt": "Verify that all application components use the same encodings and parsers",
+      "expected_category": "code",
+      "rationale": "Using the same encodings and parsers across components requires source code verification"
+    },
+    {
+      "control_id": "13.2.3",
+      "requirement_excerpt": "Verify that RESTful web services that utilize cookies are protected from Cross-Site Request Forgery",
+      "expected_category": "code",
+      "rationale": "CSRF token implementation or SameSite enforcement is a code-level protection"
+    },
+    {
+      "control_id": "14.1.1",
+      "requirement_excerpt": "Verify that the application build and deployment processes are performed in a secure and repeatable way",
+      "expected_category": "infrastructure",
+      "rationale": "CI/CD automation and deployment scripts are infrastructure configurations"
+    },
+    {
+      "control_id": "14.2.1",
+      "requirement_excerpt": "Verify that all components are up to date",
+      "expected_category": "infrastructure",
+      "rationale": "Dependency version currency requires operational/dependency audit, not TSD review"
+    },
+    {
+      "control_id": "14.4.1",
+      "requirement_excerpt": "Verify that every HTTP response contains a Content-Type header specifying a safe character set",
+      "expected_category": "infrastructure",
+      "rationale": "HTTP response header values are server/framework configuration, not TSD-level design"
+    }
+  ]
+}

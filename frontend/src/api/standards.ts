@@ -16,7 +16,7 @@ export interface ParameterChild {
   id: number;
   stable_key: string;
   requirement_text: string;
-  details: string;
+
   requirement_text_normalized: string;
   ordinal: number;
   requirement_category: string;

@@ -42,7 +42,7 @@ class CategoryParameterChild(Base, StandardsBigIntBase):
 
     stable_key: Mapped[str] = mapped_column(String(255), index=True)
     requirement_text: Mapped[str] = mapped_column(String)
-    details: Mapped[str] = mapped_column(String, default="")
+
     requirement_text_normalized: Mapped[str] = mapped_column(String)
     ordinal: Mapped[int] = mapped_column(Integer, default=0)
     requirement_category: Mapped[str] = mapped_column(String(20), default="design", server_default="design", nullable=False)

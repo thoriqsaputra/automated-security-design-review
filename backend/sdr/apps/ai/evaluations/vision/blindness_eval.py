@@ -27,6 +27,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from sdr.apps.ai.agents.vision import DiagramInput
 from sdr.apps.ai.engine.debate.diagram_debate_service import DiagramDebateService
+from sdr.apps.ai.evaluations.shared import results_path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -116,11 +117,19 @@ def _build_requirement(scenario):
     )
 
 
+def _save_image_b64(b64: str, path: str) -> None:
+    with open(path, "wb") as f:
+        f.write(base64.b64decode(b64))
+
+
 def main():
     parser = argparse.ArgumentParser(description="Visual blindness mitigation eval for the Vision Agent.")
     parser.add_argument("--output", type=str, default="eval_vision_blindness.json")
-    parser.add_argument("--save-images-dir", type=str, default=None, help="Optional dir to dump generated PNGs for manual inspection.")
     args = parser.parse_args()
+
+    # Always save images (both input and marked) into results/vision/images/
+    images_dir = results_path("images", subdir="vision")
+    os.makedirs(images_dir, exist_ok=True)
 
     service = DiagramDebateService()
     samples = []
@@ -133,10 +142,8 @@ def main():
         image_b64 = _draw_network_diagram(scenario["stages"], omit=omit)
         diagram_id = f"vb_{scenario['control'].replace(' ', '_')}_{condition}"
 
-        if args.save_images_dir:
-            os.makedirs(args.save_images_dir, exist_ok=True)
-            with open(os.path.join(args.save_images_dir, f"{diagram_id}.png"), "wb") as f:
-                f.write(base64.b64decode(image_b64))
+        # Save the raw input image before markers are applied
+        _save_image_b64(image_b64, os.path.join(images_dir, f"{diagram_id}_input.png"))
 
         diagram = DiagramInput(
             diagram_id=diagram_id,
@@ -149,6 +156,10 @@ def main():
 
         logger.info(f"[{i + 1}/{len(samples)}] {diagram_id} (expecting {'met' if omit is None else 'not_met'})")
         output = service.run_diagram_debate(diagram=diagram, requirements=[requirement], tsd_context="")
+
+        # diagram.image_b64 is updated to the marked version inside run_diagram_debate
+        _save_image_b64(diagram.image_b64, os.path.join(images_dir, f"{diagram_id}_marked.png"))
+        logger.info("Saved marked image → %s/%s_marked.png", images_dir, diagram_id)
 
         expected_verdict = "met" if omit is None else "not_met"
         mediator = output.mediator_result or {}
@@ -199,13 +210,14 @@ def main():
         "results": results,
     }
 
-    output_path = os.path.join(os.path.dirname(__file__), args.output)
+    output_path = results_path(args.output, subdir="vision")
     with open(output_path, "w") as f:
         json.dump(summary, f, indent=2)
 
     logger.info("Vision blindness eval complete.")
     logger.info(f"Accuracy={accuracy:.2f} Precision={precision:.2f} Recall={recall:.2f} F1={f1:.2f}")
     logger.info(f"Architecture-relevant scope rate: {in_scope_rate:.2f}")
+    logger.info(f"Marked images saved to {images_dir}/")
     logger.info(f"Results saved to {output_path}")
 
 

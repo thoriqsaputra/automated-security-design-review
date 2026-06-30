@@ -169,9 +169,8 @@ def _extract_requirement_anchor(requirement: str) -> str:
 
 def _should_skip_requirement_item(item: Dict[str, Any]) -> bool:
     requirement = str(item.get("requirement", "")).strip()
-    details = str(item.get("details", "")).strip()
     verbatim_quote = str(item.get("verbatim_quote", "")).strip()
-    if not requirement and not details:
+    if not requirement:
         return True
     if _NOTE_PREFIX_RE.match(requirement):
         return True
@@ -187,17 +186,15 @@ def _should_skip_requirement_item(item: Dict[str, Any]) -> bool:
 
 def _canonical_requirement_key(item: Dict[str, Any]) -> str:
     requirement = str(item.get("requirement", "")).strip()
-    details = str(item.get("details", "")).strip()
     anchor = _extract_requirement_anchor(requirement)
     if anchor:
         return f"id:{anchor}"
-    analysis_text = build_parameter_analysis_text(requirement, details)
-    return f"text:{normalize_requirement_text(analysis_text)}"
+    return f"text:{normalize_requirement_text(requirement)}"
 
 
 def _requirement_richness(item: Dict[str, Any]) -> tuple:
     return (
-        len(str(item.get("details", "")).strip()),
+        len(str(item.get("requirement", "")).strip()),
         1 if str(item.get("context_marker", "")).strip() else 0,
         1 if str(item.get("verbatim_quote", "")).strip() else 0,
     )
@@ -213,7 +210,6 @@ def canonicalize_requirement_items(items: List[Any]) -> List[Dict[str, Any]]:
             raw_cat = str(item.get("requirement_category", "design")).lower().strip()
             normalized_item = {
                 "requirement": req_text,
-                "details": str(item.get("details", "")).strip(),
                 "verbatim_quote": str(item.get("verbatim_quote", "")).strip(),
                 "context_marker": str(item.get("context_marker", "")).strip(),
                 "requirement_category": raw_cat,
@@ -222,7 +218,6 @@ def canonicalize_requirement_items(items: List[Any]) -> List[Dict[str, Any]]:
             text = str(item).strip()
             normalized_item = {
                 "requirement": text,
-                "details": "",
                 "verbatim_quote": "",
                 "context_marker": "",
                 "requirement_category": "design",
@@ -270,14 +265,12 @@ def clean_structured_requirements(parsed: Any) -> Dict[str, List[Any]]:
         for item in raw_requirements:
             if isinstance(item, dict):
                 req = str(item.get("requirement", "")).strip()
-                details = str(item.get("details", "")).strip()
                 context_marker = str(item.get("context_marker", "")).strip()
-                if not req and not details:
+                if not req:
                     continue
                 cleaned_reqs.append(
                     {
                         "requirement": req,
-                        "details": details,
                         "verbatim_quote": str(item.get("verbatim_quote", "")).strip(),
                         "context_marker": context_marker,
                         "requirement_category": str(item.get("requirement_category", "design")).lower().strip(),
@@ -290,7 +283,6 @@ def clean_structured_requirements(parsed: Any) -> Dict[str, List[Any]]:
                     cleaned_reqs.append(
                         {
                             "requirement": text,
-                            "details": "",
                             "verbatim_quote": "",
                             "context_marker": "",
                         }

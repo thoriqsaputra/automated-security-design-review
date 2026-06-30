@@ -31,21 +31,30 @@ understand their logic and resolve any logical leaps or disputes.
 
 EVIDENCE EVALUATION CHECKLIST (apply for every parameter):
 1. Applicability: Does the contract and TSD scope confirm this control applies?
-2. Evidence quality: Are the cited blocks implementation-level details (code, \
-config, architecture decisions) or just headings/titles/baseline text?
+2. Evidence quality: Are the cited blocks architectural specifications naming \
+specific mechanisms, algorithms, or components — or just headings, generic \
+"shall" statements, or baseline text without any named control?
 3. Completeness: Does the evidence cover ALL aspects of the requirement, or \
 only some? If partial, set verdict to "not_met" and note what's missing.
 4. Consistency: Do the Hunter and Critic agree? If they disagree, weigh the \
 evidence independently — do not default to either agent.
 
 STANDARD-SPECIFIC GUIDANCE:
-- Security standard requirements are verification controls. "met" means the TSD demonstrates \
-the control is implemented, not merely that it's acknowledged.
-- "The application shall..." in the TSD is a design intent, not evidence of \
-implementation. Look for concrete mechanisms: middleware, libraries, \
-configuration flags, code snippets, or architectural patterns.
+- Security standard requirements are verification controls. "met" means the TSD \
+demonstrates the control is implemented at the architectural design level.
+- DOCUMENT TYPE: This is a TSD (Technical Software Document) review. TSDs are \
+architectural design specifications — do not require source code or config files \
+as evidence.
+- "The application shall use X" WITH a named mechanism (X = specific algorithm, \
+library, protocol, or component) IS valid implementation evidence at the TSD level.
+- "The application shall ensure security" WITHOUT naming a specific mechanism is \
+NOT sufficient — it is unverifiable design intent.
+- Look for: explicit algorithm names, named security components or libraries, \
+architectural decisions that mandate specific controls, or diagrams with labelled \
+security mechanisms.
 - Authentication/authorization controls require evidence of the enforcement \
-mechanism, not just the existence of user accounts.
+mechanism (named component, protocol, or library), not just the existence of \
+user accounts.
 
 OUTPUT: Strict JSON only. No prose outside the JSON object.
 """
@@ -154,11 +163,12 @@ Reasoning -> assumptions: ["Only Critic-verified citations may survive."]; logic
 	- final_verdict  → The single binding decision. Cannot be changed after this.
 	- confidence     → Must reflect genuine certainty. Do not inflate.
 	- recommendation → Specific, actionable remediation. Null if "met" or "na".
-	- final_citations → Only citations from the Critic's verified list above.
+	- final_citations → Only citations from the Critic's verified list above. The quoted_text in each citation MUST be a short verbatim excerpt (5–20 words) copied character-for-character from the source block — do NOT paraphrase or restate. Prefer short specific technical phrases (e.g. "TLS 1.3 with HSTS", "Fail-Closed policy") over long sentences.
 	- "met" requires verified evidence that clearly satisfies the requirement, not merely any valid citation.
 	- "not_met" applies only when the requirement is applicable and expected evidence is missing, contradicted, or only partial after checked context and rebuttal.
 	- "na" applies when the control trigger/applicability is not established, the document scope does not include the technology/control domain, or the supplied TSD cannot assess the control.
 	- If evidence is only partial for an applicable requirement, set final_verdict to "not_met" and explain partial satisfaction in reasoning and rejected_evidence.
+	- When Critic outcome is PARTIAL: make an explicit verdict-adjusting decision. Either (a) downgrade the verdict to "not_met" or reduce confidence if the Critic's unresolved objections weaken the evidence below "met" threshold, or (b) keep "met" only if you can point to additional context that directly resolves each objection. "PARTIAL" never automatically preserves the Hunter's verdict.
 	- Do not make agent agreement the justification. Avoid phrases such as "Hunter and Critic agree" or "both agents agree" as the main reason.
 	- For missing evidence decisions, explain as a security reviewer: applicability basis, expected implementation evidence, what the retrieved context actually contained, and why that is insufficient.
 	- If no citations survive and applicability is unclear, prefer "na" over a high-confidence "not_met".

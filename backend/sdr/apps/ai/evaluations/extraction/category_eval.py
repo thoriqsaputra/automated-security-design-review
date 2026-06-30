@@ -145,6 +145,11 @@ def main():
     args = parser.parse_args()
 
     gt_path = args.ground_truth or data_path("extraction_ground_truth.json")
+    if args.ground_truth and not os.path.isabs(args.ground_truth) and not os.path.exists(args.ground_truth):
+        alt_path = data_path(args.ground_truth)
+        if os.path.exists(alt_path):
+            gt_path = alt_path
+
     if not os.path.exists(gt_path):
         logger.error(f"Ground truth file not found: {gt_path}")
         return

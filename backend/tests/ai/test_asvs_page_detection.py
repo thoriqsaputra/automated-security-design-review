@@ -70,3 +70,22 @@ def test_resolve_detected_page_ranges_applies_manual_overrides_per_field():
     assert result["page_detection"]["matched_anchors"] == {
         "definition_range": {"method": "toc_section"}
     }
+
+
+def test_end_page_from_appendix_excludes_appendix_start():
+    service = _make_service()
+    # appendix at page 97 → last requirements page is 96
+    end_page = service._end_page_from_appendix(start_page=23, appendix_page=97)
+    assert end_page == 96
+
+
+def test_end_page_from_appendix_clamps_to_start_page():
+    service = _make_service()
+    # appendix detected before start (bad detection) → clamp to start
+    end_page = service._end_page_from_appendix(start_page=23, appendix_page=10)
+    assert end_page == 23
+
+
+def test_end_page_from_appendix_none_returns_none():
+    service = _make_service()
+    assert service._end_page_from_appendix(start_page=23, appendix_page=None) is None

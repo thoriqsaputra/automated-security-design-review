@@ -225,7 +225,7 @@ export default function CategoryParametersPanel(props: CategoryParametersPanelPr
                               <CheckCircle2 size={14} className="text-burgundy mt-0.5 shrink-0" />
                               <div>
                                 <p className="text-sm text-text-primary">{child.requirement_text}</p>
-                                {child.details && <p className="text-xs text-text-muted mt-0.5">{child.details}</p>}
+
                                 <span className="inline-block mt-1 text-[10px] font-mono px-1.5 py-0.5 rounded bg-surface-border/50 text-text-muted capitalize">
                                   {child.requirement_category || 'design'}
                                 </span>

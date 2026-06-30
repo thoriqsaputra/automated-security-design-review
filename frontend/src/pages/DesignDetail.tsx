@@ -295,7 +295,6 @@ export default function DesignDetailPage() {
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
-            <StatusBadge status={design.preparation_status} />
             {(design.preparation_status === 'failed' || design.preparation_status === 'stale') && (
               <button
                 onClick={() => void handleRetryPreparation()}

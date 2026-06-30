@@ -76,7 +76,7 @@ class CategoryParameterChildSchema(BaseModel):
     id: int
     stable_key: str
     requirement_text: str
-    details: str
+
     requirement_text_normalized: str
     ordinal: int
     requirement_category: str = "design"

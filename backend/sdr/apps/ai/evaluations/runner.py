@@ -118,6 +118,10 @@ def evaluate_question(
 
     chunk_block_ids = result.context_chunk_block_ids or [[] for _ in result.context_chunks]
     retrieved_block_ids = sorted({bid for group in chunk_block_ids for bid in group})
+    all_source_block_ids = result.source_block_ids or []
+    retrieved_coverage = (
+        1.0 if (set(expected_block_ids) & set(all_source_block_ids)) else 0.0
+    ) if expected_block_ids else 0.0
     retrieved_context = "\n---\n".join(result.context_chunks)
     # Use chunk-index keys so RAPTOR leaf + summary nodes sharing the same
     # block_ids don't overwrite each other — faithfulness checks need each
@@ -158,7 +162,9 @@ def evaluate_question(
         "question": question,
         "expected_block_ids": expected_block_ids,
         "retrieved_block_ids": retrieved_block_ids,
+        "all_source_block_ids": all_source_block_ids,
         "context_precision": precision,
+        "retrieved_coverage": retrieved_coverage,
         "context_recall": recall_eval.get("context_recall_score", 0.0),
         "faithfulness": llm_faithfulness,
         "faithfulness_deterministic": faithfulness_deterministic,

@@ -170,13 +170,7 @@ def _coerce_requirement_text(requirement_item: Any) -> str:
     return str(requirement_item or "").strip()
 
 
-def _coerce_requirement_details(requirement_item: Any) -> str:
-    """
-    Extracts the full child-parameter meaning from structured extraction output.
-    """
-    if isinstance(requirement_item, dict):
-        return str(requirement_item.get("details", "")).strip()
-    return ""
+
 
 
 def _resolve_detected_page_ranges(
@@ -244,6 +238,7 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
         extract_requirements_from_document,
         extract_diagram_requirements,
     )
+    from sdr.apps.ai.engine.extraction.screening import StandardScreeningError
     
     with SessionLocal() as db:
         job = db.get(StandardIngestionJob, int(job_id))
@@ -479,19 +474,13 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
 
                         for req in sorted_requirements:
                             raw_text = _coerce_requirement_text(req)
-                            details = _coerce_requirement_details(req)
-                            # If LLM put only a bare section ID in requirement and the real
-                            # control text ended up in details, promote details to primary field.
-                            if _BARE_SECTION_ID_RE.match(raw_text) and len(details) > 15:
-                                raw_text = details
-                                details = ""
-                            analysis_text = build_parameter_analysis_text(raw_text, details)
-                            normalized = normalize_requirement_text(analysis_text)
+                            
+                            normalized = normalize_requirement_text(raw_text)
                             
                             if not normalized:
                                 logger.warning(
-                                    "tasks.ingest: skipping requirement — normalized to empty | section=%s raw_text=%.120r details=%.80r",
-                                    section_name, raw_text, details,
+                                    "tasks.ingest: skipping requirement — normalized to empty | section=%s raw_text=%.120r",
+                                    section_name, raw_text,
                                 )
                                 summary['skipped'] = summary.get('skipped', 0) + 1
                                 continue
@@ -507,7 +496,6 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                                 parent_id=parent.id,
                                 stable_key=child_key,
                                 requirement_text=raw_text,
-                                details=details,
                                 requirement_text_normalized=normalized,
                                 ordinal=next_ordinal,
                                 requirement_category=_raw_cat if _raw_cat in _VALID_CATEGORIES else "design",
@@ -526,6 +514,19 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                     summary['sections'] = len(parents_by_section)
                     source_doc.status = StandardSourceDocument.STATUS_PROCESSED
                     db.commit()
+
+            except StandardScreeningError as exc:
+                summary['errors'] += 1
+                summary['screening_error'] = str(exc)
+                db.rollback()
+                items_to_embed.clear()
+                logger.error('Standard screening rejected source_doc=%s: %s', source_doc.id, exc)
+                try:
+                    source_doc.status = StandardSourceDocument.STATUS_FAILED
+                    db.commit()
+                except Exception as inner_exc:
+                    db.rollback()
+                    logger.exception('Failed to record error for source_doc=%s', source_doc.id)
 
             except Exception as exc:
                 summary['errors'] += 1
@@ -711,7 +712,8 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
 
         if job_status_new == StandardIngestionJob.STATUS_FAILED:
             job.error_message = (
-                summary.get('diagram_extraction_error')
+                summary.get('screening_error')
+                or summary.get('diagram_extraction_error')
                 or 'Document failed during ingestion.'
             )
             job.is_active = False

@@ -1,12 +1,22 @@
 """
-Ablation: Dense Vector-only retrieval vs Hybrid (Vector + RAPTOR).
+Ablation: Vector-only vs RAPTOR-low vs RAPTOR-high vs Hybrid.
 
-Runs the same eval dataset through two retrieval configurations and reports
-the standard four metrics for each, plus a breakdown by document position
-(front/middle/back third of the TSD) to isolate the lost-in-the-middle
-effect: hybrid's advantage over vector-only should be largest for evidence
-buried in the middle of the document, where a single flat dense-embedding
-top-k search is most likely to lose it among many competing chunks.
+Four retrieval strategies evaluated on the same synthetic QA dataset:
+  vector_only  — standards DB (CategoryParameterChild) search only; no TSD blocks retrieved
+                 (precision=0 by design — included to show the baseline without TSD retrieval)
+  raptor_low   — single leaf-level RAPTOR search (flat TSD embedding, no hierarchy)
+  raptor_only  — multi-level RAPTOR search across LOW/MID/HIGH levels (hierarchy benefit)
+  hybrid       — multi-level RAPTOR + BM25 keyword search + cross-encoder reranking (full stack)
+
+Key metrics per strategy:
+  context_precision      — MRR: 1/rank of first retrieved chunk whose block_ids intersect expected
+  retrieved_coverage     — binary: does the expected block appear anywhere in source_block_ids?
+  context_recall         — LLM judge: does the retrieved context cover the ground truth?
+  faithfulness           — LLM + deterministic judges: is the answer grounded in context?
+
+context_precision vs retrieved_coverage separates two failure modes:
+  coverage=0  → retrieval never found the right block (retrieval miss)
+  coverage=1, precision<1 → block was retrieved but ranked below rank 1 (ranking miss)
 """
 import argparse
 import json
@@ -22,7 +32,7 @@ from sdr.core.database import SessionLocal
 from sdr.apps.designs.models import Design
 from sdr.apps.designs.preparation_store import DesignPreparationStore
 from sdr.apps.ai.retrieval.routing.router import HybridRetrievalRouter
-from sdr.apps.ai.retrieval.core.types import RetrievalStrategy
+from sdr.apps.ai.retrieval.core.types import AdvancedRetrievalConfig, RetrievalStrategy
 from sdr.apps.standards.models import StandardCategory, StandardIngestionJob
 from sdr.apps.ai.evaluations import runner as runner_mod
 
@@ -58,29 +68,39 @@ def _position_bucket(expected_block_ids, total_pages):
 
 def _aggregate(results):
     if not results:
-        return {"count": 0, "context_precision": 0.0, "context_recall": 0.0,
-                "faithfulness": 0.0, "faithfulness_deterministic": 0.0}
+        return {
+            "count": 0,
+            "context_precision": 0.0,
+            "retrieved_coverage": 0.0,
+            "context_recall": 0.0,
+            "faithfulness": 0.0,
+            "faithfulness_deterministic": 0.0,
+        }
     n = len(results)
     return {
         "count": n,
-        "context_precision": sum(r["context_precision"] for r in results) / n,
-        "context_recall": sum(r["context_recall"] for r in results) / n,
-        "faithfulness": sum(r["faithfulness"] for r in results) / n,
-        "faithfulness_deterministic": sum(r["faithfulness_deterministic"] for r in results) / n,
+        "context_precision": round(sum(r["context_precision"] for r in results) / n, 4),
+        "retrieved_coverage": round(sum(r.get("retrieved_coverage", 0.0) for r in results) / n, 4),
+        "context_recall": round(sum(r["context_recall"] for r in results) / n, 4),
+        "faithfulness": round(sum(r["faithfulness"] for r in results) / n, 4),
+        "faithfulness_deterministic": round(
+            sum(r["faithfulness_deterministic"] for r in results) / n, 4
+        ),
     }
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Vector-only vs Hybrid retrieval ablation.")
+    parser = argparse.ArgumentParser(
+        description="Retrieval ablation: RAPTOR-low vs RAPTOR-high vs Hybrid."
+    )
     parser.add_argument("--design-id", type=int, required=True)
     parser.add_argument("--dataset", type=str, default="eval_dataset_30.json")
-    parser.add_argument("--output", type=str, default="eval_ablation_vector_vs_hybrid.json")
+    parser.add_argument("--output", type=str, default="eval_ablation_retrieval.json")
     parser.add_argument(
         "--raptor-tree-pickle",
         type=str,
         default=None,
-        help="Optional path to a pickled RAPTORTree to use instead of the design's persisted tree "
-        "(use this if the persisted tree predates a RAPTOR fix you want reflected in the ablation).",
+        help="Optional path to a pickled RAPTORTree (use when persisted tree predates a fix).",
     )
     args = parser.parse_args()
 
@@ -109,10 +129,6 @@ def main():
 
         _Indexes.raptor_tree = raptor_tree
 
-        # The synthetic eval path mocks category with MagicMock, which the vector
-        # searcher can't query with (needs a real category.id to look up the
-        # active ingestion job). Pass real objects via retrieval_overrides so
-        # they override the MagicMock set by evaluate_question's synthetic path.
         real_category = db.query(StandardCategory).filter_by(id=1).first()
         real_ingestion_job = (
             db.query(StandardIngestionJob)
@@ -120,26 +136,42 @@ def main():
             .order_by(StandardIngestionJob.created_at.desc())
             .first()
         )
+
+        # Standards DB search only (CategoryParameterChild). No TSD block_ids are returned,
+        # so context_precision is 0 by design. Included as the no-TSD-retrieval baseline.
         vector_only_overrides = {
             "raptor_tree": None,
             "force_strategy": RetrievalStrategy.VECTOR_ONLY,
             "category": real_category,
             "ingestion_job": real_ingestion_job,
         }
+        # Flat single-level RAPTOR leaf search — TSD embedding search, no hierarchy benefit.
+        raptor_low_overrides = {
+            "raptor_tree": raptor_tree,
+            "force_strategy": RetrievalStrategy.RAPTOR_LOW,
+            "category": real_category,
+            "ingestion_job": real_ingestion_job,
+        }
+        # Multi-level RAPTOR (leaf + mid + high summaries) — shows hierarchy benefit.
         raptor_only_overrides = {
             "raptor_tree": raptor_tree,
             "force_strategy": RetrievalStrategy.RAPTOR_HIGH,
             "category": real_category,
             "ingestion_job": real_ingestion_job,
         }
+        # Full hybrid: multi-level RAPTOR + BM25 keyword + cross-encoder reranking.
+        # Cross-encoder is enabled explicitly here so hybrid's reranking is active.
         hybrid_overrides = {
             "category": real_category,
             "ingestion_job": real_ingestion_job,
         }
 
-        router = HybridRetrievalRouter()
+        # Cross-encoder reranker enabled so hybrid gets global (cross-tier) reranking.
+        router = HybridRetrievalRouter(
+            advanced_config=AdvancedRetrievalConfig(enable_cross_encoder_rerank=True)
+        )
 
-        vector_results, raptor_results, hybrid_results = [], [], []
+        vector_results, raptor_low_results, raptor_results, hybrid_results = [], [], [], []
         buckets = {"front": [], "middle": [], "back": [], "unknown": []}
 
         for i, item in enumerate(dataset):
@@ -150,8 +182,11 @@ def main():
             logger.info(f"[{i + 1}/{len(dataset)}] ({bucket}) {item['question'][:70]}")
 
             try:
-                v = runner_mod.evaluate_question(
+                vo = runner_mod.evaluate_question(
                     item, router, _Indexes(), db=db, retrieval_overrides=vector_only_overrides
+                )
+                rl = runner_mod.evaluate_question(
+                    item, router, _Indexes(), db=db, retrieval_overrides=raptor_low_overrides
                 )
                 r = runner_mod.evaluate_question(
                     item, router, _Indexes(), db=db, retrieval_overrides=raptor_only_overrides
@@ -163,39 +198,52 @@ def main():
                 logger.error(f"Failed to evaluate question '{item['question']}': {e}")
                 continue
 
-            vector_results.append(v)
+            vector_results.append(vo)
+            raptor_low_results.append(rl)
             raptor_results.append(r)
             hybrid_results.append(h)
-            buckets[bucket].append((v, r, h))
+            buckets[bucket].append((vo, rl, r, h))
 
         summary = {
             "total_questions": len(hybrid_results),
             "vector_only": _aggregate(vector_results),
+            "raptor_low": _aggregate(raptor_low_results),
             "raptor_only": _aggregate(raptor_results),
             "hybrid": _aggregate(hybrid_results),
             "by_position_bucket": {
                 bucket: {
-                    "vector_only": _aggregate([v for v, r, h in pairs]),
-                    "raptor_only": _aggregate([r for v, r, h in pairs]),
-                    "hybrid": _aggregate([h for v, r, h in pairs]),
+                    "vector_only": _aggregate([vo for vo, rl, r, h in pairs]),
+                    "raptor_low": _aggregate([rl for vo, rl, r, h in pairs]),
+                    "raptor_only": _aggregate([r for vo, rl, r, h in pairs]),
+                    "hybrid": _aggregate([h for vo, rl, r, h in pairs]),
                 }
                 for bucket, pairs in buckets.items()
                 if pairs
             },
             "vector_only_results": vector_results,
+            "raptor_low_results": raptor_low_results,
             "raptor_only_results": raptor_results,
             "hybrid_results": hybrid_results,
         }
 
-        metrics = ("context_precision", "context_recall", "faithfulness", "faithfulness_deterministic")
-        summary["delta_raptor_minus_vector"] = {
-            m: summary["raptor_only"][m] - summary["vector_only"][m] for m in metrics
+        metrics = (
+            "context_precision",
+            "retrieved_coverage",
+            "context_recall",
+            "faithfulness",
+            "faithfulness_deterministic",
+        )
+        summary["delta_raptor_low_minus_vector"] = {
+            m: round(summary["raptor_low"][m] - summary["vector_only"][m], 4) for m in metrics
+        }
+        summary["delta_raptor_minus_low"] = {
+            m: round(summary["raptor_only"][m] - summary["raptor_low"][m], 4) for m in metrics
         }
         summary["delta_hybrid_minus_raptor"] = {
-            m: summary["hybrid"][m] - summary["raptor_only"][m] for m in metrics
+            m: round(summary["hybrid"][m] - summary["raptor_only"][m], 4) for m in metrics
         }
-        summary["delta_hybrid_minus_vector_only"] = {
-            m: summary["hybrid"][m] - summary["vector_only"][m] for m in metrics
+        summary["delta_hybrid_minus_vector"] = {
+            m: round(summary["hybrid"][m] - summary["vector_only"][m], 4) for m in metrics
         }
 
     output_path = results_path(args.output, subdir="retrieval")
@@ -204,15 +252,18 @@ def main():
 
     logger.info("Ablation complete.")
     logger.info(f"Vector-only:  {summary['vector_only']}")
-    logger.info(f"RAPTOR-only:  {summary['raptor_only']}")
+    logger.info(f"RAPTOR-low:   {summary['raptor_low']}")
+    logger.info(f"RAPTOR-high:  {summary['raptor_only']}")
     logger.info(f"Hybrid:       {summary['hybrid']}")
-    logger.info(f"Delta RAPTOR - Vector: {summary['delta_raptor_minus_vector']}")
-    logger.info(f"Delta Hybrid - RAPTOR: {summary['delta_hybrid_minus_raptor']}")
-    logger.info(f"Delta Hybrid - Vector: {summary['delta_hybrid_minus_vector_only']}")
+    logger.info(f"Delta RAPTOR-low - Vector:      {summary['delta_raptor_low_minus_vector']}")
+    logger.info(f"Delta RAPTOR-high - RAPTOR-low: {summary['delta_raptor_minus_low']}")
+    logger.info(f"Delta Hybrid - RAPTOR-high:     {summary['delta_hybrid_minus_raptor']}")
+    logger.info(f"Delta Hybrid - Vector:          {summary['delta_hybrid_minus_vector']}")
     for bucket, vals in summary["by_position_bucket"].items():
         logger.info(
             f"  [{bucket}] vector={vals['vector_only']['context_recall']:.3f} "
-            f"raptor={vals['raptor_only']['context_recall']:.3f} "
+            f"raptor_low={vals['raptor_low']['context_recall']:.3f} "
+            f"raptor_high={vals['raptor_only']['context_recall']:.3f} "
             f"hybrid={vals['hybrid']['context_recall']:.3f}"
         )
     logger.info(f"Results saved to {output_path}")

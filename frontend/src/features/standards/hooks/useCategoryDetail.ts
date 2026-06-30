@@ -255,7 +255,6 @@ export function useCategoryDetail(code?: string) {
           const matchCategory = categoryFilter === 'all' || child.requirement_category === categoryFilter;
           const matchSearch = search
             ? child.requirement_text.toLowerCase().includes(search.toLowerCase())
-              || (child.details && child.details.toLowerCase().includes(search.toLowerCase()))
             : true;
 
           return matchCategory && (parentMatchesSearch || matchSearch);

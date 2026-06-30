@@ -181,11 +181,13 @@ class DebateInputFactory:
         block_source_map = (retrieval_metadata or {}).get("block_source_map") or {}
         for idx, chunk in enumerate(context_chunks, start=1):
             evidence_kind = self.classify_context_chunk_text(chunk)
-            chunk_id = f"chunk_{idx}"
             real_block_ids = (
                 chunk_block_ids[idx - 1] if chunk_block_ids and idx - 1 < len(chunk_block_ids) else []
             )
             real_block_ids = [bid for bid in (real_block_ids or []) if bid]
+            # Use the primary real block ID as the chunk key so the LLM cites traceable pXX_bYY
+            # IDs directly, avoiding the chunk_N → pXX_bYY remapping that silently fails.
+            chunk_id = real_block_ids[0] if real_block_ids else f"chunk_{idx}"
             if real_block_ids:
                 source_location = self.resolve_chunk_source_location(real_block_ids[0], tsd_document)
             else:
@@ -195,7 +197,7 @@ class DebateInputFactory:
                 "section": source_location.get("section") or "unknown",
                 "text": chunk,
                 "evidence_kind": evidence_kind,
-                "citation_grade": bool(real_block_ids),
+                "citation_grade": bool(real_block_ids),  # citable when constituent block IDs are known
                 "evidence_quality": evidence_quality,
                 **({"block_ids": real_block_ids} if real_block_ids else {}),
                 **source_location,

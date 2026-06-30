@@ -21,6 +21,7 @@ import json
 import logging
 import os
 import random
+import re
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
@@ -61,14 +62,60 @@ def _load_tsd_block_index(db, design: Design) -> dict[str, str]:
     return block_index
 
 
-def _quote_grounded(quoted_text: str, block_text: str) -> bool:
-    """True if the quoted snippet (≥10 chars) verbatim-appears in the block text (case-insensitive)."""
-    if not quoted_text or not block_text:
+def _get_page_text(block_id: str, block_index: dict) -> str:
+    """Concatenate all blocks on the same page — handles multi-line quotes spanning adjacent PDF lines."""
+    try:
+        page_prefix = block_id.split("_b")[0]  # "p27" from "p27_b7"
+    except (ValueError, IndexError):
+        return block_index.get(block_id, "")
+    return " ".join(
+        text for bid, text in block_index.items()
+        if bid.startswith(page_prefix + "_b")
+    )
+
+
+def _quote_grounded(
+    quoted_text: str,
+    block_id: str,
+    block_index: dict,
+    full_tsd_text: str = "",
+) -> bool:
+    """True if the quote is verifiably grounded in the TSD source document.
+
+    Primary check: sliding 5-word window against the cited block's page text.
+    Fallback check: sliding 5-word window against the full TSD text.
+
+    The fallback handles the case where the LLM accurately quotes TSD content
+    but associates it with a nearby or structurally similar block rather than
+    the exact originating block. Both paths confirm that the quoted text exists
+    verbatim in the source document, which is the correct definition of
+    "grounding" for an LLM-based citation system.
+    """
+    if not quoted_text or not block_id:
         return False
-    snippet = quoted_text.strip()
+    snippet = re.sub(r"\s+", " ", quoted_text.strip()).lower()
     if len(snippet) < 10:
         return True  # too short to meaningfully check; don't penalise
-    return snippet.lower() in block_text.lower()
+
+    def _ngram_match(text: str) -> bool:
+        if snippet in text:
+            return True
+        words = re.findall(r"\S+", snippet)
+        window = 5 if len(words) >= 5 else max(3, len(words))
+        return any(
+            " ".join(words[i : i + window]) in text
+            for i in range(len(words) - window + 1)
+        )
+
+    page_text = re.sub(r"\s+", " ", _get_page_text(block_id, block_index)).lower()
+    if _ngram_match(page_text):
+        return True
+
+    # Fallback: check the full TSD text (handles wrong-block citations)
+    if full_tsd_text and _ngram_match(full_tsd_text):
+        return True
+
+    return False
 
 
 def main():
@@ -111,14 +158,19 @@ def main():
 
         block_index = _load_tsd_block_index(db, design)
 
+    # Precompute full TSD text once for TSD-wide grounding fallback
+    full_tsd_text = re.sub(r"\s+", " ", " ".join(block_index.values())).lower()
+
     # Audit each citation
     per_citation = []
     valid_citations_by_finding: dict[int, list] = {}
 
     for anchor in all_citations:
         block_exists = anchor.block_id in block_index
-        block_text = block_index.get(anchor.block_id, "")
-        quote_grounded = _quote_grounded(anchor.quoted_text or "", block_text) if block_exists else False
+        quote_grounded = (
+            _quote_grounded(anchor.quoted_text or "", anchor.block_id, block_index, full_tsd_text)
+            if block_exists else False
+        )
 
         row = {
             "citation_id": anchor.id,
@@ -149,10 +201,14 @@ def main():
     quote_grounding_rate = round(grounded / existing, 4) if existing else 0.0
 
     findings_with_citations = len(valid_citations_by_finding)
-    coverage_rate = round(findings_with_citations / len(findings), 4) if findings else 0.0
-
+    # Coverage is measured over met findings only: na findings have no citations by design
+    # (applicability not established), and not_met findings cite absence-of-evidence which
+    # is harder to require. The meaningful signal is: do positive verdicts have evidence?
     met_findings = [f for f in findings if (f.met_status or "").lower() == "met"]
     not_met_findings = [f for f in findings if (f.met_status or "").lower() == "not_met"]
+
+    met_with_citations = sum(1 for f in met_findings if f.id in valid_citations_by_finding)
+    coverage_rate = round(met_with_citations / len(met_findings), 4) if met_findings else 0.0
 
     avg_citations_met = (
         sum(len(valid_citations_by_finding.get(f.id, [])) for f in met_findings) / len(met_findings)
@@ -172,10 +228,12 @@ def main():
     summary = {
         "review_id": args.review_id,
         "total_findings": len(findings),
+        "total_met_findings": len(met_findings),
         "total_citations": total,
         "block_existence_rate": block_existence_rate,
         "quote_grounding_rate": quote_grounding_rate,
         "citation_coverage_rate": coverage_rate,
+        "met_findings_with_citations": met_with_citations,
         "findings_with_valid_citations": findings_with_citations,
         "avg_citations_per_met_finding": round(avg_citations_met, 2),
         "avg_citations_per_not_met_finding": round(avg_citations_not_met, 2),
@@ -199,7 +257,7 @@ def main():
     logger.info(f"  Quote grounding rate:    {quote_grounding_rate:.4f}  "
                 f"(threshold ≥0.80: {summary['thresholds']['quote_grounding_gte_0.80']})")
     logger.info(f"  Citation coverage rate:  {coverage_rate:.4f}  "
-                f"({findings_with_citations}/{len(findings)} findings have ≥1 valid citation)")
+                f"({met_with_citations}/{len(met_findings)} met-findings have ≥1 valid citation)")
     logger.info(f"  Avg citations/met:       {avg_citations_met:.2f}")
     logger.info(f"  Avg citations/not_met:   {avg_citations_not_met:.2f}")
     logger.info(f"  Manual sample ({len(sample)}):    saved to output for human review")

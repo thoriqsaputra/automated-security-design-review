@@ -17,29 +17,39 @@ const stageColors: Record<string, { bg: string; border: string; text: string }> 
   error:    { bg: '#BE3144', border: '#872341', text: '#ffffff' },
 };
 
-const STAGES_ORDER = [
-  '1_ingestion',
-  '2_retrieval',
-  '4_parameter_resolution',
-  '5_parent_retrieval',
-  '6_text_debate',
-  '7_diagram_debate',
-  '8_overview'
-];
+const STAGE_WEIGHTS: Record<string, number> = {
+  '4_parameter_resolution': 0,
+  '6_7_concurrent_debate': 1, // backend emits this before parent retrieval currently
+  '5_parent_retrieval': 1,
+  '6_text_debate': 2,
+  '7_diagram_debate': 2,
+  '8_overview': 3,
+};
 
 function getStageState(reviewStatus: string, currentStage: string | undefined, nodeStageId: string): string {
   if (reviewStatus === 'failed') return 'error';
   if (reviewStatus === 'completed_clean' || reviewStatus === 'completed_with_findings') return 'done';
   if (reviewStatus === 'pending') return 'pending';
-  
+
   if (!currentStage) return 'active'; // Fallback if missing
+
+  if (currentStage === '6_7_concurrent_debate') {
+    if (nodeStageId === '4_parameter_resolution') return 'done';
+    if (nodeStageId === '7_diagram_debate') return 'active';
+    return 'pending';
+  }
+
+  const currentWeight = STAGE_WEIGHTS[currentStage] ?? -1;
   
-  const currentIndex = STAGES_ORDER.indexOf(currentStage);
-  const nodeIndex = STAGES_ORDER.indexOf(nodeStageId);
-  
-  if (currentIndex === -1 || nodeIndex === -1) return 'pending';
-  if (nodeIndex < currentIndex) return 'done';
-  if (nodeIndex === currentIndex) return 'active';
+  let nodeWeight = -1;
+  if (nodeStageId === '4_parameter_resolution') nodeWeight = 0;
+  if (nodeStageId === '5_parent_retrieval') nodeWeight = 1;
+  if (nodeStageId === '6_text_debate' || nodeStageId === '7_diagram_debate') nodeWeight = 2; // concurrent
+  if (nodeStageId === '8_overview') nodeWeight = 3;
+
+  if (currentWeight === -1 || nodeWeight === -1) return 'pending';
+  if (nodeWeight < currentWeight) return 'done';
+  if (nodeWeight === currentWeight) return 'active';
   return 'pending';
 }
 
@@ -75,22 +85,26 @@ export default function ReviewPipeline({ reviewStatus, currentStage }: Props) {
     };
 
     const ns: Node[] = [
-      createNode('n1', '1. Ingestion & Screening', 0, 40, getStageState(reviewStatus, currentStage, '1_ingestion')),
-      createNode('n2', '2. Retrieval Indexing', 250, 40, getStageState(reviewStatus, currentStage, '2_retrieval')),
-      createNode('n4', '3. Parameter Resolution', 500, 40, getStageState(reviewStatus, currentStage, '4_parameter_resolution')),
-      createNode('n5', '4. Parent Retrieval', 750, 40, getStageState(reviewStatus, currentStage, '5_parent_retrieval')),
-      createNode('n6', '5. Text Multi-Agent Debate Loop', 1000, 40, getStageState(reviewStatus, currentStage, '6_text_debate')),
-      createNode('n7', '6. Diagram Multi-Agent Debate Loop', 1250, 40, getStageState(reviewStatus, currentStage, '7_diagram_debate')),
-      createNode('n8', '7. Generate Overview', 1500, 40, getStageState(reviewStatus, currentStage, '8_overview')),
+      createNode('n4', '1. Parameter Resolution', 0, 40, getStageState(reviewStatus, currentStage, '4_parameter_resolution')),
+      createNode('n5', '2. Applicability Filter', 250, 40, getStageState(reviewStatus, currentStage, '5_parent_retrieval')),
+      createNode('n6', '3A. Text Debate', 550, 0, getStageState(reviewStatus, currentStage, '6_text_debate')),
+      createNode('n7', '3B. Diagram Debate', 550, 80, getStageState(reviewStatus, currentStage, '7_diagram_debate')),
+      createNode('n8', '4. Generate Overview', 850, 40, getStageState(reviewStatus, currentStage, '8_overview')),
     ];
 
-    const isEdgeActive = (targetStage: string) => {
+    const isEdgeActive = (targetStageId: string) => {
       if (reviewStatus !== 'running') return false;
       if (!currentStage) return true; // animate all if we don't know
-      const currentIndex = STAGES_ORDER.indexOf(currentStage);
-      const targetIndex = STAGES_ORDER.indexOf(targetStage);
-      // Animate if the current stage is at or beyond the target stage
-      return currentIndex >= targetIndex;
+      if (currentStage === '6_7_concurrent_debate') {
+        return targetStageId === '7_diagram_debate';
+      }
+      const currentWeight = STAGE_WEIGHTS[currentStage] ?? -1;
+      let targetWeight = -1;
+      if (targetStageId === '4_parameter_resolution') targetWeight = 0;
+      if (targetStageId === '5_parent_retrieval') targetWeight = 1;
+      if (targetStageId === '6_text_debate' || targetStageId === '7_diagram_debate') targetWeight = 2;
+      if (targetStageId === '8_overview') targetWeight = 3;
+      return currentWeight >= targetWeight;
     };
 
     const createEdge = (source: string, target: string, animated: boolean) => ({
@@ -103,11 +117,10 @@ export default function ReviewPipeline({ reviewStatus, currentStage }: Props) {
     });
 
     const es: Edge[] = [
-      createEdge('n1', 'n2', isEdgeActive('2_retrieval')),
-      createEdge('n2', 'n4', isEdgeActive('4_parameter_resolution')),
       createEdge('n4', 'n5', isEdgeActive('5_parent_retrieval')),
       createEdge('n5', 'n6', isEdgeActive('6_text_debate')),
-      createEdge('n6', 'n7', isEdgeActive('7_diagram_debate')),
+      createEdge('n5', 'n7', isEdgeActive('7_diagram_debate')),
+      createEdge('n6', 'n8', isEdgeActive('8_overview')),
       createEdge('n7', 'n8', isEdgeActive('8_overview')),
     ];
 

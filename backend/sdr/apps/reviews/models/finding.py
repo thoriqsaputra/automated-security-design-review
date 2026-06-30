@@ -50,6 +50,9 @@ class Finding(Base):
     critic_thought_process: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     mediator_thought_process: Mapped[Optional[str]] = mapped_column(String, nullable=True)
 
+    # Retrieval metadata
+    retrieval_strategy: Mapped[Optional[str]] = mapped_column(String(32), nullable=True, index=True)
+
     # Requirement traceability
     reason: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     recommendation: Mapped[Optional[str]] = mapped_column(String, nullable=True)

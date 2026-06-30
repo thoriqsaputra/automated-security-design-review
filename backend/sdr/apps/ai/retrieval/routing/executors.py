@@ -111,12 +111,22 @@ def _rerank_within_tiers(
     candidates: List[RetrievalCandidate],
     max_context_chunks: int,
 ) -> List[RetrievalCandidate]:
-    """Reranks within each evidence tier (on the tier's full membership, not
-    a pre-cut slice) and only concatenates+truncates afterward, so reranking
-    can actually act on the full candidate pool instead of just whatever
-    happened to survive an earlier per-tier cutoff. Tier priority is
-    preserved — a hierarchical_summary can never outrank literal evidence
-    just because a cross-encoder/score ranks it higher within its own tier."""
+    """Reranks candidates by evidence quality and cross-encoder relevance.
+
+    When the cross-encoder reranker is enabled, it uses the model's relevance
+    score as the primary ranking signal across all candidates — this lets a
+    highly-relevant hierarchical summary outrank a less-relevant leaf node,
+    which is important for precision (the right content ranks first).
+
+    When the cross-encoder is disabled (default in production), tier priority
+    is preserved: implementation_evidence > fallback > hierarchical_summary.
+    Within each tier candidates are sorted by their existing semantic score.
+    """
+    if getattr(router._reranker, "enable_cross_encoder", False):
+        # Cross-encoder provides a relevance signal that supersedes tier ordering.
+        # Rerank all candidates globally so the best chunk for the query is first.
+        return router._reranker.rerank(query=query_text, candidates=candidates, top_k=max_context_chunks)
+
     tiers: Dict[str, List[RetrievalCandidate]] = {key: [] for key in _EVIDENCE_TIER_ORDER}
     for candidate in candidates:
         kind = candidate.metadata.get("evidence_kind")

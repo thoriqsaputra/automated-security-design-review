@@ -130,7 +130,7 @@ class TSDAnalysisPipeline:
         self.run_state.mark_running(review)
 
         try:
-            self.run_state.update_stage(review, summary, "1_ingestion")
+            self.run_state.update_stage(review, summary, "4_parameter_resolution")
             tsd_document = None
             indexes = None
             if getattr(getattr(review, "design", None), "can_start_analysis", False):
@@ -140,7 +140,6 @@ class TSDAnalysisPipeline:
                             db,
                             review.design,
                         )
-                    self.run_state.update_stage(review, summary, "2_retrieval")
                     self.snapshot_builder.save(review, indexes)
                 except (PreparationNotReadyError, PreparationArtifactError) as exc:
                     self.logger.error(
@@ -150,25 +149,13 @@ class TSDAnalysisPipeline:
                     )
                     self.run_state.fail_review(review, str(exc))
                     return summary
+            else:
+                self.run_state.fail_review(review, "Design is not ready for analysis (can_start_analysis is False).")
+                return summary
 
             if tsd_document is None or indexes is None:
-                ingestion_output = self.ingestion.ingest(review)
-                if ingestion_output is None:
-                    self.run_state.fail_review(review, "Failed to ingest TSD document.")
-                    return summary
-
-                tsd_document = ingestion_output.tsd_document
-                if not ingestion_output.is_valid_tsd:
-                    summary.screened_out = True
-                    self.run_state.fail_review(
-                        review,
-                        "Document failed TSD screening — does not appear to be a Technical Software Document.",
-                    )
-                    return summary
-
-                self.run_state.update_stage(review, summary, "2_retrieval")
-                indexes = self.retrieval.build_indexes(tsd_document)
-                self.snapshot_builder.save(review, indexes)
+                self.run_state.fail_review(review, "Failed to load TSD document or indexes from preparation store.")
+                return summary
 
             category = review.category or (review.ingestion_job.category if review.ingestion_job else None)
             if not category:

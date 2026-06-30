@@ -38,6 +38,7 @@ from PIL import Image, ImageDraw, ImageFont
 
 from sdr.apps.ai.agents.vision import DiagramInput
 from sdr.apps.ai.engine.debate.diagram_debate_service import DiagramDebateService
+from sdr.apps.ai.evaluations.shared import results_path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -153,7 +154,13 @@ def _compute_marker_utilization(debate_output) -> dict:
     }
 
 
-def run_grounding_eval(service: DiagramDebateService) -> list[dict]:
+def _save_image_b64(b64: str, path: str) -> None:
+    import base64 as _b64
+    with open(path, "wb") as f:
+        f.write(_b64.b64decode(b64))
+
+
+def run_grounding_eval(service: DiagramDebateService, images_dir: str | None = None) -> list[dict]:
     """Runs debates on architecture scenarios and records grounding metrics."""
     from sdr.apps.ai.evaluations.vision.blindness_eval import CONTROL_SCENARIOS
 
@@ -177,8 +184,15 @@ def run_grounding_eval(service: DiagramDebateService) -> list[dict]:
             verification_hint=scenario["verification_hint"],
         )
 
+        if images_dir:
+            _save_image_b64(image_b64, os.path.join(images_dir, f"{diagram_id}_input.png"))
+
         logger.info("Grounding eval: %s", diagram_id)
         output = service.run_diagram_debate(diagram=diagram, requirements=[req], tsd_context="")
+
+        if images_dir:
+            _save_image_b64(diagram.image_b64, os.path.join(images_dir, f"{diagram_id}_marked.png"))
+            logger.info("Saved marked image → %s/%s_marked.png", images_dir, diagram_id)
 
         marker_stats = _compute_marker_utilization(output)
         critic = output.critic_result or {}
@@ -217,8 +231,15 @@ def run_grounding_eval(service: DiagramDebateService) -> list[dict]:
             verification_hint="Look for any authentication or auth service component.",
         )
 
+        if images_dir:
+            _save_image_b64(image_b64, os.path.join(images_dir, f"{diagram_id}_input.png"))
+
         logger.info("Scope eval: %s (expected=%s)", diagram_id, scope_s["label"])
         output = service.run_diagram_debate(diagram=diagram, requirements=[req], tsd_context="")
+
+        if images_dir:
+            _save_image_b64(diagram.image_b64, os.path.join(images_dir, f"{diagram_id}_marked.png"))
+            logger.info("Saved marked image → %s/%s_marked.png", images_dir, diagram_id)
 
         marker_stats = _compute_marker_utilization(output)
         critic = output.critic_result or {}
@@ -317,6 +338,9 @@ def main():
     )
     args = parser.parse_args()
 
+    images_dir = results_path("images", subdir="vision")
+    os.makedirs(images_dir, exist_ok=True)
+
     if args.from_blindness_results:
         with open(args.from_blindness_results) as f:
             blindness_data = json.load(f)
@@ -333,11 +357,11 @@ def main():
         }
     else:
         service = DiagramDebateService()
-        results = run_grounding_eval(service)
+        results = run_grounding_eval(service, images_dir=images_dir)
         summary = compute_summary(results)
         summary["results"] = results
 
-    output_path = os.path.join(os.path.dirname(__file__), args.output)
+    output_path = results_path(args.output, subdir="vision")
     with open(output_path, "w") as f:
         json.dump(summary, f, indent=2)
 
@@ -346,6 +370,7 @@ def main():
     logger.info("Scope accuracy:              %.2f", summary.get("scope_accuracy", 0))
     logger.info("Critic overturn rate:        %.2f", summary.get("critic_overturn_rate", 0))
     logger.info("Invalid marker citation rate:%.2f", summary.get("invalid_marker_citation_rate", 0))
+    logger.info("Marked images saved to %s/", images_dir)
     logger.info("Results saved to %s", output_path)
 
 

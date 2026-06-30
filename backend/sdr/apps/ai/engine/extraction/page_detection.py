@@ -377,7 +377,7 @@ class ASVSPageRangeDetectionService:
     def _end_page_from_appendix(self, start_page: int, appendix_page: Optional[int]) -> Optional[int]:
         if appendix_page is None:
             return None
-        end_page = max(start_page, appendix_page - 2)
+        end_page = max(start_page, appendix_page - 1)
         logger.info(
             "ASVSPageRangeDetectionService._end_page_from_appendix: start_page=%d "
             "appendix_page=%d end_page=%d span=%d page(s)",

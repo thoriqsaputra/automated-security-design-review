@@ -1,0 +1,285 @@
+{
+  "design_id": 8,
+  "items": [
+    {
+      "requirement_id": "2ea43cb687ce46689bfb0e22-29-000007",
+      "label": "not_met",
+      "notes": "While the TSD specifies algorithms like Bcrypt and AES-256, it is completely silent on architectural mechanisms allowing these cryptographic algorithms to be easily reconfigured or swapped."
+    },
+    {
+      "requirement_id": "69496a4f4fc2923440c115b2-29-000015",
+      "label": "met",
+      "notes": "Section 17 explicitly mandates the use of a centralized Secrets Vault mechanism (e.g., HashiCorp Vault) to securely manage and inject critical credentials and keys."
+    },
+    {
+      "requirement_id": "e414d36f51944fa9eae9416f-29-000016",
+      "label": "not_met",
+      "notes": "Section 17 explicitly states that cryptographic keys are injected directly into the Hypertext Preprocessor memory at runtime, contradicting the requirement to keep key material unexposed to the application."
+    },
+    {
+      "requirement_id": "c991301b7c56d013295f297b-29-000004",
+      "label": "met",
+      "notes": "Sections 14 and 15 describe incrementing IP-based failed login counters and generating high-priority alerts in the telemetry dashboard to identify anomalous behaviors and brute force attempts."
+    },
+    {
+      "requirement_id": "0823311afc62c39cfe92eb1e-29-000011",
+      "label": "not_met",
+      "notes": "The TSD is silent on providing users a specific feature or method to remove or export their personal data on demand."
+    },
+    {
+      "requirement_id": "0b9f083db46629d252c48e95-29-000012",
+      "label": "not_met",
+      "notes": "The functional requirements for user registration (FR-001, FR-002 in Section 4) lack any mention of presenting clear language or gathering explicit opt-in consent for personal information collection."
+    },
+    {
+      "requirement_id": "51c5bcf2675b6741510e646c-29-000013",
+      "label": "met",
+      "notes": "Section 20 (Data Lifecycle Management) explicitly identifies categories of sensitive data and establishes rigorous retention and cryptographic erasure policies for each."
+    },
+    {
+      "requirement_id": "9b9932ef6d0775d4d7b00dcf-29-000014",
+      "label": "met",
+      "notes": "Section 15 mandates tracking access to restricted resources while enforcing strict data masking and cryptographic hashing of all Personally Identifiable Information before logs are written."
+    },
+    {
+      "requirement_id": "e073999cb1eb71f5780145ba-29-000016",
+      "label": "met",
+      "notes": "Section 13 mandates that all permanent data at rest is secured using AES-256 and all in-transit data uses TLS 1.2 or TLS 1.3, ensuring both confidentiality and integrity."
+    },
+    {
+      "requirement_id": "9a26ae196cc8fc999de05020-29-000003",
+      "label": "not_met",
+      "notes": "The functional requirements listed in Section 4 define positive application actions but omit explicit negative security constraints or boundaries within the feature descriptions themselves."
+    },
+    {
+      "requirement_id": "39c0ed17abf94da14821b28e-29-000004",
+      "label": "met",
+      "notes": "Section 13 comprehensively documents the application's trust boundaries, components, and data flows, explicitly defining the protocols and encryptions used."
+    },
+    {
+      "requirement_id": "8bff616e6f67a7b8c8b39c6e-29-000005",
+      "label": "met",
+      "notes": "Sections 6, 8, and 18 explicitly define the high-level architecture, isolate internal network tiers, and analyze the security of connected remote services."
+    },
+    {
+      "requirement_id": "f78cc14f1021a92d62e837a1-29-000006",
+      "label": "na",
+      "notes": "Verifying the actual code-level implementation of simple, reusable security controls designed specifically to prevent duplicate or missing controls requires source code inspection."
+    },
+    {
+      "requirement_id": "3293e58191d94d1aef8b2d58-29-000009",
+      "label": "met",
+      "notes": "Section 8 mandates that all internal and external API endpoints require authenticated tokens, and Section 17 restricts data layer communication using dedicated administrative credentials."
+    },
+    {
+      "requirement_id": "caf5235411c4aee80673a54a-29-000010",
+      "label": "met",
+      "notes": "Sections 8, 11, and 15 detail a centralized authentication endpoint augmented with mandatory Multi-Factor Authentication and supported by comprehensive event logging to detect abuse."
+    },
+    {
+      "requirement_id": "682de869a745db6e6e6e95e9-29-000011",
+      "label": "met",
+      "notes": "Section 11 explicitly mandates that all system roles require mandatory Multi-Factor Authentication, ensuring consistent authentication strength across the platform without weaker alternatives."
+    },
+    {
+      "requirement_id": "db8e0236e3c71a01a22f92fc-29-000012",
+      "label": "met",
+      "notes": "Section 12 explicitly mandates that the server-side controller strictly validates all requests against a secure session ledger, preventing the enforcement of access controls on the client side."
+    },
+    {
+      "requirement_id": "235679eeeed4c1ddc22f4eaf-29-000013",
+      "label": "met",
+      "notes": "Sections 6 and 11 define a unified Role-Based and Attribute-Based Access Control model enforced uniformly by the centralized PHP controller layer for all protected resources."
+    },
+    {
+      "requirement_id": "4149b9e4d342b8e4f60c1e04-29-000014",
+      "label": "met",
+      "notes": "Section 11 explicitly dictates combining Role-Based Access Control with Attribute-Based Access Control to enforce specific data ownership constraints, matching unique user identifiers to database records."
+    },
+    {
+      "requirement_id": "db5f235cbd438807f729b273-29-000015",
+      "label": "met",
+      "notes": "Sections 5, 9, 15, and 20 collectively define input validation constraints, data types, strict PII masking rules for outputs like logs, and categorical data retention lifecycles."
+    },
+    {
+      "requirement_id": "f795ad19b9018b705f38ee07-29-000017",
+      "label": "met",
+      "notes": "Sections 5 and 6 explicitly mandate rigorous input validation enforced on the trusted server-side Hypertext Preprocessor Controller layer."
+    },
+    {
+      "requirement_id": "ab5d2b5e700b36c5bddf0886-29-000019",
+      "label": "not_met",
+      "notes": "While Section 17 discusses utilizing a centralized Secrets Vault, the TSD is silent on a formal policy or standard for cryptographic key lifecycles like NIST SP 800-57."
+    },
+    {
+      "requirement_id": "e2651e0a1d19514ad8eb9760-29-000020",
+      "label": "met",
+      "notes": "Section 17 explicitly mandates that critical passwords and cryptographic keys are protected and securely injected using a centralized Secrets Vault mechanism like HashiCorp Vault."
+    },
+    {
+      "requirement_id": "f578ff492e3ae964712dc73d-29-000022",
+      "label": "not_met",
+      "notes": "The TSD does not document an explicit architectural policy regarding the treatment or restriction of client-side secrets for protecting sensitive data."
+    },
+    {
+      "requirement_id": "6224cdc4224b15cc055e4d98-29-000023",
+      "label": "na",
+      "notes": "Verifying that a common, standardized logging format is programmatically implemented across the entire system requires source code inspection."
+    },
+    {
+      "requirement_id": "bbd11e705bfae707c6b9c261-29-000025",
+      "label": "not_met",
+      "notes": "While Section 20 identifies categories of sensitive data, the TSD fails to formally classify this data into explicit, tiered protection levels."
+    },
+    {
+      "requirement_id": "b5f829a2d84177524b442b01-29-000026",
+      "label": "not_met",
+      "notes": "Because the TSD fails to formally classify data into tiered protection levels, it also lacks documentation mapping specific protection requirements to those levels."
+    },
+    {
+      "requirement_id": "085e9a838bf30e0c0f804ba5-29-000027",
+      "label": "met",
+      "notes": "Section 13 explicitly mandates that all communications across system boundaries, including between the web server, database, and external APIs, strictly use TLS 1.2 or TLS 1.3 encryption."
+    },
+    {
+      "requirement_id": "7351e1b4f6c9107bb7b18b0e-29-000030",
+      "label": "met",
+      "notes": "Sections 6, 7, 8, and 18 comprehensively define and document the application's internal components and external subsystems in terms of their specific business and security functions."
+    },
+    {
+      "requirement_id": "36418f80a7aff71abadb8616-29-000031",
+      "label": "na",
+      "notes": "Verifying the absence of unsynchronized state or race conditions within high-value business logic flows requires runtime concurrency testing and source code inspection."
+    },
+    {
+      "requirement_id": "c24559ecb183d8c7507ef767-29-000033",
+      "label": "not_met",
+      "notes": "While Section 9 indicates user photos are stored as blobs in the database, the TSD is silent on serving these files from unrelated domains or implementing a Content Security Policy to prevent XSS."
+    },
+    {
+      "requirement_id": "672799b90935437c9b41ce9b-29-000034",
+      "label": "met",
+      "notes": "Section 18 explicitly enforces multi-tier network segmentation, placing the web server in a DMZ and isolating the MySQL database within a strict private subnet."
+    },
+    {
+      "requirement_id": "e0ef7498ca0ee472891bfde1-29-000016",
+      "label": "met",
+      "notes": "Section 11 explicitly mandates that all system roles require mandatory Multi-Factor Authentication via SMS or email to verify physical identity and prevent impersonation."
+    },
+    {
+      "requirement_id": "b568b213b20b7eef5d4b8b57-29-000018",
+      "label": "not_met",
+      "notes": "The TSD is completely silent on whether the authentication mechanisms provide replay resistance through the mandated use of cryptographic authenticators or lookup codes."
+    },
+    {
+      "requirement_id": "e7a85cbca48f1e19016bf754-29-000021",
+      "label": "not_met",
+      "notes": "While Section 11 defines SMS and email for MFA, it is completely silent on supporting user-provided hardware authentication devices like U2F or FIDO tokens."
+    },
+    {
+      "requirement_id": "cb49776a8ba797b0d321743d-29-000033",
+      "label": "not_met",
+      "notes": "Section 4 mentions a 'forgot your password' recovery panel, but the TSD fails to document whether this path utilizes a secure recovery mechanism like a time-based OTP."
+    },
+    {
+      "requirement_id": "1a1e8e4c653b5441ed2965a9-29-000038",
+      "label": "not_met",
+      "notes": "Section 11 explicitly designates SMS and email as the integrated MFA methods, contradicting the requirement to not offer clear-text out-of-band authenticators by default."
+    },
+    {
+      "requirement_id": "f5c0f786db8b2de60b7d1ffa-29-000041",
+      "label": "met",
+      "notes": "Section 13 explicitly mandates that all data transmitted to the External Notification Gateways is encrypted using TLS 1.2 or TLS 1.3 to ensure a secure independent channel."
+    },
+    {
+      "requirement_id": "17ab689d0dfb9956e64b0400-29-000044",
+      "label": "not_met",
+      "notes": "Section 10 lists various system timeouts and configuration parameters, but the TSD is completely silent on defining an expiration lifetime for one-time passwords."
+    },
+    {
+      "requirement_id": "2e8b59805f7af95d2524dc06-29-000050",
+      "label": "not_met",
+      "notes": "The TSD is completely silent on the use of biometric authenticators and lacks any policy restricting their usage to secondary factors."
+    },
+    {
+      "requirement_id": "aff5b28dfde62093492e8664-29-000054",
+      "label": "not_met",
+      "notes": "The TSD describes injecting secrets like database passwords via a Secrets Vault in Section 17, but is silent on ensuring intra-service communication relies on short-lived or changing credentials."
+    },
+    {
+      "requirement_id": "4707eb7f667c3caaab321829-29-000001",
+      "label": "met",
+      "notes": "Sections 11 and 12 explicitly state that Role-Based and Attribute-Based Access Control rules are strictly validated and enforced by the trusted server-side Hypertext Preprocessor Controller layer."
+    },
+    {
+      "requirement_id": "4a5bcd651e023dc3f391a845-29-000002",
+      "label": "met",
+      "notes": "Section 12 explicitly mandates centralized server-side session tracking to prevent malicious actors from hijacking authenticated states or manipulating user access attributes on the client side."
+    },
+    {
+      "requirement_id": "3754472a55ec26cfd4ac84d3-29-000003",
+      "label": "met",
+      "notes": "Section 11 defines a comprehensive access control model combining Role-Based and Attribute-Based Access Control to ensure users interact strictly within their authorized functional boundaries."
+    },
+    {
+      "requirement_id": "92f8b2a44c1a693aaa029d29-29-000004",
+      "label": "met",
+      "notes": "Section 14 explicitly mandates a strict Fail-Closed state for any unexpected crash or validation ambiguity, mathematically ensuring access is denied by default upon failure."
+    },
+    {
+      "requirement_id": "c223771df60dbdd138ecb806-29-000007",
+      "label": "met",
+      "notes": "Sections 11 and 17 explicitly mandate that users with Elevated Administrative Privileges must authenticate utilizing mandatory Multi-Factor Authentication to access the system and the secrets vault."
+    },
+    {
+      "requirement_id": "db91a1b412194581c7239435-29-000009",
+      "label": "not_met",
+      "notes": "While the TSD outlines standard authentication roles, it is completely silent on implementing adaptive authentication, step-up authorization, or explicit segregation of duties for anti-fraud purposes."
+    },
+    {
+      "requirement_id": "3dc6f67a223cf26e26edfebf-29-000001",
+      "label": "met",
+      "notes": "Section 13 explicitly mandates that all permanent data at rest stored within the MySQL database, which includes Personally Identifiable Information, is meticulously secured using AES-256 encryption."
+    },
+    {
+      "requirement_id": "d1408622f3f551f0eaa08399-29-000002",
+      "label": "not_met",
+      "notes": "The TSD is completely silent on the collection or encryption of regulated health data, as the application's defined data model does not encompass medical records."
+    },
+    {
+      "requirement_id": "a3bdd13588d2eae69ec229f0-29-000003",
+      "label": "not_met",
+      "notes": "Section 3 explicitly places payment gateway operations out of scope, and the TSD is thus completely silent on any requirements for encrypting regulated financial data."
+    },
+    {
+      "requirement_id": "9e2827884265b3eb67522180-29-000017",
+      "label": "met",
+      "notes": "Section 20 explicitly defines data retention classifications and mandates automated cryptographic erasure for sensitive personal information at the end of its lifecycle."
+    },
+    {
+      "requirement_id": "a09482b2a0aae657f4d864f8-29-000005",
+      "label": "met",
+      "notes": "Sections 4 and 10 enforce explicit business logic limits, such as a maximum of eight route waypoints and strict API rate limits, to mitigate likely business abuse."
+    },
+    {
+      "requirement_id": "0c9dbb545410ca4280e13a74-29-000009",
+      "label": "met",
+      "notes": "Section 13 explicitly mandates that all in-transit communications across system boundaries strictly utilize TLS 1.2 or TLS 1.3 to ensure payload confidentiality and integrity."
+    },
+    {
+      "requirement_id": "bb999d143d925f112705e697-29-000011",
+      "label": "not_met",
+      "notes": "The TSD describes standard HTTP and JSON API endpoints in Section 8 but is completely silent on utilizing WS-Security to sign message payloads."
+    },
+    {
+      "requirement_id": "35ebc5e70e6221b348e54515-29-000013",
+      "label": "met",
+      "notes": "Sections 11 and 12 explicitly dictate that all Role-Based and Attribute-Based authorization logic is strictly evaluated and enforced by the trusted PHP Controller (business logic layer) rather than the data layer."
+    },
+    {
+      "requirement_id": "21b95dc9208454088a14e029-29-000011",
+      "label": "not_met",
+      "notes": "While Section 16 discusses dependency scanning and version pinning for third-party libraries, the TSD is completely silent on sandboxing or encapsulating them to expose only required behavior."
+    }
+  ]
+}

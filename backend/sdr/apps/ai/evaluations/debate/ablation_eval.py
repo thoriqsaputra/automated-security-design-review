@@ -41,12 +41,12 @@ VALID_VERDICTS = {"met", "not_met", "na"}
 
 
 def _load_ground_truth(gt_path: str) -> dict[str, str]:
-    """Load {finding_id_str: label} from the manual ground-truth JSON."""
+    """Load {requirement_id_str: label} from the manual ground-truth JSON."""
     with open(gt_path) as f:
         data = json.load(f)
     items = data.get("items", data)
     if isinstance(items, list):
-        return {str(item["finding_id"]): item["label"].lower().strip() for item in items}
+        return {str(item["requirement_id"]): item["label"].lower().strip() for item in items}
     return {str(k): v.lower().strip() for k, v in items.items()}
 
 
@@ -99,7 +99,7 @@ def main():
     parser.add_argument("--review-id", type=int, required=True)
     parser.add_argument(
         "--ground-truth", type=str, required=True,
-        help="Path to manual ground-truth JSON: {items: [{finding_id, label}]}"
+        help="Path to manual ground-truth JSON: {items: [{requirement_id, label}]}"
     )
     parser.add_argument("--output", type=str, default="debate_ablation_results.json")
     args = parser.parse_args()
@@ -130,16 +130,16 @@ def main():
     disagreements = []
 
     for f in findings:
-        fid = str(f.id)
-        if fid not in gt:
+        req_ref = str(f.requirement_reference or "")
+        if not req_ref or req_ref not in gt:
             continue
 
-        true_label = gt[fid]
+        true_label = gt[req_ref]
         hunter_verdict = _extract_hunter_verdict(f)
         debate_verdict = (f.met_status or "").lower().strip()
 
         if hunter_verdict is None:
-            logger.warning(f"  [finding {fid}] no hunter verdict in analysis_trace — skipping")
+            logger.warning(f"  [req {req_ref}] no hunter verdict in analysis_trace — skipping")
             continue
 
         hunter_labels.append(true_label)
@@ -169,7 +169,7 @@ def main():
                 "✗ broken" if (hunter_correct and not debate_correct) else "→ still wrong"
             )
             logger.info(
-                f"  [finding {fid}] hunter={hunter_verdict} → debate={debate_verdict} "
+                f"  [finding {f.id}] hunter={hunter_verdict} → debate={debate_verdict} "
                 f"(true={true_label}) {direction}"
             )
 

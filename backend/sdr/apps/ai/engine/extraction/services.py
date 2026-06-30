@@ -26,6 +26,7 @@ from .normalizers import (
     parse_json_response,
     parse_json_with_repair,
 )
+from .screening import StandardScreeningError, StandardScreeningService
 
 logger = logging.getLogger(__name__)
 _AI_RESPONSE_PREVIEW_LIMIT = 800
@@ -80,6 +81,12 @@ def _extract_document_requirements(
             source_doc.name,
         )
         return {}
+
+    if progress_callback:
+        progress_callback("Screening Document", 10)
+    
+    screening_service = StandardScreeningService(llm_client=structured_extractor.llm_client)
+    screening_service.screen_document(source_doc_text)
 
     if progress_callback:
         progress_callback("Chunking Document", 15)
@@ -314,11 +321,8 @@ class DiagramRequirementExtractionService:
         for param in parameters:
             stable_key_val = getattr(param, "stable_key", "")
             req_text = getattr(param, "requirement_text", "")
-            details = getattr(param, "details", "") or ""
             parent_title = getattr(getattr(param, "parent", None), "title", "") or ""
             line = f"[{stable_key_val}] [{parent_title}] {req_text}"
-            if details:
-                line += f" | {details[:120]}"
             param_lines.append(line)
 
         batch_size = 20

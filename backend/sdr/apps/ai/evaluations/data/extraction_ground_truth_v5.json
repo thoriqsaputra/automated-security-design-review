@@ -1,0 +1,612 @@
+{ 
+  "version": "ASVS 5.0", 
+  "note": "Hand-labeled ground truth for extraction category accuracy evaluation based on ASVS 5.0.0. Labels follow the TSD-anchored definition: 'design' means verifiable from the Technical Specification Document alone (architecture, data flows, trust boundaries, rules/policies). Extend this set for broader coverage.", 
+  "category_definitions": { 
+    "design":         "TSD-verifiable: architecture, data classification, trust boundaries, defined limits/rules, encryption strategy, access control model", 
+    "code":           "Requires source code inspection: algorithm work factors, exact parsing/sanitization logic, cookie flags, parameterized queries, OTP entropy", 
+    "infrastructure": "Requires ops/config audit: CI/CD, deployment pipelines, HTTP header values, TLS cipher testing, dependency version checks, server accounts", 
+    "process":        "Requires organizational assessment: SDLC policy, threat modeling cadence, cryptographic inventory maintenance, SBOM maintenance" 
+  }, 
+  "items": [ 
+    {
+      "control_id": "11.1.3", 
+      "requirement_excerpt": "Verify that cryptographic discovery mechanisms are employed to identify all instances of cryptography in the system", 
+      "expected_category": "process", 
+      "rationale": "Employing discovery mechanisms across the enterprise is an organizational process."
+    },
+    {
+      "control_id": "11.1.4", 
+      "requirement_excerpt": "Verify that a cryptographic inventory is maintained. This must include a documented plan that outlines the migration path", 
+      "expected_category": "process", 
+      "rationale": "Maintaining an ongoing inventory and migration plan is a continuous organizational process, not a static software property."
+    },
+    {
+      "control_id": "15.1.2", 
+      "requirement_excerpt": "Verify that an inventory catalog, such as software bill of materials (SBOM), is maintained of all third-party libraries in use", 
+      "expected_category": "process", 
+      "rationale": "Continuous SBOM maintenance falls under organizational supply chain procedures."
+    },
+    {
+      "control_id": "15.2.1", 
+      "requirement_excerpt": "Verify that the application only contains components which have not breached the documented update and remediation time frames.", 
+      "expected_category": "process", 
+      "rationale": "Remediation SLAs and component lifecycle management are governance and organizational processes."
+    },
+    {
+      "control_id": "3.2.1", 
+      "requirement_excerpt": "Verify that security controls are in place to prevent browsers from rendering content or functionality... using the attachment disposition type in the Content-Disposition header", 
+      "expected_category": "infrastructure", 
+      "rationale": "HTTP response headers like Content-Disposition are typically server or API gateway configuration details."
+    },
+    {
+      "control_id": "3.4.1", 
+      "requirement_excerpt": "Verify that a Strict-Transport-Security header field is included on all responses to enforce an HTTP Strict Transport Security (HSTS) policy.", 
+      "expected_category": "infrastructure", 
+      "rationale": "HSTS is a server configuration detail, not verifiable strictly from a TSD."
+    },
+    {
+      "control_id": "3.4.2", 
+      "requirement_excerpt": "Verify that the Cross-Origin Resource Sharing (CORS) Access-Control-Allow-Origin header field is a fixed value by the application", 
+      "expected_category": "infrastructure", 
+      "rationale": "CORS headers are web server or gateway configurations."
+    },
+    {
+      "control_id": "3.4.3", 
+      "requirement_excerpt": "Verify that HTTP responses include a Content-Security-Policy response header field which defines directives to ensure the browser only loads and executes trusted content", 
+      "expected_category": "infrastructure", 
+      "rationale": "CSP HTTP headers require inspecting live server configurations."
+    },
+    {
+      "control_id": "3.4.5", 
+      "requirement_excerpt": "Verify that the application sets a referrer policy to prevent leakage... using the Referrer-Policy HTTP response header field", 
+      "expected_category": "infrastructure", 
+      "rationale": "Referrer-Policy is an infrastructure-level HTTP header configuration."
+    },
+    {
+      "control_id": "3.4.6", 
+      "requirement_excerpt": "Verify that the web application uses the frame-ancestors directive of the Content-Security-Policy header field for every HTTP response", 
+      "expected_category": "infrastructure", 
+      "rationale": "Specific CSP directives are tested against live server responses."
+    },
+    {
+      "control_id": "3.4.7", 
+      "requirement_excerpt": "Verify that the Content-Security-Policy header field specifies a location to report violations.", 
+      "expected_category": "infrastructure", 
+      "rationale": "CSP reporting endpoint configuration is managed at the server/infrastructure level."
+    },
+    {
+      "control_id": "3.4.8", 
+      "requirement_excerpt": "Verify that all HTTP responses that initiate a document rendering... include the Cross-Origin-Opener-Policy header field", 
+      "expected_category": "infrastructure", 
+      "rationale": "COOP is an HTTP response header verified through server config or dynamic testing."
+    },
+    {
+      "control_id": "4.1.1", 
+      "requirement_excerpt": "Verify that every HTTP response with a message body contains a Content-Type header field that matches the actual content", 
+      "expected_category": "infrastructure", 
+      "rationale": "Content-Type mappings are handled by web server configurations."
+    },
+    {
+      "control_id": "4.1.2", 
+      "requirement_excerpt": "Verify that only user-facing endpoints... automatically redirect from HTTP to HTTPS", 
+      "expected_category": "infrastructure", 
+      "rationale": "HTTP to HTTPS redirects are managed at the load balancer or web server."
+    },
+    {
+      "control_id": "4.1.4", 
+      "requirement_excerpt": "Verify that only HTTP methods that are explicitly supported by the application... can be used and that unused methods are blocked.", 
+      "expected_category": "infrastructure", 
+      "rationale": "Blocking unused HTTP verbs is a standard web server or WAF configuration."
+    },
+    {
+      "control_id": "6.3.2", 
+      "requirement_excerpt": "Verify that default user accounts (e.g., “root”, “admin”, or “sa”) are not present in the application or are disabled.", 
+      "expected_category": "infrastructure", 
+      "rationale": "Verifying the absence of default OS or database accounts requires a live operational audit."
+    },
+    {
+      "control_id": "12.1.1", 
+      "requirement_excerpt": "Verify that only the latest recommended versions of the TLS protocol are enabled, such as TLS 1.2 and TLS 1.3.", 
+      "expected_category": "infrastructure", 
+      "rationale": "TLS protocol version configurations are entirely infrastructure-dependent."
+    },
+    {
+      "control_id": "12.1.4", 
+      "requirement_excerpt": "Verify that proper certification revocation, such as Online Certificate Status Protocol (OCSP) Stapling, is enabled and configured.", 
+      "expected_category": "infrastructure", 
+      "rationale": "OCSP stapling is a web server or reverse proxy TLS configuration."
+    },
+    {
+      "control_id": "12.3.1", 
+      "requirement_excerpt": "Verify that an encrypted protocol such as TLS is used for all inbound and outbound connections... The server must not fall back to insecure or unencrypted protocols.", 
+      "expected_category": "infrastructure", 
+      "rationale": "Enforcing TLS across network boundaries is a deployment/infrastructure policy."
+    },
+    {
+      "control_id": "13.3.1", 
+      "requirement_excerpt": "Verify that a secrets management solution, such as a key vault, is used to securely create, store, control access to, and destroy backend secrets.", 
+      "expected_category": "infrastructure", 
+      "rationale": "Integration of a key vault is an infrastructure deployment configuration."
+    },
+    {
+      "control_id": "13.4.1", 
+      "requirement_excerpt": "Verify that the application is deployed either without any source control metadata, including the .git or .svn folders, or in a way that these folders are inaccessible", 
+      "expected_category": "infrastructure", 
+      "rationale": "Restricting access to deployment artifacts relies on CI/CD rules and web server config."
+    },
+    {
+      "control_id": "13.4.2", 
+      "requirement_excerpt": "Verify that debug modes are disabled for all components in production environments", 
+      "expected_category": "infrastructure", 
+      "rationale": "Disabling debug modes is an environment-specific deployment configuration."
+    },
+    {
+      "control_id": "13.4.6", 
+      "requirement_excerpt": "Verify that the application does not expose detailed version information of backend components.", 
+      "expected_category": "infrastructure", 
+      "rationale": "Suppressing server banner versions (like Server or X-Powered-By) is a server hardening task."
+    },
+    {
+      "control_id": "14.2.2", 
+      "requirement_excerpt": "Verify that the application prevents sensitive data from being cached in server components, such as load balancers and application caches", 
+      "expected_category": "infrastructure", 
+      "rationale": "Cache configuration at the load balancer or proxy layer is an infrastructure concern."
+    },
+    {
+      "control_id": "2.1.1", 
+      "requirement_excerpt": "Verify that the application’s documentation defines input validation rules for how to check the validity of data items against an expected structure.", 
+      "expected_category": "design", 
+      "rationale": "Defining validation schemas is a core design specification found in a TSD."
+    },
+    {
+      "control_id": "2.1.2", 
+      "requirement_excerpt": "Verify that the application’s documentation defines how to validate the logical and contextual consistency of combined data items", 
+      "expected_category": "design", 
+      "rationale": "Business logic rules and combined data checks are defined during architectural design."
+    },
+    {
+      "control_id": "2.1.3", 
+      "requirement_excerpt": "Verify that expectations for business logic limits and validations are documented", 
+      "expected_category": "design", 
+      "rationale": "Business capacity limits must be documented in a specification document."
+    },
+    {
+      "control_id": "2.2.2", 
+      "requirement_excerpt": "Verify that the application is designed to enforce input validation at a trusted service layer.", 
+      "expected_category": "design", 
+      "rationale": "The choice of where validation occurs (trusted layer vs client-side) is an architectural decision."
+    },
+    {
+      "control_id": "2.3.5", 
+      "requirement_excerpt": "Verify that high-value business logic flows require multi-user approval to prevent unauthorized or accidental actions.", 
+      "expected_category": "design", 
+      "rationale": "Multi-user approval workflows are high-level design choices visible in a TSD."
+    },
+    {
+      "control_id": "3.1.1", 
+      "requirement_excerpt": "Verify that application documentation states the expected security features that browsers using the application must support", 
+      "expected_category": "design", 
+      "rationale": "Documenting browser security expectations is a TSD-level policy requirement."
+    },
+    {
+      "control_id": "5.1.1", 
+      "requirement_excerpt": "Verify that the documentation defines the permitted file types, expected file extensions, and maximum size", 
+      "expected_category": "design", 
+      "rationale": "Specifying allowed file extensions and sizes is an explicit design policy."
+    },
+    {
+      "control_id": "6.1.1", 
+      "requirement_excerpt": "Verify that application documentation defines how controls such as rate limiting, anti-automation, and adaptive response, are used", 
+      "expected_category": "design", 
+      "rationale": "Documenting the anti-automation policy is a TSD responsibility."
+    },
+    {
+      "control_id": "6.1.2", 
+      "requirement_excerpt": "Verify that a list of context-specific words is documented in order to prevent their use in passwords.", 
+      "expected_category": "design", 
+      "rationale": "The banned password vocabulary list is a documented design policy."
+    },
+    {
+      "control_id": "6.1.3", 
+      "requirement_excerpt": "Verify that, if the application includes multiple authentication pathways, these are all documented", 
+      "expected_category": "design", 
+      "rationale": "Documenting auth pathways is a direct architectural design requirement."
+    },
+    {
+      "control_id": "6.3.3", 
+      "requirement_excerpt": "Verify that either a multi-factor authentication mechanism or a combination of single-factor authentication mechanisms, must be used", 
+      "expected_category": "design", 
+      "rationale": "The requirement to implement MFA is a high-level architectural mandate."
+    },
+    {
+      "control_id": "6.4.3", 
+      "requirement_excerpt": "Verify that a secure process for resetting a forgotten password is implemented, that does not bypass any enabled multi-factor authentication mechanisms.", 
+      "expected_category": "design", 
+      "rationale": "The architecture of the recovery flow is designed and verified via a TSD."
+    },
+    {
+      "control_id": "7.1.1", 
+      "requirement_excerpt": "Verify that the user’s session inactivity timeout and absolute maximum session lifetime are documented", 
+      "expected_category": "design", 
+      "rationale": "Session timeout lengths are documented policies in a specification."
+    },
+    {
+      "control_id": "7.1.2", 
+      "requirement_excerpt": "Verify that the documentation defines how many concurrent (parallel) sessions are allowed for one account", 
+      "expected_category": "design", 
+      "rationale": "Concurrent session limits are architectural policies defined in a TSD."
+    },
+    {
+      "control_id": "7.1.3", 
+      "requirement_excerpt": "Verify that all systems that create and manage user sessions as part of a federated identity management ecosystem... are documented", 
+      "expected_category": "design", 
+      "rationale": "Federated identity architecture and session lifetimes must be mapped out in a TSD."
+    },
+    {
+      "control_id": "7.2.1", 
+      "requirement_excerpt": "Verify that the application performs all session token verification using a trusted, backend service.", 
+      "expected_category": "design", 
+      "rationale": "Architectural placement of session verification (backend vs frontend) is a design choice."
+    },
+    {
+      "control_id": "7.4.3", 
+      "requirement_excerpt": "Verify that the application gives the option to terminate all other active sessions after a successful change or removal of any authentication factor", 
+      "expected_category": "design", 
+      "rationale": "Offering global session termination is a systemic feature/design capability."
+    },
+    {
+      "control_id": "8.1.1", 
+      "requirement_excerpt": "Verify that authorization documentation defines rules for restricting function-level and data-specific access", 
+      "expected_category": "design", 
+      "rationale": "The authorization model and its rules are explicitly TSD documents."
+    },
+    {
+      "control_id": "8.1.3", 
+      "requirement_excerpt": "Verify that the application’s documentation defines the environmental and contextual attributes... used to make security decisions", 
+      "expected_category": "design", 
+      "rationale": "Defining context-aware access attributes (time, IP) is an architectural policy."
+    },
+    {
+      "control_id": "8.2.1", 
+      "requirement_excerpt": "Verify that the application ensures that function-level access is restricted to consumers with explicit permissions.", 
+      "expected_category": "design", 
+      "rationale": "Function-level access control requires a defined RBAC/ABAC model in the architecture."
+    },
+    {
+      "control_id": "10.1.1", 
+      "requirement_excerpt": "Verify that tokens are only sent to components that strictly need them.", 
+      "expected_category": "design", 
+      "rationale": "Data flow architecture dictates where tokens are transmitted."
+    },
+    {
+      "control_id": "10.4.9", 
+      "requirement_excerpt": "Verify that refresh tokens and reference access tokens can be revoked by an authorized user using the authorization server user interface", 
+      "expected_category": "design", 
+      "rationale": "Providing a token revocation UI is a high-level systemic feature design."
+    },
+    {
+      "control_id": "13.1.2", 
+      "requirement_excerpt": "Verify that for each service the application uses, the documentation defines the maximum number of concurrent connections", 
+      "expected_category": "design", 
+      "rationale": "Documenting connection pool limits is a TSD-level architectural requirement."
+    },
+    {
+      "control_id": "14.1.1", 
+      "requirement_excerpt": "Verify that all sensitive data created and processed by the application has been identified and classified into protection levels.", 
+      "expected_category": "design", 
+      "rationale": "Data classification and setting protection boundaries is a fundamental architectural requirement verifiable in a TSD."
+    },
+    {
+      "control_id": "14.2.7", 
+      "requirement_excerpt": "Verify that sensitive information is subject to data retention classification, ensuring that outdated or unnecessary data is deleted", 
+      "expected_category": "design", 
+      "rationale": "Data retention rules are business logic policies defined during the design phase."
+    },
+    {
+      "control_id": "15.1.3", 
+      "requirement_excerpt": "Verify that the application documentation identifies functionality which is time-consuming or resource-demanding.", 
+      "expected_category": "design", 
+      "rationale": "Threat modeling and identifying resource limits is documented in the design/architecture."
+    },
+    {
+      "control_id": "16.1.1", 
+      "requirement_excerpt": "Verify that an inventory exists documenting the logging performed at each layer of the application’s technology stack", 
+      "expected_category": "design", 
+      "rationale": "Designing the logging architecture and inventorying telemetry points is a TSD activity."
+    },
+    {
+      "control_id": "1.1.1", 
+      "requirement_excerpt": "Verify that input is decoded or unescaped into a canonical form only once... and that this is done before processing the input further", 
+      "expected_category": "code", 
+      "rationale": "Verifying the exact order of decoding vs sanitization operations requires source code inspection."
+    },
+    {
+      "control_id": "1.1.2", 
+      "requirement_excerpt": "Verify that the application performs output encoding and escaping either as a final step before being used by the interpreter", 
+      "expected_category": "code", 
+      "rationale": "Checking if encoding happens as the absolute final step requires reading the code execution flow."
+    },
+    {
+      "control_id": "1.2.1", 
+      "requirement_excerpt": "Verify that output encoding for an HTTP response, HTML document, or XML document is relevant for the context required", 
+      "expected_category": "code", 
+      "rationale": "Context-aware encoding requires verifying specific function calls in the source code."
+    },
+    {
+      "control_id": "1.2.2", 
+      "requirement_excerpt": "Verify that when dynamically building URLs, untrusted data is encoded according to its context", 
+      "expected_category": "code", 
+      "rationale": "Verifying URL concatenation and encoding logic requires source code review."
+    },
+    {
+      "control_id": "1.2.4", 
+      "requirement_excerpt": "Verify that data selection or database queries (e.g., SQL, HQL, NoSQL, Cypher) use parameterized queries, ORMs, entity frameworks", 
+      "expected_category": "code", 
+      "rationale": "The exact implementation of parameterized queries requires inspecting the database integration layer in code."
+    },
+    {
+      "control_id": "1.2.5", 
+      "requirement_excerpt": "Verify that the application protects against OS command injection and that operating system calls use parameterized OS queries", 
+      "expected_category": "code", 
+      "rationale": "Validating how OS commands are constructed and executed is a code-level check."
+    },
+    {
+      "control_id": "1.2.6", 
+      "requirement_excerpt": "Verify that the application protects against LDAP injection vulnerabilities", 
+      "expected_category": "code", 
+      "rationale": "LDAP filter escaping is an implementation detail verified via code analysis."
+    },
+    {
+      "control_id": "1.3.1", 
+      "requirement_excerpt": "Verify that all untrusted HTML input from WYSIWYG editors or similar is sanitized using a well-known and secure HTML sanitization library", 
+      "expected_category": "code", 
+      "rationale": "Verifying the usage and invocation of specific sanitization libraries requires source code review."
+    },
+    {
+      "control_id": "1.3.2", 
+      "requirement_excerpt": "Verify that the application avoids the use of eval() or other dynamic code execution features", 
+      "expected_category": "code", 
+      "rationale": "Checking for unsafe eval() functions requires scanning the source code."
+    },
+    {
+      "control_id": "1.4.1", 
+      "requirement_excerpt": "Verify that the application uses memory-safe string, safer memory copy and pointer arithmetic", 
+      "expected_category": "code", 
+      "rationale": "Pointer arithmetic and memory management are purely source-code implementation details."
+    },
+    {
+      "control_id": "1.5.1", 
+      "requirement_excerpt": "Verify that the application configures XML parsers to use a restrictive configuration and that unsafe features such as resolving external entities are disabled", 
+      "expected_category": "code", 
+      "rationale": "XXE prevention requires verifying how the XML parser is initialized in the code."
+    },
+    {
+      "control_id": "1.5.2", 
+      "requirement_excerpt": "Verify that deserialization of untrusted data enforces safe input handling, such as using an allowlist of object types", 
+      "expected_category": "code", 
+      "rationale": "Deserialization allowlists are implemented and verified directly within the source code."
+    },
+    {
+      "control_id": "2.2.1", 
+      "requirement_excerpt": "Verify that input is validated to enforce business or functional expectations for that input. This should either use positive validation against an allow list", 
+      "expected_category": "code", 
+      "rationale": "Input validation regex and bounds checking logic are verified in code."
+    },
+    {
+      "control_id": "2.3.1", 
+      "requirement_excerpt": "Verify that the application will only process business logic flows for the same user in the expected sequential step order and without skipping steps.", 
+      "expected_category": "code", 
+      "rationale": "Verifying sequential state enforcement requires deep inspection of the logic handlers in code."
+    },
+    {
+      "control_id": "2.4.1", 
+      "requirement_excerpt": "Verify that anti-automation controls are in place to protect against excessive calls to application functions", 
+      "expected_category": "code", 
+      "rationale": "Verifying the implementation of rate limiting variables/counters is a code-level activity."
+    },
+    {
+      "control_id": "3.2.2", 
+      "requirement_excerpt": "Verify that content intended to be displayed as text, rather than rendered as HTML, is handled using safe rendering functions (such as createTextNode or textContent)", 
+      "expected_category": "code", 
+      "rationale": "Safe DOM manipulation methods must be verified in the frontend JavaScript source code."
+    },
+    {
+      "control_id": "3.3.1", 
+      "requirement_excerpt": "Verify that cookies have the ‘Secure’ attribute set, and if the ’__Host-’ prefix is not used for the cookie name, the ’__Secure-’ prefix must be used", 
+      "expected_category": "code", 
+      "rationale": "Cookie attribute flags and name prefixes are set directly in the application code."
+    },
+    {
+      "control_id": "3.3.3", 
+      "requirement_excerpt": "Verify that cookies have the ’__Host-’ prefix for the cookie name unless they are explicitly designed to be shared", 
+      "expected_category": "code", 
+      "rationale": "Validating cookie prefix generation requires code review."
+    },
+    {
+      "control_id": "3.5.1", 
+      "requirement_excerpt": "Verify that... requests are validated to ensure they originate from the application itself. This may be done by using and validating anti-forgery tokens", 
+      "expected_category": "code", 
+      "rationale": "CSRF anti-forgery token generation and validation logic is implemented in code."
+    },
+    {
+      "control_id": "3.5.5", 
+      "requirement_excerpt": "Verify that messages received by the postMessage interface are discarded if the origin of the message is not trusted", 
+      "expected_category": "code", 
+      "rationale": "Validating origins in cross-window messaging requires reviewing frontend JS listeners."
+    },
+    {
+      "control_id": "4.2.5", 
+      "requirement_excerpt": "Verify that, if the application... builds and sends requests, it uses validation, sanitization, or other mechanisms to avoid creating URIs... which are too long", 
+      "expected_category": "code", 
+      "rationale": "String length validation before sending external requests is a code-level defense."
+    },
+    {
+      "control_id": "4.3.1", 
+      "requirement_excerpt": "Verify that a query allowlist, depth limiting, amount limiting, or query cost analysis is used to prevent GraphQL... Denial of Service (DoS)", 
+      "expected_category": "code", 
+      "rationale": "GraphQL depth limit configuration logic sits within the application source code."
+    },
+    {
+      "control_id": "5.3.2", 
+      "requirement_excerpt": "Verify that when the application creates file paths for file operations... it uses internally generated or trusted data", 
+      "expected_category": "code", 
+      "rationale": "Preventing path traversal requires analyzing file I/O concatenation in code."
+    },
+    {
+      "control_id": "5.4.1", 
+      "requirement_excerpt": "Verify that the application validates or ignores user-submitted filenames", 
+      "expected_category": "code", 
+      "rationale": "Filename sanitization functions are validated via source code analysis."
+    },
+    {
+      "control_id": "6.3.1", 
+      "requirement_excerpt": "Verify that controls to prevent attacks such as credential stuffing and password brute force are implemented according to the application’s security documentation.", 
+      "expected_category": "code", 
+      "rationale": "Verifying the actual implementation logic of credential stuffing controls requires code review."
+    },
+    {
+      "control_id": "6.4.1", 
+      "requirement_excerpt": "Verify that system generated initial passwords or activation codes are securely randomly generated", 
+      "expected_category": "code", 
+      "rationale": "Randomness implementation and entropy checks are code-level verifications."
+    },
+    {
+      "control_id": "6.5.1", 
+      "requirement_excerpt": "Verify that lookup secrets, out-of-band authentication requests or codes, and time-based one-time passwords (TOTPs) are only successfully usable once.", 
+      "expected_category": "code", 
+      "rationale": "Verifying state invalidation for single-use secrets requires reading the application logic."
+    },
+    {
+      "control_id": "6.5.2", 
+      "requirement_excerpt": "Verify that, when being stored in the application’s backend, lookup secrets... are hashed with an approved password storage hashing algorithm that incorporates a 32-bit random salt.", 
+      "expected_category": "code", 
+      "rationale": "Verifying the salt size and hashing algorithm requires reviewing cryptographic functions in code."
+    },
+    {
+      "control_id": "7.2.3", 
+      "requirement_excerpt": "Verify that if reference tokens are used to represent user sessions, they are unique and generated using a cryptographically secure pseudo-random number generator (CSPRNG)", 
+      "expected_category": "code", 
+      "rationale": "Session token generation algorithms must be verified in the source code."
+    },
+    {
+      "control_id": "7.2.4", 
+      "requirement_excerpt": "Verify that the application generates a new session token on user authentication, including re-authentication", 
+      "expected_category": "code", 
+      "rationale": "Session regeneration upon authentication is a specific logic flow tested in code."
+    },
+    {
+      "control_id": "7.3.1", 
+      "requirement_excerpt": "Verify that there is an inactivity timeout such that re-authentication is enforced according to risk analysis", 
+      "expected_category": "code", 
+      "rationale": "The technical enforcement of a session timeout requires code inspection."
+    },
+    {
+      "control_id": "7.4.1", 
+      "requirement_excerpt": "Verify that when session termination is triggered... the application disallows any further use of the session... invalidating the session data at the application backend.", 
+      "expected_category": "code", 
+      "rationale": "Ensuring backend invalidation upon logout is verified through code analysis."
+    },
+    {
+      "control_id": "7.5.1", 
+      "requirement_excerpt": "Verify that the application requires full re-authentication before allowing modifications to sensitive account attributes", 
+      "expected_category": "code", 
+      "rationale": "Protecting specific modification routes requires checking access control logic in code."
+    },
+    {
+      "control_id": "8.2.2", 
+      "requirement_excerpt": "Verify that the application ensures that data-specific access is restricted to consumers with explicit permissions to specific data items to mitigate insecure direct object reference (IDOR)", 
+      "expected_category": "code", 
+      "rationale": "IDOR protections require analyzing object ownership checks within the data access code."
+    },
+    {
+      "control_id": "8.2.3", 
+      "requirement_excerpt": "Verify that the application ensures that field-level access is restricted to consumers with explicit permissions to specific fields to mitigate broken object property level authorization (BOPLA).", 
+      "expected_category": "code", 
+      "rationale": "Field-level access (BOPLA) verification requires deep inspection of data mapping code."
+    },
+    {
+      "control_id": "8.4.1", 
+      "requirement_excerpt": "Verify that multi-tenant applications use cross-tenant controls to ensure consumer operations will never affect tenants with which they do not have permissions", 
+      "expected_category": "code", 
+      "rationale": "Tenant isolation enforcement requires analyzing the query filters in code."
+    },
+    {
+      "control_id": "9.1.1", 
+      "requirement_excerpt": "Verify that self-contained tokens are validated using their digital signature or MAC to protect against tampering", 
+      "expected_category": "code", 
+      "rationale": "JWT signature validation functions must be inspected in source code."
+    },
+    {
+      "control_id": "9.1.2", 
+      "requirement_excerpt": "Verify that only algorithms on an allowlist can be used to create and verify self-contained tokens... and must not include the ‘None’ algorithm.", 
+      "expected_category": "code", 
+      "rationale": "Validating JWT algorithms in the library initialization requires code review."
+    },
+    {
+      "control_id": "9.2.1", 
+      "requirement_excerpt": "Verify that, if a validity time span is present in the token data, the token and its content are accepted only if the verification time is within this validity time span.", 
+      "expected_category": "code", 
+      "rationale": "Verifying ‘nbf’ and ‘exp’ JWT claims requires checking the token validation code."
+    },
+    {
+      "control_id": "9.2.3", 
+      "requirement_excerpt": "Verify that the service only accepts tokens which are intended for use with that service (audience). For JWTs, this can be achieved by validating the ‘aud’ claim", 
+      "expected_category": "code", 
+      "rationale": "Verifying audience claim enforcement requires source code analysis."
+    },
+    {
+      "control_id": "10.1.2", 
+      "requirement_excerpt": "Verify that the client only accepts values from the authorization server... if these values result from an authorization flow that was initiated by the same user agent", 
+      "expected_category": "code", 
+      "rationale": "Verifying PKCE or state parameter correlation logic requires code review."
+    },
+    {
+      "control_id": "10.3.1", 
+      "requirement_excerpt": "Verify that the resource server only accepts access tokens that are intended for use with that service (audience).", 
+      "expected_category": "code", 
+      "rationale": "OAuth RS audience validation is implemented in the application code layer."
+    },
+    {
+      "control_id": "10.3.2", 
+      "requirement_excerpt": "Verify that the resource server enforces authorization decisions based on claims from the access token that define delegated authorization.", 
+      "expected_category": "code", 
+      "rationale": "Access control decisions mapped to claims must be reviewed in code."
+    },
+    {
+      "control_id": "10.4.1", 
+      "requirement_excerpt": "Verify that the authorization server validates redirect URIs based on a client-specific allowlist of pre-registered URIs using exact string comparison.", 
+      "expected_category": "code", 
+      "rationale": "Exact string comparison for redirect URIs is a code-level implementation detail."
+    },
+    {
+      "control_id": "10.4.2", 
+      "requirement_excerpt": "Verify that, if the authorization server returns the authorization code in the authorization response, it can be used only once for a token request.", 
+      "expected_category": "code", 
+      "rationale": "Authorization code invalidation and state tracking requires source code inspection."
+    },
+    {
+      "control_id": "10.5.1", 
+      "requirement_excerpt": "Verify that the client (as the relying party) mitigates ID Token replay attacks. For example, by ensuring that the ‘nonce’ claim in the ID Token matches", 
+      "expected_category": "code", 
+      "rationale": "OIDC nonce validation requires reviewing the authentication logic in code."
+    },
+    {
+      "control_id": "11.3.1", 
+      "requirement_excerpt": "Verify that insecure block modes (e.g., ECB) and weak padding schemes (e.g., PKCS#1 v1.5) are not used.", 
+      "expected_category": "code", 
+      "rationale": "Ensuring bad ciphers/paddings are avoided requires checking cryptographic function arguments in code."
+    },
+    {
+      "control_id": "14.2.1", 
+      "requirement_excerpt": "Verify that sensitive data is only sent to the server in the HTTP message body or header fields, and that the URL and query string do not contain sensitive information", 
+      "expected_category": "code", 
+      "rationale": "Verifying how requests are constructed in the frontend requires source code review."
+    },
+    {
+      "control_id": "16.4.1", 
+      "requirement_excerpt": "Verify that all logging components appropriately encode data to prevent log injection.", 
+      "expected_category": "code", 
+      "rationale": "Log sanitization logic is implemented natively in the code."
+    }
+  ] 
+}

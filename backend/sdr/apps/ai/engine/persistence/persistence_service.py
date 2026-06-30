@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import binascii
+import dataclasses
 import logging
 import re
 from typing import Any, Callable, Optional, List
@@ -150,6 +151,12 @@ class PersistenceService:
             
             with SessionLocal() as db:
                 try:
+                    _retrieval_result = debate_output.retrieval_result
+                    _retrieval_strategy = (
+                        getattr(_retrieval_result.strategy_used, "value", None)
+                        if _retrieval_result is not None
+                        else None
+                    )
                     finding = Finding(
                         review_id=review.id,
                         category_id=(
@@ -176,6 +183,7 @@ class PersistenceService:
                         requirement_reference=parameter.stable_key,
                         requirement_text=requirement_text,
                         requirement_metadata=requirement_metadata,
+                        retrieval_strategy=_retrieval_strategy,
                     )
                     db.add(finding)
                     db.flush()
@@ -381,6 +389,7 @@ class PersistenceService:
                     self._build_diagram_requirement_text(assessed_requirements)
                 )
                 finding.requirement_metadata = requirement_metadata
+                finding.retrieval_strategy = "vision"
 
                 try:
                     db.commit()
@@ -682,6 +691,12 @@ class PersistenceService:
             if not citation.block_id:
                 continue
             hydrated = self._hydrate_citation_location(citation, chunk_map)
+            if re.match(r'^chunk_\d+$', hydrated.block_id or ''):
+                self.logger.warning(
+                    "PersistenceService._build_citation_anchors: dropping unresolved chunk_N citation block_id=%s",
+                    hydrated.block_id,
+                )
+                continue
             if int(hydrated.page_number or 0) < 1:
                 self.logger.warning(
                     "PersistenceService._build_citation_anchors: skipping invalid citation anchor block_id=%s page=%s",
@@ -716,6 +731,17 @@ class PersistenceService:
         analysis_trace: Optional[dict],
     ) -> tuple[List[Citation], str]:
         chunk_map = (analysis_trace or {}).get("context_chunk_map") or {}
+
+        # Build alias map: secondary window block IDs → primary chunk_map key.
+        # Each chunk entry stores block_ids=[primary, neighbor1, neighbor2] but is
+        # only keyed by the primary. Citations to neighbor blocks would be silently
+        # dropped without this reverse lookup.
+        block_alias_map: dict[str, str] = {}
+        for chunk_id, payload in chunk_map.items():
+            for bid in (payload.get("block_ids") or []):
+                if bid != chunk_id and bid not in chunk_map:
+                    block_alias_map[bid] = chunk_id
+
         quote_matched: List[Citation] = []
         fallback: List[Citation] = []
         seen: set[str] = set()
@@ -724,11 +750,18 @@ class PersistenceService:
             if not citation.block_id or citation.block_id in seen:
                 continue
 
-            payload = chunk_map.get(citation.block_id) or {}
-            if not self._is_citation_grade_payload(payload, citation.block_id):
+            resolved_id = citation.block_id
+            if citation.block_id not in chunk_map:
+                canonical = block_alias_map.get(citation.block_id)
+                if canonical:
+                    resolved_id = canonical
+                    citation = dataclasses.replace(citation, block_id=resolved_id)
+
+            payload = chunk_map.get(resolved_id) or {}
+            if not self._is_citation_grade_payload(payload, resolved_id):
                 continue
 
-            seen.add(citation.block_id)
+            seen.add(resolved_id)
             hydrated = self._hydrate_citation_location(citation, chunk_map)
             fallback.append(hydrated)
             matched = self._find_quote_matched_citation(hydrated, chunk_map)
@@ -786,6 +819,8 @@ class PersistenceService:
         return None
 
     def _is_citation_grade_payload(self, payload: dict, block_id: str) -> bool:
+        if not payload:  # block_id not in chunk_map — reject rather than silently pass through
+            return False
         if payload.get("citation_grade", True) is False:
             return False
         evidence_kind = str(payload.get("evidence_kind") or "").lower()
@@ -798,6 +833,8 @@ class PersistenceService:
 
     def _hydrate_citation_location(self, citation: Citation, chunk_map: dict) -> Citation:
         payload = (chunk_map or {}).get(citation.block_id) or {}
+        real_block_ids = [b for b in (payload.get("block_ids") or []) if b]
+        resolved_block_id = real_block_ids[0] if real_block_ids else citation.block_id
         page_number = int(citation.page_number or 0)
         source_page = payload.get("page_number") or payload.get("page")
         if page_number < 1 and source_page:
@@ -813,7 +850,7 @@ class PersistenceService:
         bbox_y1 = citation.bbox_y1 if citation.bbox_y1 is not None else payload.get("bbox_y1", bbox.get("y1"))
 
         return Citation(
-            block_id=citation.block_id,
+            block_id=resolved_block_id,
             page_number=page_number,
             quoted_text=(citation.quoted_text or str(payload.get("quoted_text") or payload.get("text") or "")).strip(),
             bbox_x0=self._safe_float(bbox_x0),

@@ -17,17 +17,17 @@ def normalize_requirement_text(value: str) -> str:
 def build_parameter_analysis_text(parameter_or_text, details: Optional[str] = None) -> str:
     """
     Build the full semantic text used for retrieval and TSD analysis.
-    Accepts either a CategoryParameterChild-like object or explicit text/details.
+    Accepts either a CategoryParameterChild-like object or explicit text.
+    (Details are no longer used).
     """
     if isinstance(parameter_or_text, str):
         heading = parameter_or_text
-        detail_text = details or ""
     else:
         heading = getattr(parameter_or_text, "requirement_text", "") or ""
-        detail_text = getattr(parameter_or_text, "details", "") or ""
+    return heading.strip()
 
-    parts = [part.strip() for part in (heading, detail_text) if part and part.strip()]
-    return "\n\n".join(parts)
+
+
 
 
 def build_diagram_requirement_analysis_text(diagram_requirement, source_parameter=None) -> str:
@@ -37,7 +37,7 @@ def build_diagram_requirement_analysis_text(diagram_requirement, source_paramete
         getattr(diagram_requirement, "verification_hint", "") or "",
     ]
     if source_parameter is not None:
-        parts.append(build_parameter_analysis_text(source_parameter))
+        parts.append(getattr(source_parameter, "requirement_text", "") or "")
     return "\n\n".join(part.strip() for part in parts if part and part.strip())
 
 
