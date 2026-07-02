@@ -189,6 +189,11 @@ export default function DesignDetailPage() {
 
   const selectedReviewState = useReviewDetail(selectedReview ? String(selectedReview.id) : undefined);
 
+  const hasRunningReview = useMemo(
+    () => reviews.some((review) => review.status === 'running'),
+    [reviews]
+  );
+
   const hasControls = Boolean(
     selectedReview &&
       ['pending', 'cancelled', 'failed', 'running'].includes(selectedReviewState.review?.status || '')
@@ -306,8 +311,9 @@ export default function DesignDetailPage() {
             )}
             <button
               onClick={() => setShowReviewModal(true)}
-              disabled={!design.can_start_analysis || creating}
-              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-crimson to-flame px-4 py-2.5 text-sm font-semibold text-white transition-all hover:shadow-lg hover:shadow-crimson/30 disabled:opacity-40"
+              disabled={!design.can_start_analysis || creating || hasRunningReview}
+              title={hasRunningReview ? "Cannot start a new analysis while a review is running" : undefined}
+              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-crimson to-flame px-4 py-2.5 text-sm font-semibold text-white transition-all hover:shadow-lg hover:shadow-crimson/30 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               <Play size={16} />
               Start TSD Analysis
@@ -440,14 +446,15 @@ export default function DesignDetailPage() {
                 <div className="space-y-3 border-b border-surface-border p-3">
                   <button
                     onClick={() => {
-                      if (!design.can_start_analysis) {
+                      if (!design.can_start_analysis || creating || hasRunningReview) {
                         return;
                       }
                       setPickerOpen(false);
                       setShowReviewModal(true);
                     }}
-                    disabled={!design.can_start_analysis}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-crimson to-flame px-4 py-2.5 text-sm font-semibold text-white transition-all hover:shadow-lg hover:shadow-crimson/30"
+                    disabled={!design.can_start_analysis || creating || hasRunningReview}
+                    title={hasRunningReview ? "Cannot start a new analysis while a review is running" : undefined}
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-crimson to-flame px-4 py-2.5 text-sm font-semibold text-white transition-all hover:shadow-lg hover:shadow-crimson/30 disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     <Play size={16} /> Start TSD Analysis
                   </button>

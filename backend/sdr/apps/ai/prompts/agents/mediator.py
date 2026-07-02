@@ -35,7 +35,10 @@ EVIDENCE EVALUATION CHECKLIST (apply for every parameter):
 specific mechanisms, algorithms, or components — or just headings, generic \
 "shall" statements, or baseline text without any named control?
 3. Completeness: Does the evidence cover ALL aspects of the requirement, or \
-only some? If partial, set verdict to "not_met" and note what's missing.
+only some? If the Critic verified ≥1 citation addressing the requirement's core \
+claim, keep "met" even if peripheral aspects are incomplete. Only set "not_met" \
+if no verified citations remain or if objections target the essential mechanism \
+itself (not peripheral completeness).
 4. Consistency: Do the Hunter and Critic agree? If they disagree, weigh the \
 evidence independently — do not default to either agent.
 
@@ -130,6 +133,7 @@ Missed Evidence:
 {missed_text}
 Verified Citations:
 {citations_text}
+Critic Valid Citation Count: {len(critic_valid_citations)} (non-zero means Critic found real evidence)
 
 ## DEBATE HISTORY
 {debate_text}
@@ -168,7 +172,8 @@ Reasoning -> assumptions: ["Only Critic-verified citations may survive."]; logic
 	- "not_met" applies only when the requirement is applicable and expected evidence is missing, contradicted, or only partial after checked context and rebuttal.
 	- "na" applies when the control trigger/applicability is not established, the document scope does not include the technology/control domain, or the supplied TSD cannot assess the control.
 	- If evidence is only partial for an applicable requirement, set final_verdict to "not_met" and explain partial satisfaction in reasoning and rejected_evidence.
-	- When Critic outcome is PARTIAL: make an explicit verdict-adjusting decision. Either (a) downgrade the verdict to "not_met" or reduce confidence if the Critic's unresolved objections weaken the evidence below "met" threshold, or (b) keep "met" only if you can point to additional context that directly resolves each objection. "PARTIAL" never automatically preserves the Hunter's verdict.
+	- When Critic outcome is PARTIAL and Hunter's original verdict was "met": the Hunter found real evidence, Critic found it partially sufficient — keep "met" if Verified Citations is non-empty and addresses the core claim. Objections about completeness or peripheral aspects do NOT force a downgrade. Only set "not_met" if (a) Verified Citations is empty, or (b) objections target the essential named mechanism itself.
+	- When Critic outcome is PARTIAL and Hunter's original verdict was "not_met": the Critic found some evidence but not enough to reverse the verdict. Set final_verdict to "not_met". PARTIAL on a not_met base means the evidence gap is narrowed but not closed — do NOT upgrade to "met".
 	- Do not make agent agreement the justification. Avoid phrases such as "Hunter and Critic agree" or "both agents agree" as the main reason.
 	- For missing evidence decisions, explain as a security reviewer: applicability basis, expected implementation evidence, what the retrieved context actually contained, and why that is insufficient.
 	- If no citations survive and applicability is unclear, prefer "na" over a high-confidence "not_met".
@@ -220,7 +225,7 @@ Rules:
 - Use child_id exactly as supplied.
 - final_citations must be selected only from that child's Critic valid_citations.
 - A "met" final verdict requires Critic-verified evidence for that same child.
-- If evidence is only partial, final_verdict is "not_met".
+- If Critic outcome was PARTIAL: if the Hunter's original verdict was "met" AND that child's valid_citations list is non-empty → final_verdict "met". Otherwise → "not_met".
 """
 
 

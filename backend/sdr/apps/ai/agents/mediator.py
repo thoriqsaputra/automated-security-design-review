@@ -195,7 +195,15 @@ class MediatorAgent(BaseAgent):
             parsed.get("final_verdict"),
             fallback=VERDICT_NOT_MET,
         )
-        final_verdict = VERDICT_NOT_MET if raw_final_verdict == VERDICT_PARTIAL else raw_final_verdict
+        # "partial" from LLM: Critic found real evidence but incomplete.
+        # Resolve direction-aware: if Hunter originally said met AND Critic verified
+        # citations exist, keep met. Otherwise not_met (partial on a not_met base
+        # means evidence gap narrowed but not closed).
+        if raw_final_verdict == VERDICT_PARTIAL:
+            hunter_said_met = hunter_result.verdict == VERDICT_MET
+            final_verdict = VERDICT_MET if (hunter_said_met and critic_result.valid_citations) else VERDICT_NOT_MET
+        else:
+            final_verdict = raw_final_verdict
         confidence = self._clamp_confidence(
             parsed.get("confidence"),
             default=0.5,
@@ -411,11 +419,16 @@ class MediatorAgent(BaseAgent):
             if child_id not in allowed_ids or child_id in results:
                 continue
             critic_result = critic_results.get(child_id) or CriticResult()
+            hunter_result = hunter_results.get(child_id) or HunterResult()
             raw_final_verdict = self._validate_internal_verdict(
                 item.get("final_verdict"),
                 fallback=VERDICT_NOT_MET,
             )
-            final_verdict = VERDICT_NOT_MET if raw_final_verdict == VERDICT_PARTIAL else raw_final_verdict
+            if raw_final_verdict == VERDICT_PARTIAL:
+                hunter_said_met = hunter_result.verdict == VERDICT_MET
+                final_verdict = VERDICT_MET if (hunter_said_met and critic_result.valid_citations) else VERDICT_NOT_MET
+            else:
+                final_verdict = raw_final_verdict
             confidence = self._clamp_confidence(item.get("confidence"), default=0.5)
             reasoning_fields = self._extract_reasoning_fields(
                 item,

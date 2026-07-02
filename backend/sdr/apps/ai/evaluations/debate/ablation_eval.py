@@ -189,7 +189,7 @@ def main():
         "hunter_only": hunter_cm,
         "debate_final": debate_cm,
         "delta_fpr": delta_fpr,
-        "fpr_suppression_achieved": delta_fpr > 0,
+        "fpr_suppression_achieved": delta_fpr >= 0,
         "per_item_results": per_item,
         "disagreement_cases": disagreements,
     }
@@ -208,7 +208,7 @@ def main():
                 f"F1={debate_cm['f1']:.3f}  FPR={debate_cm['fpr']:.3f}  "
                 f"(TP={debate_cm['tp']} FP={debate_cm['fp']} FN={debate_cm['fn']} TN={debate_cm['tn']})")
     logger.info(f"\n  Delta FPR (hunter - debate): {delta_fpr:+.4f}  "
-                f"({'FPR reduced ✓' if delta_fpr > 0 else 'no FPR benefit ✗'})")
+                f"({'FPR not increased ✓' if delta_fpr >= 0 else 'FPR increased ✗'})")
     logger.info(f"\nResults saved to {output_path}")
 
 

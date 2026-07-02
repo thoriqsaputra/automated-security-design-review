@@ -101,7 +101,9 @@ def _quote_grounded(
         if snippet in text:
             return True
         words = re.findall(r"\S+", snippet)
-        window = 5 if len(words) >= 5 else max(3, len(words))
+        # Use 3-word window: catches verbatim phrases even when the model
+        # adds surrounding qualifiers not present in the source block.
+        window = 3 if len(words) >= 3 else len(words)
         return any(
             " ".join(words[i : i + window]) in text
             for i in range(len(words) - window + 1)

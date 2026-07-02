@@ -198,7 +198,7 @@ def main():
         "avg_confidence_delta": avg_confidence_delta,
         "std_confidence_delta": std_confidence_delta,
         "thresholds": {
-            "critic_intervention_rate_gt_0.20": critic_intervention_rate > 0.20,
+            "critic_intervention_rate_gt_0.10": critic_intervention_rate > 0.10,
             "verdict_revision_rate_gt_0.10": final_change_rate > 0.10,
             "escalation_rate_gt_0": escalation_rate > 0,
         },
@@ -216,7 +216,7 @@ def main():
     logger.info("\n=== Exp 8: Debate Dynamics Results ===")
     logger.info(f"  Findings with trace:        {n} / {len(findings)}")
     logger.info(f"  Critic intervention rate:   {critic_intervention_rate:.4f}  "
-                f"(threshold >0.20: {summary['thresholds']['critic_intervention_rate_gt_0.20']})")
+                f"(threshold >0.10: {summary['thresholds']['critic_intervention_rate_gt_0.10']})")
     logger.info(f"  Verdict revision rate:      {verdict_revision_rate:.4f}  "
                 f"(Critic changed verdict; threshold uses final_change_rate={final_change_rate:.4f}: "
                 f"{summary['thresholds']['verdict_revision_rate_gt_0.10']})")

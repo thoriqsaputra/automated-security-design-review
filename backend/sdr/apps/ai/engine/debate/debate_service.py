@@ -673,6 +673,15 @@ class DebateService:
             # This prevents the Mediator from receiving a stale/contested result
             # that it cannot resolve without additional evidence.
             if not escalation_round_granted and critic_result.outcome == OUTCOME_OVERTURN:
+                # Skip escalation when the Critic "overturns" to the same verdict as
+                # the Hunter with no cited evidence — this is a malformed OVERTURN
+                # (should have been UPHOLD). Granting a rebuttal here lets the Hunter
+                # switch verdicts under Critic pressure without real evidence, creating
+                # false positives. A genuine OVERTURN changes the verdict direction.
+                hunter_ver = getattr(hunter_result, "verdict", None)
+                critic_rev = getattr(critic_result, "revised_verdict", None)
+                if hunter_ver and critic_rev and hunter_ver == critic_rev:
+                    return False, escalation_round_granted
                 hunter_conf = float(getattr(hunter_result, "confidence", 0.5) or 0.5)
                 if hunter_conf < 0.80:
                     return True, True
@@ -864,6 +873,7 @@ class DebateService:
             raw_verdict == VERDICT_MET
             and valid_citations
             and critic_result.revised_verdict == VERDICT_MET
+            and (hunter_result is None or hunter_result.verdict == VERDICT_MET)
         )
         if accepted_met:
             mediator_result.final_verdict = VERDICT_MET
@@ -874,23 +884,35 @@ class DebateService:
             return mediator_result
 
         if raw_verdict == VERDICT_MET:
-            mediator_result.final_verdict = VERDICT_NA
-            mediator_result.final_citations = []
-            mediator_result.severity = None
-            mediator_result.recommendation = None
-            mediator_result.verdict_policy_source = "met_without_verified_evidence"
-            mediator_result.evidence_sufficiency = "insufficient_for_met"
-            mediator_result.not_assessable_reason = "met_claim_lacked_critic_verified_citations"
-            return mediator_result
+            hunter_said_not_met = hunter_result is not None and hunter_result.verdict == VERDICT_NOT_MET
+            if not hunter_said_not_met:
+                mediator_result.final_verdict = VERDICT_NA
+                mediator_result.final_citations = []
+                mediator_result.severity = None
+                mediator_result.recommendation = None
+                mediator_result.verdict_policy_source = "met_without_verified_evidence"
+                mediator_result.evidence_sufficiency = "insufficient_for_met"
+                mediator_result.not_assessable_reason = "met_claim_lacked_critic_verified_citations"
+                return mediator_result
+            # Hunter=not_met + Mediator=met but accepted_met=False → fall through to not_met
 
         if raw_verdict == "partial":
-            mediator_result.final_verdict = VERDICT_NOT_MET
-            if "partial" not in (mediator_result.reasoning or "").lower():
-                mediator_result.reasoning = f"Partial evidence only: {mediator_result.reasoning}"
-                mediator_result.logic_summary = mediator_result.reasoning
-            mediator_result.verdict_policy_source = "partial_evidence_not_met"
-            mediator_result.evidence_sufficiency = "partial"
-            mediator_result.final_citations = valid_citations
+            hunter_said_met = hunter_result is not None and hunter_result.verdict == VERDICT_MET
+            if valid_citations and hunter_said_met and critic_result.revised_verdict != VERDICT_NOT_MET:
+                mediator_result.final_verdict = VERDICT_MET
+                mediator_result.final_citations = valid_citations
+                mediator_result.severity = None
+                mediator_result.recommendation = None
+                mediator_result.verdict_policy_source = "partial_evidence_sufficient"
+                mediator_result.evidence_sufficiency = "partial_met"
+            else:
+                mediator_result.final_verdict = VERDICT_NOT_MET
+                if "partial" not in (mediator_result.reasoning or "").lower():
+                    mediator_result.reasoning = f"Partial evidence only: {mediator_result.reasoning}"
+                    mediator_result.logic_summary = mediator_result.reasoning
+                mediator_result.verdict_policy_source = "partial_evidence_not_met"
+                mediator_result.evidence_sufficiency = "partial"
+                mediator_result.final_citations = []
             return mediator_result
 
         mediator_result.final_verdict = VERDICT_NOT_MET

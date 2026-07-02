@@ -1,0 +1,285 @@
+{
+  "design_id": 9,
+  "items": [
+    {
+      "requirement_id": "2ea43cb687ce46689bfb0e22-29-000007",
+      "label": "not_met",
+      "notes": "The TSD is silent on whether cryptographic algorithms, key lengths, or ciphers can be dynamically reconfigured or swapped at any time."
+    },
+    {
+      "requirement_id": "69496a4f4fc2923440c115b2-29-000015",
+      "label": "not_met",
+      "notes": "Section 17 explicitly states that sensitive values are injected via environment variables and property files rather than using a dedicated secrets management solution or key vault."
+    },
+    {
+      "requirement_id": "e414d36f51944fa9eae9416f-29-000016",
+      "label": "not_met",
+      "notes": "Section 17 indicates that secrets are injected directly into the runtime environment via environment variables, rather than utilizing an isolated security module for cryptographic operations."
+    },
+    {
+      "requirement_id": "c991301b7c56d013295f297b-29-000004",
+      "label": "not_met",
+      "notes": "Section 15 outlines system telemetry and logging but is silent on detecting or alerting on abnormal numbers of requests."
+    },
+    {
+      "requirement_id": "0823311afc62c39cfe92eb1e-29-000011",
+      "label": "met",
+      "notes": "Section 4 (FR-ICAL-001) provides a method for users to export their data via iCal downloads, and Section 12 details that all user data is transient and automatically removed upon session timeout."
+    },
+    {
+      "requirement_id": "0b9f083db46629d252c48e95-29-000012",
+      "label": "not_met",
+      "notes": "The TSD is silent on providing clear language or capturing opt-in consent from users regarding the collection and use of their personal information."
+    },
+    {
+      "requirement_id": "51c5bcf2675b6741510e646c-29-000013",
+      "label": "met",
+      "notes": "Sections 9, 12, and 15 explicitly classify academic records and authentication tokens as sensitive data and enforce a strict transient in-memory policy and logging redaction strategy."
+    },
+    {
+      "requirement_id": "9b9932ef6d0775d4d7b00dcf-29-000014",
+      "label": "met",
+      "notes": "Section 15 mandates tracking of authentication and subsystem execution events while explicitly requiring PII redaction to ensure sensitive data is stripped before logging."
+    },
+    {
+      "requirement_id": "e073999cb1eb71f5780145ba-29-000016",
+      "label": "met",
+      "notes": "Section 13 mandates standard HTTPS/TLS 1.2+ for in-transit communication and AES encryption algorithms for sensitive cached data at rest."
+    },
+    {
+      "requirement_id": "9a26ae196cc8fc999de05020-29-000003",
+      "label": "na",
+      "notes": "Verifying the inclusion of functional security constraints in all user stories is an SDLC process check that cannot be evaluated purely from this technical architecture document."
+    },
+    {
+      "requirement_id": "39c0ed17abf94da14821b28e-29-000004",
+      "label": "met",
+      "notes": "Section 13 (Data Flow & Boundaries) explicitly documents and justifies the application's trust boundaries and significant data flows, including an Enterprise Architecture and Integration Flow Diagram."
+    },
+    {
+      "requirement_id": "8bff616e6f67a7b8c8b39c6e-29-000005",
+      "label": "met",
+      "notes": "Section 6 (System Architecture) and Section 8 (Interfaces & Integrations) define the high-level architecture and explicitly analyze the security constraints of connected remote services like the SIS Gateway, Google API, and RIT Maps API."
+    },
+    {
+      "requirement_id": "f78cc14f1021a92d62e837a1-29-000006",
+      "label": "met",
+      "notes": "Sections 6 and 11 explicitly state the system utilizes a centralized, vetted, and reusable Shibboleth Authentication mechanism (ShibbolethSecurityFilter) recycled from the Team Builder project to avoid duplicate or insecure controls."
+    },
+    {
+      "requirement_id": "3293e58191d94d1aef8b2d58-29-000009",
+      "label": "met",
+      "notes": "Section 8 (Interfaces & Integrations) mandates that all communication with external APIs require standard authentication parameters, and Section 3 scopes these integrations to strict read-only access ensuring least privilege."
+    },
+    {
+      "requirement_id": "caf5235411c4aee80673a54a-29-000010",
+      "label": "met",
+      "notes": "Sections 11 and 15 confirm the use of a single, vetted authentication mechanism (Shibboleth) with explicit logging of login successes and failures to monitor for unauthorized access attempts."
+    },
+    {
+      "requirement_id": "682de869a745db6e6e6e95e9-29-000011",
+      "label": "met",
+      "notes": "Section 6 explicitly defines the Authentication Subsystem as the single, rigorous security gateway that all users must pass through, utilizing Shibboleth without any documented weaker alternative pathways."
+    },
+    {
+      "requirement_id": "db8e0236e3c71a01a22f92fc-29-000012",
+      "label": "met",
+      "notes": "Section 6 and Section 11 detail that access control is enforced server-side via the ShibbolethSecurityFilter and SingleSignOnHandler before granting access to the Schedule Subsystem, not on the client."
+    },
+    {
+      "requirement_id": "235679eeeed4c1ddc22f4eaf-29-000013",
+      "label": "met",
+      "notes": "Section 6 designates the Authentication Subsystem (ShibbolethSecurityFilter) as the single, rigorous security gateway that all users must pass through to access protected schedule data."
+    },
+    {
+      "requirement_id": "4149b9e4d342b8e4f60c1e04-29-000014",
+      "label": "not_met",
+      "notes": "Section 11 describes standard Role-Based Access Control (assigning the Student User role) but the TSD is silent on implementing attribute or feature-based access controls."
+    },
+    {
+      "requirement_id": "db5f235cbd438807f729b273-29-000015",
+      "label": "met",
+      "notes": "Section 5 (NFR-SEC-002 and NFR-SEC-003) explicitly defines the input validation/sanitization and secure contextual output encoding requirements for data processed by the application."
+    },
+    {
+      "requirement_id": "f795ad19b9018b705f38ee07-29-000017",
+      "label": "met",
+      "notes": "Section 5 (NFR-SEC-002) explicitly mandates that standard input validation and sanitization are enforced by the server-side Authentication Subsystem before data is processed."
+    },
+    {
+      "requirement_id": "ab5d2b5e700b36c5bddf0886-29-000019",
+      "label": "not_met",
+      "notes": "The TSD is silent on an explicit policy for cryptographic key management or adherence to a cryptographic key lifecycle standard such as NIST SP 800-57."
+    },
+    {
+      "requirement_id": "e2651e0a1d19514ad8eb9760-29-000020",
+      "label": "not_met",
+      "notes": "Section 17 states that secrets and API keys are injected directly into the runtime environment via environment variables and property files, rather than using a dedicated key vault or API-based alternative."
+    },
+    {
+      "requirement_id": "f578ff492e3ae964712dc73d-29-000022",
+      "label": "not_met",
+      "notes": "The TSD is silent on an explicit architectural policy that treats client-side secrets as insecure and never uses them to protect or access sensitive data."
+    },
+    {
+      "requirement_id": "6224cdc4224b15cc055e4d98-29-000023",
+      "label": "not_met",
+      "notes": "Section 15 defines the system logging approach and event categories but is silent on enforcing a common, standardized logging format across the application."
+    },
+    {
+      "requirement_id": "bbd11e705bfae707c6b9c261-29-000025",
+      "label": "not_met",
+      "notes": "While Sections 9, 12, and 15 identify specific sensitive data elements, the TSD is silent on formally classifying all sensitive data into protection levels."
+    },
+    {
+      "requirement_id": "b5f829a2d84177524b442b01-29-000026",
+      "label": "not_met",
+      "notes": "The TSD is silent on defining explicit protection levels and fails to document an associated set of protection requirements for such levels in the architecture."
+    },
+    {
+      "requirement_id": "085e9a838bf30e0c0f804ba5-29-000027",
+      "label": "met",
+      "notes": "Section 13 explicitly mandates that all external in-transit communication between the application, client devices, and external components utilizes standard HTTPS/TLS 1.2+ protocols."
+    },
+    {
+      "requirement_id": "7351e1b4f6c9107bb7b18b0e-29-000030",
+      "label": "met",
+      "notes": "Sections 6, 8, and 16 thoroughly define and document all internal application components and external libraries in terms of their explicit business and security functions."
+    },
+    {
+      "requirement_id": "36418f80a7aff71abadb8616-29-000031",
+      "label": "na",
+      "notes": "Verifying that high-value business logic flows do not share unsynchronized state requires source code inspection of threading and concurrency controls, which cannot be evaluated from a TSD alone."
+    },
+    {
+      "requirement_id": "c24559ecb183d8c7507ef767-29-000033",
+      "label": "not_met",
+      "notes": "The TSD describes downloading generated ICS files in Section 13 but is silent on implementing a Content Security Policy (CSP) or whether files are served via octet stream downloads."
+    },
+    {
+      "requirement_id": "672799b90935437c9b41ce9b-29-000034",
+      "label": "met",
+      "notes": "Section 18 explicitly documents a multi-tiered enterprise architecture that uses standard firewall restrictions to segregate the public-facing application routing layer from internal, highly secured academic data and authentication subnets."
+    },
+    {
+      "requirement_id": "e0ef7498ca0ee472891bfde1-29-000016",
+      "label": "not_met",
+      "notes": "Section 11 delegates login to the Shibboleth Authentication System but the TSD is silent on requiring multi-factor authentication or cryptographic devices for impersonation and phishing resistance."
+    },
+    {
+      "requirement_id": "b568b213b20b7eef5d4b8b57-29-000018",
+      "label": "not_met",
+      "notes": "The TSD is silent on mandating One-time Passwords (OTP), cryptographic authenticators, or lookup codes to provide replay resistance during authentication."
+    },
+    {
+      "requirement_id": "e7a85cbca48f1e19016bf754-29-000021",
+      "label": "not_met",
+      "notes": "The TSD is silent on supporting the enrollment and use of user-provided authentication devices such as U2F or FIDO tokens."
+    },
+    {
+      "requirement_id": "cb49776a8ba797b0d321743d-29-000033",
+      "label": "not_met",
+      "notes": "The TSD relies on the existing Shibboleth infrastructure for authentication but is silent on the mechanisms used for forgotten passwords or secure recovery paths like TOTP."
+    },
+    {
+      "requirement_id": "1a1e8e4c653b5441ed2965a9-29-000038",
+      "label": "not_met",
+      "notes": "The TSD is silent on whether clear text out-of-band authenticators like SMS or PSTN are restricted or if stronger alternatives like push notifications are prioritized."
+    },
+    {
+      "requirement_id": "f5c0f786db8b2de60b7d1ffa-29-000041",
+      "label": "not_met",
+      "notes": "The TSD is silent on out-of-band authenticators and whether they communicate over a secure independent channel."
+    },
+    {
+      "requirement_id": "17ab689d0dfb9956e64b0400-29-000044",
+      "label": "not_met",
+      "notes": "The TSD is silent on the use of time-based OTPs or defining an expiration lifetime for such authenticators."
+    },
+    {
+      "requirement_id": "2e8b59805f7af95d2524dc06-29-000050",
+      "label": "not_met",
+      "notes": "The TSD is silent on the use of biometric authenticators or limiting them strictly to secondary factors."
+    },
+    {
+      "requirement_id": "aff5b28dfde62093492e8664-29-000054",
+      "label": "not_met",
+      "notes": "Section 17 explicitly states the use of static Google API keys injected via environment variables, and the TSD is silent on a policy preventing the use of unchanging credentials for intra-service secrets."
+    },
+    {
+      "requirement_id": "4707eb7f667c3caaab321829-29-000001",
+      "label": "met",
+      "notes": "Sections 6 and 11 detail that the server-side Authentication Subsystem, particularly the ShibbolethSecurityFilter and SingleSignOnHandler, enforces access control rules on the trusted service layer before granting access to the Schedule Subsystem."
+    },
+    {
+      "requirement_id": "4a5bcd651e023dc3f391a845-29-000002",
+      "label": "not_met",
+      "notes": "The TSD is silent on explicitly implementing controls to prevent end users from manipulating the user, data attributes, and policy information processed by the SingleSignOnHandler."
+    },
+    {
+      "requirement_id": "3754472a55ec26cfd4ac84d3-29-000003",
+      "label": "met",
+      "notes": "Section 3 and 11 restrict the application and the Student User role to strict read-only access. Additionally, Section 8 ensures that API calls enforce least privilege by strictly restricting payloads to the academic records of the currently verified user session."
+    },
+    {
+      "requirement_id": "92f8b2a44c1a693aaa029d29-29-000004",
+      "label": "met",
+      "notes": "Section 14 explicitly details a secure failure protocol for access control exceptions, stating that a SHIB_UNAUTHORIZED_ACCESS error immediately invalidates session data, destroys the internal User POJO, and redirects the client out of the application."
+    },
+    {
+      "requirement_id": "c223771df60dbdd138ecb806-29-000007",
+      "label": "not_met",
+      "notes": "Section 18 documents that administrative and deployment access over SSH is restricted by IP address and VPN, but the TSD is silent on requiring multi-factor authentication for administrative interfaces."
+    },
+    {
+      "requirement_id": "db91a1b412194581c7239435-29-000009",
+      "label": "not_met",
+      "notes": "The TSD is silent on the implementation of step-up authentication, adaptive authentication, or segregation of duties to enforce anti-fraud controls."
+    },
+    {
+      "requirement_id": "3dc6f67a223cf26e26edfebf-29-000001",
+      "label": "met",
+      "notes": "Section 13 mandates that sensitive cached data at rest is strictly encrypted using standard AES algorithms, and Section 19 requires AES-256 encryption for all backup data."
+    },
+    {
+      "requirement_id": "d1408622f3f551f0eaa08399-29-000002",
+      "label": "not_met",
+      "notes": "The TSD is silent on the handling and encryption of regulated health data, as the application's data model defined in Section 9 consists exclusively of academic scheduling data."
+    },
+    {
+      "requirement_id": "a3bdd13588d2eae69ec229f0-29-000003",
+      "label": "not_met",
+      "notes": "The TSD is silent on the handling and encryption of regulated financial data, as the system focuses exclusively on student course and exam schedules as per the data model in Section 9."
+    },
+    {
+      "requirement_id": "9e2827884265b3eb67522180-29-000017",
+      "label": "met",
+      "notes": "Section 20 explicitly defines a data lifecycle management policy with strict retention classifications and automated deletion schedules for ephemeral user sessions, cached building locations, and holiday records."
+    },
+    {
+      "requirement_id": "a09482b2a0aae657f4d864f8-29-000005",
+      "label": "met",
+      "notes": "Section 10 defines explicit business logic limits and configuration parameters, such as JSON_PARSER_MAX_DEPTH and ICAL_MAX_EVENT_LIMIT, to protect against payload and resource exhaustion threats."
+    },
+    {
+      "requirement_id": "0c9dbb545410ca4280e13a74-29-000009",
+      "label": "met",
+      "notes": "Section 13 explicitly mandates that all external in-transit communication and message payloads are secured using standard HTTPS/TLS 1.2 or higher cryptographic protocols to provide confidentiality and integrity."
+    },
+    {
+      "requirement_id": "bb999d143d925f112705e697-29-000011",
+      "label": "not_met",
+      "notes": "The TSD is silent on the use of WS-Security or any explicit requirement to sign message payloads to ensure reliable transport."
+    },
+    {
+      "requirement_id": "35ebc5e70e6221b348e54515-29-000013",
+      "label": "not_met",
+      "notes": "The TSD does not utilize GraphQL and is silent on specifically encapsulating data layer authorization logic separate from the data layer itself."
+    },
+    {
+      "requirement_id": "21b95dc9208454088a14e029-29-000011",
+      "label": "not_met",
+      "notes": "Section 16 details the use of third-party libraries such as iCal4j and google-api, but the TSD is silent on sandboxing or encapsulating these libraries to restrict their exposed behavior."
+    }
+  ]
+}

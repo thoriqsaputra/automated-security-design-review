@@ -37,24 +37,45 @@ technology/domain isn't present, the correct verdict is "na", not "not_met".
 
 VERDICT-SPECIFIC DUTIES:
 
-FOR not_met VERDICTS — Do NOT auto-uphold. Actively search all context chunks \
-for evidence the Hunter overlooked. If you find unambiguous compliance evidence \
-(e.g., an explicit architectural mandate naming the required mechanism), issue \
-OVERTURN to "met" with a verified citation from a citable chunk. Only uphold \
-not_met when no supporting evidence exists anywhere in the context.
+FOR not_met VERDICTS — Do NOT auto-uphold. Actively search ALL context chunks \
+for evidence the Hunter overlooked. Use this evidence ladder — pick the HIGHEST \
+tier that fits:\n\
+  OVERTURN → only when the retrieved text EXPLICITLY names the specific mechanism, \
+algorithm, library, or policy required by this parameter — not inferred, implied, \
+or tangentially related. Example: requirement asks for "formal protection levels \
+documented" → cited text must say "protection level" or "data classification with \
+named controls", NOT just "HTTPS/TLS" or "encryption used".\n\
+  CRITICAL: "implicit behavior" is NOT sufficient for OVERTURN. If the TSD shows \
+the system performs a secure behavior (e.g., uses HTTPS) that only implies the \
+requirement is satisfied, but does NOT explicitly document the required policy or \
+mechanism — use PARTIAL, not OVERTURN.\n\
+  PARTIAL → when you find SOME relevant evidence addressing the requirement TOPIC \
+but only indirectly or partially satisfying the requirement CLAIM. Use PARTIAL for: \
+evidence about a related control (not the specific one required), evidence that \
+implies the behavior without documenting the policy, or evidence covering only some \
+components when all are required. PARTIAL is an active intervention — it signals \
+the Mediator to investigate. Do NOT default to UPHOLD when indirect or \
+partially-relevant evidence exists anywhere in context.\n\
+  UPHOLD → ONLY when NO evidence exists in ANY provided context chunk that even \
+tangentially addresses the requirement topic.
 
-FOR met VERDICTS — UPHOLD is the EXCEPTION, not the default. \
-Issue UPHOLD ONLY when ALL of the following are true: \
-  (1) at least two independent citations each naming a specific mechanism; \
-  (2) the evidence covers ALL scoped aspects of the requirement (not just one layer); \
-  (3) Hunter confidence ≥ 0.90. \
-Issue PARTIAL (your DEFAULT response) whenever any of the following is true: \
-  (a) only one citation, or citations only from generic NFR/baseline sections; \
-  (b) the mechanism is named but HOW it is applied is not described; \
-  (c) Hunter confidence < 0.90; \
-  (d) evidence covers only one component or data-flow path when the requirement \
-      applies to multiple (e.g., MFA on login but not on API access). \
-Only OVERTURN if the cited evidence clearly cannot support the verdict at all.
+FOR met VERDICTS — UPHOLD when the evidence is genuinely sufficient. \
+Issue UPHOLD when ALL of the following are true: \
+  (1) at least one citation you personally verified contains text that specifically \
+      names a security mechanism, algorithm, library, or architectural decision; \
+  (2) that mechanism directly satisfies the core of the requirement; \
+  (3) Hunter confidence ≥ 0.70. \
+Issue PARTIAL whenever any of the following is true: \
+  (a) the cited block exists but the quoted text cannot be located verbatim \
+      or by close paraphrase in the block raw text; \
+  (b) the evidence names a generic concept without specifying the mechanism \
+      (e.g., "secure communication" without naming TLS/mTLS/HTTPS); \
+  (c) Hunter confidence < 0.70; \
+  (d) evidence covers only one component when the requirement explicitly \
+      requires multiple (e.g., MFA on login but not on API). \
+Only OVERTURN if the cited evidence clearly cannot support the verdict at all \
+  (e.g., block content is unrelated, or the mechanism named is explicitly \
+   out-of-scope for this TSD).
 
 EVIDENCE QUALITY CHECK:
 - Reject "met" claims supported only by section headings, requirement titles, \
@@ -186,6 +207,7 @@ Reasoning -> assumptions: ["Validity depends on quoted evidence in cited blocks.
 	- invalid_citation_ids → block_ids cited by the Hunter that do NOT contain \
 	the claimed evidence.
 	- If revised_verdict is "met", valid_citations MUST contain at least one block_id you verified this way. Never output revised_verdict "met" (or an OVERTURN to "met") with an empty valid_citations list — if you cannot find a verified citation, the verdict must be "not_met" or "na" instead.
+	- CRITICAL: When the Hunter's verdict is "met", never issue UPHOLD with an empty valid_citations list. "Met" requires at least one citation you personally verified in the context. If you cannot locate a verified citation confirming the Hunter's "met" finding, you MUST issue PARTIAL instead — even if you agree with the Hunter's reasoning. Reasoning without a citable block is not sufficient to UPHOLD a "met" verdict at the TSD review level. For "not_met" or "na" Hunter verdicts, UPHOLD with empty valid_citations is acceptable when no evidence exists to challenge the verdict.
 	- Challenge generic missing-evidence findings unless Hunter identified both why the control applies and what implementation evidence is missing.
 	- If the retrieved context is only headings, graph summaries, baseline requirements, or unrelated snippets and does not establish applicability, revise the verdict to "na".
 	- Do not uphold "not_met" solely because evidence is absent; absent evidence is a failure only after applicability is established.
@@ -247,6 +269,7 @@ Rules:
 - Verify citations against ORIGINAL TSD CONTEXT for that child only.
 - valid_citations → only block_ids from CONTEXT_CHUNK elements with citable="true", and only when the quoted text literally appears in that block's own raw text — never accept a quote inferred, paraphrased, or merged from a different chunk.
 - If a child's revised_verdict is "met", that child's valid_citations MUST contain at least one such verified block_id. Never output revised_verdict "met" with an empty valid_citations list for that child.
+- CRITICAL: When a child's Hunter verdict is "met", never issue UPHOLD with an empty valid_citations list for that child. If you cannot locate a verified citation confirming a "met" verdict, issue PARTIAL instead. For "not_met" or "na" Hunter verdicts, UPHOLD with empty valid_citations is acceptable.
 - Do not let evidence for one child satisfy a different child.
 - Scrutinise the Hunter's assumptions and cot_trace for logical leaps.
 {block_ids_block}
