@@ -67,11 +67,6 @@ Return ONLY a JSON object:
 """
 
 def judge_faithfulness(question: str, retrieved_context: str, answer: str) -> Dict[str, Any]:
-    # A pure refusal/abstention makes no factual claim — nothing to
-    # hallucinate, so it's vacuously faithful (same principle as
-    # judge_faithfulness_deterministic short-circuiting on no quotes). Skip
-    # the LLM call entirely rather than relying on the judge to recognize
-    # this reliably every time.
     if _is_pure_refusal(answer):
         return {"claims": [], "faithfulness_score": 1.0}
 
@@ -82,9 +77,6 @@ def judge_faithfulness(question: str, retrieved_context: str, answer: str) -> Di
             {"role": "system", "content": FAITHFULNESS_PROMPT},
             {"role": "user", "content": user_prompt}
         ],
-        # Deliberately NOT "hunter" — the eval judge must be a different model
-        # from the one that produced the answer being judged, or the score is
-        # self-graded and structurally inflated.
         component="eval_judge",
         response_format={"type": "json_object"},
         temperature=0.0

@@ -214,8 +214,6 @@ def classify_parent_applicability(
         decision_mode = str(parsed.get("decision_mode") or "").strip().lower()
         if not decision_mode:
             decision_mode = "positive_match" if applicable else "negative_match"
-        if decision_mode == "unclear":
-            confidence = min(confidence, 0.4)
         return ParentApplicabilityResult(
             applicable=applicable,
             confidence=confidence,

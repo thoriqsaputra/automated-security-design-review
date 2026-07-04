@@ -9,9 +9,13 @@ def normalize_quote_text(text: str) -> str:
 
 
 def is_quote_grounded(quoted_text: str, block_text: str) -> bool:
+    # An empty/missing quote cites nothing and must never be treated as
+    # grounded — otherwise a citation with a real block_id but no actual
+    # excerpt silently passes validation without checking that the block
+    # relates to the claim at all.
     normalized_quote = normalize_quote_text(quoted_text)
     if not normalized_quote:
-        return True
+        return False
     normalized_block = normalize_quote_text(block_text)
     if not normalized_block:
         return False

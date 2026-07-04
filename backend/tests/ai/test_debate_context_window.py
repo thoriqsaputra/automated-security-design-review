@@ -177,3 +177,69 @@ def test_build_context_chunk_map_bbox_spans_merged_window_not_just_target_block(
     assert payload["bbox_y0"] == 0.0
     assert payload["bbox_y1"] == 30.0
     assert payload["bbox"] == {"x0": 0.0, "y0": 0.0, "x1": 100.0, "y1": 30.0}
+
+
+def _page_block(block_id, text, page_number, y0=0.0):
+    return TextBlock(
+        block_id=block_id,
+        text=text,
+        page_number=page_number,
+        bbox_x0=0.0,
+        bbox_y0=y0,
+        bbox_x1=100.0,
+        bbox_y1=y0 + 10.0,
+        section_heading="Authentication",
+    )
+
+
+def test_build_context_chunk_map_captures_page_spans_for_multi_page_chunk():
+    # A single merged retrieval chunk (e.g. a RAPTOR leaf) spanning two
+    # pages must record each page's own text/bbox as a page_span so a
+    # citation can later be resolved to whichever page it actually came
+    # from, instead of always the chunk's first constituent block.
+    page1_block = _page_block("p1_b1", "Access requires MFA for all admins.", 1)
+    page2_block = _page_block("p2_b1", "Backups are encrypted at rest nightly.", 2)
+    document = TSDDocument(
+        file_path="x.pdf",
+        document_name="x",
+        pages=[
+            TSDPage(page_number=1, text_blocks=[page1_block]),
+            TSDPage(page_number=2, text_blocks=[page2_block]),
+        ],
+    )
+    factory = DebateInputFactory()
+
+    chunk_map = factory.build_context_chunk_map(
+        context_chunks=["Access requires MFA for all admins.\n\nBackups are encrypted at rest nightly."],
+        retrieval_metadata={},
+        tsd_document=document,
+        include_source_blocks=False,
+        chunk_block_ids=[["p1_b1", "p2_b1"]],
+    )
+
+    payload = chunk_map["p1_b1"]
+    spans = payload["page_spans"]
+    assert [span["page_number"] for span in spans] == [1, 2]
+    assert "Access requires MFA" in spans[0]["text"]
+    assert "Backups are encrypted" in spans[1]["text"]
+    assert spans[1]["block_ids"] == ["p2_b1"]
+
+
+def test_build_context_chunk_map_skips_page_spans_for_single_block_chunk():
+    page1_block = _page_block("p1_b1", "Access requires MFA for all admins.", 1)
+    document = TSDDocument(
+        file_path="x.pdf",
+        document_name="x",
+        pages=[TSDPage(page_number=1, text_blocks=[page1_block])],
+    )
+    factory = DebateInputFactory()
+
+    chunk_map = factory.build_context_chunk_map(
+        context_chunks=["Access requires MFA for all admins."],
+        retrieval_metadata={},
+        tsd_document=document,
+        include_source_blocks=False,
+        chunk_block_ids=[["p1_b1"]],
+    )
+
+    assert "page_spans" not in chunk_map["p1_b1"]

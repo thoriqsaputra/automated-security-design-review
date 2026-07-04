@@ -353,7 +353,10 @@ def test_stabilize_hunter_grounding_downgrades_met_without_valid_citations():
     assert "Rejected citation ids: x999" in stabilized.logic_summary
 
 
-def test_resolve_citations_for_anchoring_falls_back_to_validated_block_ids():
+def test_resolve_citations_for_anchoring_drops_ungrounded_citations():
+    # A citation whose quote does not actually appear in its cited block's
+    # text must never be silently persisted with an unverified location —
+    # it should be dropped rather than trusted as "validated" fallback.
     service = PersistenceService()
     citations = [Citation(block_id="p1_b1", page_number=3, quoted_text="wrong quote")]
     analysis_trace = {
@@ -370,10 +373,240 @@ def test_resolve_citations_for_anchoring_falls_back_to_validated_block_ids():
 
     resolved, mode = service._resolve_citations_for_anchoring(citations, analysis_trace)
 
-    assert mode == "validated_block_fallback"
+    assert mode == "none"
+    assert resolved == []
+
+
+def test_resolve_citations_for_anchoring_keeps_grounded_citation():
+    service = PersistenceService()
+    citations = [
+        Citation(
+            block_id="p1_b1",
+            page_number=3,
+            quoted_text="requires MFA for privileged access",
+        )
+    ]
+    analysis_trace = {
+        "context_chunk_map": {
+            "p1_b1": {
+                "citation_grade": True,
+                "text": "The system requires MFA for privileged access.",
+                "section": "Authentication",
+                "page_number": 3,
+                "bbox": {"x0": 10.0, "y0": 20.0, "x1": 30.0, "y1": 40.0},
+            }
+        }
+    }
+
+    resolved, mode = service._resolve_citations_for_anchoring(citations, analysis_trace)
+
+    assert mode == "quote_matched"
     assert [citation.block_id for citation in resolved] == ["p1_b1"]
-    assert resolved[0].quoted_text == "wrong quote"
     assert resolved[0].page_number == 3
+    assert resolved[0].bbox_x0 == 10.0
+
+
+def test_resolve_citations_for_anchoring_resolves_multi_page_chunk_to_correct_page():
+    # A merged chunk spanning two pages must anchor a citation to whichever
+    # page its quote actually came from, not always the first page.
+    service = PersistenceService()
+    citations = [
+        Citation(block_id="p1_b1", page_number=1, quoted_text="Backups are encrypted at rest.")
+    ]
+    analysis_trace = {
+        "context_chunk_map": {
+            "p1_b1": {
+                "citation_grade": True,
+                "text": "Access requires MFA.\n\nBackups are encrypted at rest.",
+                "section": "unknown",
+                "page_number": 1,
+                "bbox": {"x0": 0.0, "y0": 0.0, "x1": 50.0, "y1": 20.0},
+                "block_ids": ["p1_b1", "p2_b1"],
+                "page_spans": [
+                    {
+                        "page_number": 1,
+                        "text": "Access requires MFA.",
+                        "block_ids": ["p1_b1"],
+                        "bbox_x0": 0.0,
+                        "bbox_y0": 0.0,
+                        "bbox_x1": 50.0,
+                        "bbox_y1": 20.0,
+                        "blocks": [
+                            {
+                                "block_id": "p1_b1",
+                                "text": "Access requires MFA.",
+                                "bbox_x0": 0.0,
+                                "bbox_y0": 0.0,
+                                "bbox_x1": 50.0,
+                                "bbox_y1": 20.0,
+                            }
+                        ],
+                    },
+                    {
+                        "page_number": 2,
+                        "text": "Backups are encrypted at rest.",
+                        "block_ids": ["p2_b1"],
+                        "bbox_x0": 5.0,
+                        "bbox_y0": 15.0,
+                        "bbox_x1": 55.0,
+                        "bbox_y1": 35.0,
+                        "blocks": [
+                            {
+                                "block_id": "p2_b1",
+                                "text": "Backups are encrypted at rest.",
+                                "bbox_x0": 5.0,
+                                "bbox_y0": 15.0,
+                                "bbox_x1": 55.0,
+                                "bbox_y1": 35.0,
+                            }
+                        ],
+                    },
+                ],
+            }
+        }
+    }
+
+    resolved, mode = service._resolve_citations_for_anchoring(citations, analysis_trace)
+
+    assert mode == "page_span_matched"
+    assert [citation.block_id for citation in resolved] == ["p2_b1"]
+    assert resolved[0].page_number == 2
+    assert resolved[0].bbox_x0 == 5.0
+    assert resolved[0].bbox_y0 == 15.0
+
+
+def test_resolve_citations_for_anchoring_prefers_same_page_block_over_wrong_page_duplicate():
+    # The LLM cites block p8_b1 (page 8) but names page_number=21. p8_b1's own
+    # text happens to ALSO contain the quoted phrase (boilerplate/duplicated
+    # content, common in generated TSDs) and is SHORTER than the genuine
+    # page-21 block's text. Before the fix, "prefer shortest matching text"
+    # let this off-page duplicate win outright, producing an anchor whose
+    # page (21) and bbox (page 8's block) pointed at two different places in
+    # the document. The genuine same-page block must win instead.
+    service = PersistenceService()
+    citations = [
+        Citation(
+            block_id="p8_b1",
+            page_number=21,
+            quoted_text="DATABASE_PASSWORD is an AES 256 encrypted master password",
+        )
+    ]
+    analysis_trace = {
+        "context_chunk_map": {
+            "p8_b1": {
+                "citation_grade": True,
+                "text": "DATABASE_PASSWORD is an AES 256 encrypted master password",
+                "section": "10. Configuration Parameters",
+                "page_number": 8,
+                "bbox": {"x0": 90.0, "y0": 72.0, "x1": 542.0, "y1": 84.0},
+            },
+            "p21_b3": {
+                "citation_grade": True,
+                "text": (
+                    "Runtime secrets are provisioned via environment injection. "
+                    "DATABASE_PASSWORD is an AES 256 encrypted master password "
+                    "rotated every 90 days by the secrets manager."
+                ),
+                "section": "10. Configuration Parameters",
+                "page_number": 21,
+                "bbox": {"x0": 88.0, "y0": 400.0, "x1": 500.0, "y1": 430.0},
+            },
+        }
+    }
+
+    resolved, mode = service._resolve_citations_for_anchoring(citations, analysis_trace)
+
+    assert mode == "quote_matched"
+    assert [citation.block_id for citation in resolved] == ["p21_b3"]
+    assert resolved[0].page_number == 21
+    assert resolved[0].bbox_x0 == 88.0
+    assert resolved[0].bbox_y0 == 400.0
+
+
+def test_resolve_citations_for_anchoring_rejects_hierarchical_summary_node():
+    # A RAPTOR level>0 node ("p8_b0") is an LLM-synthesized summary spanning
+    # many pages — its "text" is a paraphrase that can contain a quote
+    # verbatim even though the quote never literally appears at p8_b0's own
+    # bogus first-block location. Such chunks are tagged
+    # evidence_kind="hierarchical_summary" and must never be used as a
+    # citation anchor, even when they're the ONLY chunk whose text contains
+    # the quote — the citation should be dropped as ungrounded rather than
+    # anchored to a made-up location.
+    service = PersistenceService()
+    citations = [
+        Citation(
+            block_id="p8_b0",
+            page_number=8,
+            quoted_text="DATABASE_PASSWORD is an AES 256 encrypted master password",
+        )
+    ]
+    analysis_trace = {
+        "context_chunk_map": {
+            "p8_b0": {
+                "citation_grade": False,
+                "evidence_kind": "hierarchical_summary",
+                "text": (
+                    "Section 10, Configuration Parameters, emphasizes that the "
+                    "DATABASE_PASSWORD is an AES 256 encrypted master password "
+                    "and is not hardcoded."
+                ),
+                "section": "4. Functional Requirements",
+                "page_number": 8,
+                "bbox": {"x0": 90.0, "y0": 72.0, "x1": 542.0, "y1": 84.0},
+            },
+        }
+    }
+
+    resolved, mode = service._resolve_citations_for_anchoring(citations, analysis_trace)
+
+    assert mode == "none"
+    assert resolved == []
+
+
+def test_resolve_citations_for_anchoring_falls_through_summary_to_literal_block():
+    # Same synthesized summary as above, but this time the genuine literal
+    # source block (p21_b0) is ALSO present in the chunk_map. The citation
+    # must resolve to the literal block, never the summary, even though the
+    # summary was the block_id the LLM originally cited.
+    service = PersistenceService()
+    citations = [
+        Citation(
+            block_id="p8_b0",
+            page_number=8,
+            quoted_text="DATABASE_PASSWORD is an AES 256 encrypted master password",
+        )
+    ]
+    analysis_trace = {
+        "context_chunk_map": {
+            "p8_b0": {
+                "citation_grade": False,
+                "evidence_kind": "hierarchical_summary",
+                "text": (
+                    "Section 10, Configuration Parameters, emphasizes that the "
+                    "DATABASE_PASSWORD is an AES 256 encrypted master password "
+                    "and is not hardcoded."
+                ),
+                "section": "4. Functional Requirements",
+                "page_number": 8,
+                "bbox": {"x0": 90.0, "y0": 72.0, "x1": 542.0, "y1": 84.0},
+            },
+            "p21_b0": {
+                "citation_grade": True,
+                "evidence_kind": "implementation_or_scope_context",
+                "text": "The DATABASE_PASSWORD is an AES 256 encrypted master password required for backend database access.",
+                "section": "10. Configuration Parameters",
+                "page_number": 21,
+                "bbox": {"x0": 72.0, "y0": 72.65, "x1": 327.99, "y1": 92.72},
+            },
+        }
+    }
+
+    resolved, mode = service._resolve_citations_for_anchoring(citations, analysis_trace)
+
+    assert mode == "quote_matched"
+    assert [citation.block_id for citation in resolved] == ["p21_b0"]
+    assert resolved[0].page_number == 21
+    assert resolved[0].bbox_x0 == 72.0
 
 
 def test_mediator_evidence_policy_adjusts_verdicts():
@@ -1231,7 +1464,7 @@ def test_run_debate_executes_escalation_round_on_low_confidence_overturn(monkeyp
                 confidence=0.3,
                 reasoning="Hunter found weak evidence.",
                 logic_summary="Hunter found weak evidence.",
-                citations=[Citation(block_id="p1_b1", page_number=1)],
+                citations=[Citation(block_id="p1_b1", page_number=1, quoted_text="Evidence.")],
                 evidence_found=True,
             )
 
@@ -1246,7 +1479,7 @@ def test_run_debate_executes_escalation_round_on_low_confidence_overturn(monkeyp
                 revised_confidence=0.8,
                 reasoning="Critic disagrees with Hunter.",
                 logic_summary="Critic disagrees with Hunter.",
-                valid_citations=[Citation(block_id="p1_b1", page_number=1)],
+                valid_citations=[Citation(block_id="p1_b1", page_number=1, quoted_text="Evidence.")],
             )
 
     class _Mediator:

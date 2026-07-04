@@ -55,7 +55,7 @@ class Settings(BaseSettings):
     AI_MODEL_STANDARD_EXTRACTION: str = Field(default="meta/llama-3.1-8b-instruct")
     AI_MODEL_DIAGRAM_REQUIREMENT_EXTRACTION: str = Field(default="meta/llama-3.1-8b-instruct")
     AI_STANDARD_EXTRACTION_MAX_WORKERS: int = Field(default=3)
-    AI_STANDARD_EXTRACTION_CHUNK_TOKEN_TARGET: int = Field(default=3200)
+    AI_STANDARD_EXTRACTION_CHUNK_TOKEN_TARGET: int = Field(default=4500)
     AI_STANDARD_EXTRACTION_CACHE_TTL_SECONDS: int = Field(default=86400)
     AI_DIAGRAM_REQUIREMENT_EXTRACTION_MAX_CONCURRENCY: int = Field(default=3)
     AI_DIAGRAM_TYPES: str = Field(default="data_flow,sequence,architecture")

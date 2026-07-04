@@ -273,6 +273,78 @@ docker exec automated-security-design-review-backend-1 \
 
 ---
 
+## Diagram evaluations (real diagrams, ground-truth-backed)
+
+The blindness/grounding evals above only run on synthetic diagrams. These three scripts
+evaluate the diagram requirement selector and the diagram debate (Hunter → Critic →
+Mediator) against **real diagrams** pulled from a completed, vision-enabled review, using
+human-labeled ground truth.
+
+### Step 1 — Build the ground-truth template
+
+Requires at least one completed review with diagram findings (`analysis_mode` other than
+`text_only`).
+
+```bash
+docker exec automated-security-design-review-backend-1 \
+  python /app/sdr/apps/ai/evaluations/data/build_diagram_ground_truth_template.py \
+  --review-id 1
+```
+
+This downloads every diagram's marked (Set-of-Mark) image to
+`results/vision/ground_truth_images/review_1/` and writes
+`data/diagram_ground_truth_review_1.json`, listing — for every diagram — the **full**
+candidate pool of diagram requirements for the review's category (not just the ones the
+system happened to select). Open each image, then for every `candidate_requirements`
+entry set:
+
+- `"relevant": true/false` — is this requirement genuinely checkable from this diagram?
+- `"label": "met"|"not_met"|"na"` — only for `relevant: true` rows.
+
+This one labeled file feeds both evals below.
+
+### Step 2a — Diagram requirement retrieval eval
+
+Compares the production vector-search selector (`DiagramRequirementSelector`, cosine
+search over `CategoryDiagramRequirementEmbedding`) against the naive ordinal fallback
+production uses when embedding/search fails.
+
+```bash
+docker exec automated-security-design-review-backend-1 \
+  python /app/sdr/apps/ai/evaluations/retrieval/diagram_retrieval_eval.py \
+  --design-id 1 --ground-truth /app/sdr/apps/ai/evaluations/data/diagram_ground_truth_review_1.json
+```
+
+| Metric | Meaning |
+|--------|---------|
+| `precision` | \|retrieved ∩ relevant\| / \|retrieved\| |
+| `recall` | \|retrieved ∩ relevant\| / \|relevant\| |
+| `hit_rate` | fraction of diagrams with ≥1 relevant requirement retrieved |
+| `mrr` | 1/rank of the first relevant requirement in the ranked list |
+
+Output: `results/retrieval/eval_diagram_retrieval.json`
+
+### Step 2b — Diagram debate ablation (Hunter-only vs full debate)
+
+Same FPR-suppression thesis as Exp 6 above, but matched at `(diagram_id, requirement_id)`
+granularity since one diagram finding can cover multiple requirements at once.
+
+```bash
+docker exec automated-security-design-review-backend-1 \
+  python /app/sdr/apps/ai/evaluations/debate/diagram_ablation_eval.py \
+  --review-id 1 --ground-truth /app/sdr/apps/ai/evaluations/data/diagram_ground_truth_review_1.json
+```
+
+| Metric | Target | Meaning |
+|--------|--------|---------|
+| `hunter_only.fpr` | higher | FPR without Critic/Mediator |
+| `debate_final.fpr` | lower | FPR with full 3-agent debate |
+| `delta_fpr` | > 0 | FPR suppression achieved by debate |
+
+Output: `results/debate/diagram_debate_ablation_results.json`
+
+---
+
 ## Results
 
 All output files are written to `results/` which is bind-mounted from:

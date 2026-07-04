@@ -33,6 +33,7 @@ from sdr.core.database import SessionLocal
 from sdr.apps.reviews.models.finding import Finding
 
 from sdr.apps.ai.evaluations.shared import results_path
+from sdr.apps.ai.evaluations.shared.metrics import calculate_binary_confusion
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -61,35 +62,6 @@ def _extract_hunter_verdict(finding: Finding) -> str | None:
     hunter = round0.get("hunter", {})
     verdict = hunter.get("verdict", "")
     return verdict.lower().strip() if verdict else None
-
-
-def _confusion(labels: list[str], preds: list[str]) -> dict:
-    """Binary (met vs not_met) confusion matrix, ignoring 'na'."""
-    tp = fp = fn = tn = 0
-    for true, pred in zip(labels, preds):
-        if true == "na" or pred is None:
-            continue
-        t_pos = true == "met"
-        p_pos = pred == "met"
-        if t_pos and p_pos:
-            tp += 1
-        elif not t_pos and p_pos:
-            fp += 1
-        elif t_pos and not p_pos:
-            fn += 1
-        else:
-            tn += 1
-    precision = tp / (tp + fp) if (tp + fp) else 0.0
-    recall = tp / (tp + fn) if (tp + fn) else 0.0
-    f1 = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
-    fpr = fp / (fp + tn) if (fp + tn) else 0.0
-    return {
-        "tp": tp, "fp": fp, "fn": fn, "tn": tn,
-        "precision": round(precision, 4),
-        "recall": round(recall, 4),
-        "f1": round(f1, 4),
-        "fpr": round(fpr, 4),
-    }
 
 
 def main():
@@ -177,8 +149,8 @@ def main():
         logger.error("No findings matched ground-truth labels. Check finding IDs in ground truth file.")
         return
 
-    hunter_cm = _confusion(hunter_labels, hunter_preds)
-    debate_cm = _confusion(debate_labels, debate_preds)
+    hunter_cm = calculate_binary_confusion(hunter_labels, hunter_preds)
+    debate_cm = calculate_binary_confusion(debate_labels, debate_preds)
     delta_fpr = round(hunter_cm["fpr"] - debate_cm["fpr"], 4)
 
     summary = {

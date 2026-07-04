@@ -291,6 +291,7 @@ class RetrievalRouteExecutor:
         return RetrievalResult(
             context_chunks=raptor_response.get_context_chunks()[: router.max_context_chunks],
             context_chunk_block_ids=raptor_response.get_context_chunk_block_ids()[: router.max_context_chunks],
+            context_chunk_levels=raptor_response.get_context_chunk_levels()[: router.max_context_chunks],
             source_block_ids=raptor_response.all_source_block_ids,
             block_source_map=_build_uniform_block_source_map(
                 raptor_response.all_source_block_ids,
@@ -386,11 +387,13 @@ class RetrievalRouteExecutor:
         kept = [c for c in reranked if c.text]
         merged_chunks = [c.text for c in kept]
         merged_chunk_block_ids = [list(c.block_ids) for c in kept]
+        merged_chunk_levels = [int(c.metadata.get("level", 0) or 0) for c in kept]
         all_source_block_ids = router._collect_candidate_block_ids(reranked)
         block_source_map = _build_block_source_map_from_candidates(reranked)
         return RetrievalResult(
             context_chunks=merged_chunks[: router.max_context_chunks],
             context_chunk_block_ids=merged_chunk_block_ids[: router.max_context_chunks],
+            context_chunk_levels=merged_chunk_levels[: router.max_context_chunks],
             source_block_ids=all_source_block_ids,
             block_source_map=block_source_map,
             strategy_used=RetrievalStrategy.HYBRID,

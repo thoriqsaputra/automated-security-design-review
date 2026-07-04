@@ -3,281 +3,337 @@
   "items": [
     {
       "requirement_id": "2ea43cb687ce46689bfb0e22-29-000007",
+      "requirement_text": "6.2.4 Verify that random number, encryption or hashing algorithms, key lengths, rounds, ciphers or modes, can be reconfigured, upgraded, or swapped at any time, to protect against cryptographic breaks. (C8)",
       "label": "not_met",
       "notes": "While the TSD specifies algorithms like AES-256 and TLS 1.3, it is completely silent on architectural mechanisms that would allow these cryptographic algorithms to be easily reconfigured or swapped."
     },
     {
       "requirement_id": "69496a4f4fc2923440c115b2-29-000015",
+      "requirement_text": "6.4.1 Verify that a secrets management solution such as a key vault is used to securely create, store, control access to and destroy secrets. (C8)",
       "label": "met",
       "notes": "Section 17 explicitly mandates the use of an isolated Enterprise Secrets Vault to securely manage and inject sensitive values like API keys and database credentials."
     },
     {
       "requirement_id": "e414d36f51944fa9eae9416f-29-000016",
+      "requirement_text": "6.4.2 Verify that key material is not exposed to the application but instead uses an isolated security module like a vault for cryptographic operations. (C8)",
       "label": "met",
       "notes": "Sections 7 and 13 explicitly mandate the use of Hardware Security Modules (HSM) to manage cryptographic keys, ensuring master keys remain unexposed and cannot be extracted by malicious software vectors."
     },
     {
       "requirement_id": "c991301b7c56d013295f297b-29-000004",
+      "requirement_text": "8.1.4 Verify the application can detect and alert on abnormal numbers of requests, such as by IP, user, total per hour or day, or whatever makes sense for the application.",
       "label": "met",
       "notes": "Sections 14 and 15 detail tracking IP addresses and incrementing automated lockout counters to feed anomaly detection and neutralize brute force enumeration attacks."
     },
     {
       "requirement_id": "0823311afc62c39cfe92eb1e-29-000011",
+      "requirement_text": "8.3.2 Verify that users have a method to remove or export their data on demand.",
       "label": "met",
       "notes": "Section 20 explicitly provides robust user mechanisms allowing job seekers and verified employers to securely view, export, and permanently delete their personal data at any time."
     },
     {
       "requirement_id": "0b9f083db46629d252c48e95-29-000012",
+      "requirement_text": "8.3.3 Verify that users are provided clear language regarding collection and use of supplied personal information and that users have provided opt-in consent for the use of that data before it is used in any way.",
       "label": "not_met",
       "notes": "While the TSD references GDPR consent protocols in its glossary, it is completely silent on functional requirements or workflows for actually presenting clear language and gathering explicit opt-in consent during registration."
     },
     {
       "requirement_id": "51c5bcf2675b6741510e646c-29-000013",
+      "requirement_text": "8.3.4 Verify that all sensitive data created and processed by the application has been identified, and ensure that a policy is in place on how to deal with sensitive data. (C8)",
       "label": "met",
       "notes": "Section 20 explicitly categorizes sensitive data types and establishes rigorous retention periods alongside mandatory cryptographic erasure and digital shredding policies."
     },
     {
       "requirement_id": "9b9932ef6d0775d4d7b00dcf-29-000014",
+      "requirement_text": "8.3.5 Verify accessing sensitive data is audited (without logging the sensitive data itself), if the data is collected under relevant data protection directives or where logging of access is required.",
       "label": "met",
       "notes": "Section 15 explicitly mandates advanced data redaction proxies to actively scrub and completely mask all Personally Identifiable Information before any audit logs are written."
     },
     {
       "requirement_id": "e073999cb1eb71f5780145ba-29-000016",
+      "requirement_text": "8.3.7 Verify that sensitive or private information that is required to be encrypted, is encrypted using approved algorithms that provide both confidentiality and integrity. (C8)",
       "label": "met",
       "notes": "Sections 2, 5, and 13 comprehensively mandate that all permanent data at rest is encrypted with AES-256 and all active network communications utilize TLS 1.3."
     },
     {
       "requirement_id": "9a26ae196cc8fc999de05020-29-000003",
+      "requirement_text": "V1.1 - 1.1.3 Verify that all user stories and features contain functional security constraints, such as \"As a user, I should be able to view and edit my profile. I should not be able to view or edit anyone else's profile\"",
       "label": "met",
       "notes": "Sections 3, 4, and 11 explicitly document negative security constraints within feature definitions, such as explicitly prohibiting the AI from making final employment decisions and restricting guest user capabilities."
     },
     {
       "requirement_id": "39c0ed17abf94da14821b28e-29-000004",
+      "requirement_text": "V1.1 - 1.1.4 Verify documentation and justification of all the application's trust boundaries, components, and significant data flows.",
       "label": "met",
       "notes": "Section 13 comprehensively documents the application's trust boundaries and data flows, explicitly defining the protocols and encryptions used."
     },
     {
       "requirement_id": "8bff616e6f67a7b8c8b39c6e-29-000005",
+      "requirement_text": "V1.1 - 1.1.5 Verify definition and security analysis of the application's high-level architecture and all connected remote services. (C1)",
       "label": "met",
       "notes": "Sections 6 and 18 explicitly define the high-level architecture, isolate internal network tiers into private subnets, and analyze the security of external integration boundaries."
     },
     {
       "requirement_id": "f78cc14f1021a92d62e837a1-29-000006",
+      "requirement_text": "V1.1 - 1.1.6 Verify implementation of centralized, simple (economy of design), vetted, secure, and reusable security controls to avoid duplicate, missing, ineffective, or insecure controls. (C10)",
       "label": "na",
       "notes": "Verifying the actual code-level implementation of simple, reusable security controls designed specifically to prevent duplicate or missing controls requires source code inspection."
     },
     {
       "requirement_id": "3293e58191d94d1aef8b2d58-29-000009",
+      "requirement_text": "V1.2 - 1.2.2 Verify that communications between application components, including APIs, middleware and data layers, are authenticated. Components should have the least necessary privileges needed. (C3)",
       "label": "met",
       "notes": "Section 8 mandates that absolutely every internal and external API endpoint requires mutual TLS 1.3 cryptographic tunneling and authenticated JSON Web Tokens."
     },
     {
       "requirement_id": "caf5235411c4aee80673a54a-29-000010",
+      "requirement_text": "V1.2 - 1.2.3 Verify that the application uses a single vetted authentication mechanism that is known to be secure, can be extended to include strong authentication, and has sufficient logging and monitoring to detect account abuse or breaches.",
       "label": "met",
       "notes": "Sections 8, 11, and 15 detail a centralized authentication endpoint augmented with mandatory Multi-Factor Authentication and supported by comprehensive event logging to detect abuse."
     },
     {
       "requirement_id": "682de869a745db6e6e6e95e9-29-000011",
+      "requirement_text": "V1.2 - 1.2.4 Verify that all authentication pathways and identity management APIs implement consistent authentication security control strength, such that there are no weaker alternatives per the risk of the application.",
       "label": "met",
       "notes": "Section 11 explicitly mandates that all authenticated system roles require mandatory Multi-Factor Authentication, ensuring consistent authentication strength across the platform."
     },
     {
       "requirement_id": "db8e0236e3c71a01a22f92fc-29-000012",
+      "requirement_text": "V1.4 - 1.4.1 Verify that trusted enforcement points, such as access control gateways, servers, and serverless functions, enforce access controls. Never enforce access controls on the client.",
       "label": "met",
       "notes": "Section 12 explicitly rejects client-side tokens and mandates centralized server-side session tracking utilizing encrypted opaque tokens to enforce access controls securely."
     },
     {
       "requirement_id": "235679eeeed4c1ddc22f4eaf-29-000013",
+      "requirement_text": "V1.4 - 1.4.4 Verify the application uses a single and well-vetted access control mechanism for accessing protected data and resources. All requests must pass through this single mechanism to avoid copy and paste or insecure alternative paths. (C7)",
       "label": "met",
       "notes": "Section 11 defines a sophisticated authorization architecture blending Role-Based Access Control with Attribute-Based Access Control enforced uniformly."
     },
     {
       "requirement_id": "4149b9e4d342b8e4f60c1e04-29-000014",
+      "requirement_text": "V1.4 - 1.4.5 Verify that attribute or feature-based access control is used whereby the code checks the user's authorization for a feature/data item rather than just their role. Permissions should still be allocated using roles. (C7)",
       "label": "met",
       "notes": "Section 11 explicitly dictates combining Role-Based Access Control with Attribute-Based Access Control to dynamically evaluate specific user attributes and context before granting access."
     },
     {
       "requirement_id": "db5f235cbd438807f729b273-29-000015",
+      "requirement_text": "V1.5 - 1.5.1 Verify that input and output requirements clearly define how to handle and process data based on type, content, and applicable laws, regulations, and other policy compliance.",
       "label": "met",
       "notes": "Sections 5, 9, 15, and 20 collectively define strict input validation constraints, detailed data types, rigorous PII redaction rules, and specific categorical data retention lifecycles."
     },
     {
       "requirement_id": "f795ad19b9018b705f38ee07-29-000017",
+      "requirement_text": "V1.5 - 1.5.3 Verify that input validation is enforced on a trusted service layer. (C5)",
       "label": "met",
       "notes": "Sections 5 and 6 explicitly mandate rigorous input validation, strict allow listing, and meticulous data sanitization before any backend or AI processing occurs."
     },
     {
       "requirement_id": "ab5d2b5e700b36c5bddf0886-29-000019",
+      "requirement_text": "V1.6 - 1.6.1 Verify that there is an explicit policy for management of cryptographic keys and that a cryptographic key lifecycle follows a key management standard such as NIST SP 800-57.",
       "label": "met",
       "notes": "Sections 7 and 17 explicitly mandate the use of Hardware Security Modules and automated secret rotation policies to securely protect the lifecycle of all critical cryptographic keys."
     },
     {
       "requirement_id": "e2651e0a1d19514ad8eb9760-29-000020",
+      "requirement_text": "V1.6 - 1.6.2 Verify that consumers of cryptographic services protect key material and other secrets by using key vaults or API based alternatives.",
       "label": "met",
       "notes": "Section 17 explicitly dictates that sensitive values like API keys and database credentials are securely injected into the runtime environment using an isolated Enterprise Secrets Vault."
     },
     {
       "requirement_id": "f578ff492e3ae964712dc73d-29-000022",
+      "requirement_text": "V1.6 - 1.6.4 Verify that the architecture treats client-side secrets--such as symmetric keys, passwords, or API tokens--as insecure and never uses them to protect or access sensitive data.",
       "label": "met",
       "notes": "Section 12 documents an explicit architectural policy that completely rejects stateless client-side tokens, relying instead on instantly revocable server-side opaque tokens."
     },
     {
       "requirement_id": "6224cdc4224b15cc055e4d98-29-000023",
+      "requirement_text": "V1.7 - 1.7.1 Verify that a common logging format and approach is used across the system. (C9)",
       "label": "na",
       "notes": "Verifying that a common, standardized logging format is programmatically implemented across the entire system requires source code inspection."
     },
     {
       "requirement_id": "bbd11e705bfae707c6b9c261-29-000025",
+      "requirement_text": "V1.8 - 1.8.1 Verify that all sensitive data is identified and classified into protection levels.",
       "label": "not_met",
       "notes": "While Section 20 identifies categories of sensitive data, the TSD fails to formally classify this data into explicit, tiered protection levels."
     },
     {
       "requirement_id": "b5f829a2d84177524b442b01-29-000026",
+      "requirement_text": "V1.8 - 1.8.2 Verify that all protection levels have an associated set of protection requirements, such as encryption requirements, integrity requirements, retention, privacy and other confidentiality requirements, and that these are applied in the architecture.",
       "label": "not_met",
       "notes": "Because the TSD fails to formally classify data into tiered protection levels, it also lacks documentation mapping specific protection requirements to those levels."
     },
     {
       "requirement_id": "085e9a838bf30e0c0f804ba5-29-000027",
+      "requirement_text": "V1.9 - 1.9.1 Verify the application encrypts communications between components, particularly when these components are in different containers, systems, sites, or cloud providers. (C3)",
       "label": "met",
       "notes": "Section 13 explicitly mandates that all communications across system boundaries, both internal and external, strictly utilize mutual TLS 1.3 encryption."
     },
     {
       "requirement_id": "7351e1b4f6c9107bb7b18b0e-29-000030",
+      "requirement_text": "V1.11 - 1.11.1 Verify the definition and documentation of all application components in terms of the business or security functions they provide.",
       "label": "met",
       "notes": "Sections 6, 8, and 18 comprehensively define and document the application's internal components, network boundaries, and external integrations in terms of their security responsibilities."
     },
     {
       "requirement_id": "36418f80a7aff71abadb8616-29-000031",
+      "requirement_text": "V1.11 - 1.11.2 Verify that all high-value business logic flows, including authentication, session management and access control, do not share unsynchronized state.",
       "label": "na",
       "notes": "Verifying the absence of unsynchronized state or race conditions within high-value business logic flows requires runtime concurrency testing and source code inspection."
     },
     {
       "requirement_id": "c24559ecb183d8c7507ef767-29-000033",
+      "requirement_text": "V1.12 - 1.12.2 Verify that user-uploaded files - if required to be displayed or downloaded from the application - are served by either octet stream downloads, or from an unrelated domain, such as a cloud file storage bucket. Implement a suitable Content Security Policy (CSP) to reduce the risk from XSS vectors or other attacks from the uploaded file.",
       "label": "not_met",
       "notes": "While Sections 8 and 13 mention uploading resume documents, the TSD is silent on serving these files from unrelated domains or implementing a Content Security Policy to prevent XSS."
     },
     {
       "requirement_id": "672799b90935437c9b41ce9b-29-000034",
+      "requirement_text": "V1.14 - 1.14.1 Verify the segregation of components of differing trust levels through well-defined security controls, firewall rules, API gateways, reverse proxies, cloud-based security groups, or similar mechanisms.",
       "label": "met",
       "notes": "Sections 6 and 18 explicitly enforce a multi-tier network architecture, placing the Web Application Firewall in a Demilitarized Zone and isolating the core database and AI enclaves within air-gapped private subnets."
     },
     {
       "requirement_id": "e0ef7498ca0ee472891bfde1-29-000016",
+      "requirement_text": "V2.2 - 2.2.4 Verify impersonation resistance against phishing, such as the use of multi-factor authentication, cryptographic devices with intent (such as connected keys with a push to authenticate), or at higher AAL levels, client-side certificates.",
       "label": "met",
       "notes": "Section 11 explicitly mandates that all system access requires mandatory Multi-Factor Authentication to verify physical identity through hardware keys, biometrics, or secure mobile channels."
     },
     {
       "requirement_id": "b568b213b20b7eef5d4b8b57-29-000018",
+      "requirement_text": "V2.2 - 2.2.6 Verify replay resistance through the mandated use of One-time Passwords (OTP) devices, cryptographic authenticators, or lookup codes.",
       "label": "met",
       "notes": "Section 11 explicitly mandates the use of FIDO2 or WebAuthn cryptographic protocols, which inherently provide phishing and replay resistance for authenticators."
     },
     {
       "requirement_id": "e7a85cbca48f1e19016bf754-29-000021",
+      "requirement_text": "V2.3 - 2.3.2 Verify that enrollment and use of user-provided authentication devices are supported, such as a U2F or FIDO tokens.",
       "label": "met",
       "notes": "Section 11 explicitly mandates that users with Elevated Administrative Privileges must utilize mandatory Multi-Factor Authentication using FIDO2 or WebAuthn hardware security keys."
     },
     {
       "requirement_id": "cb49776a8ba797b0d321743d-29-000033",
+      "requirement_text": "V2.5 - 2.5.6 Verify forgotten password, and other recovery paths use a secure recovery mechanism, such as time-based OTP (TOTP) or other soft token, mobile push, or another offline recovery mechanism. (C6)",
       "label": "not_met",
       "notes": "Section 15 mentions logging password reset requests, but the TSD is completely silent on the specific secure recovery mechanisms, such as time-based OTPs, utilized for the reset flow."
     },
     {
       "requirement_id": "1a1e8e4c653b5441ed2965a9-29-000038",
+      "requirement_text": "V2.7 - 2.7.1 Verify that clear text out of band (NIST \"restricted\") authenticators, such as SMS or PSTN, are not offered by default, and stronger alternatives such as push notifications are offered first.",
       "label": "not_met",
       "notes": "Section 11 explicitly designates SMS-based One Time Passwords for standard users, contradicting the requirement to not offer clear-text out-of-band authenticators by default."
     },
     {
       "requirement_id": "f5c0f786db8b2de60b7d1ffa-29-000041",
+      "requirement_text": "V2.7 - 2.7.4 Verify that the out of band authenticator and verifier communicates over a secure independent channel.",
       "label": "met",
       "notes": "Section 8 explicitly mandates that connections to the Short Message Service Dispatch Gateway and Secure SMTP Email Dispatcher are secured using mutual TLS (mTLS) 1.3 or secure protocols."
     },
     {
       "requirement_id": "17ab689d0dfb9956e64b0400-29-000044",
+      "requirement_text": "V2.8 - 2.8.1 Verify that time-based OTPs have a defined lifetime before expiring.",
       "label": "not_met",
       "notes": "While Section 10 defines various system timeouts, the TSD is completely silent on defining an explicit expiration lifetime for One-Time Passwords."
     },
     {
       "requirement_id": "2e8b59805f7af95d2524dc06-29-000050",
+      "requirement_text": "V2.8 - 2.8.7 Verify that biometric authenticators are limited to use only as secondary factors in conjunction with either something you have and something you know.",
       "label": "met",
       "notes": "Section 11 explicitly restricts the use of biometric authenticators to a secondary verification step that must strictly follow the initial submission of a valid username and password combination."
     },
     {
       "requirement_id": "aff5b28dfde62093492e8664-29-000054",
+      "requirement_text": "V2.10 - 2.10.1 Verify that intra-service secrets do not rely on unchanging credentials such as passwords, API keys or shared accounts with privileged access.",
       "label": "met",
       "notes": "Section 17 explicitly mandates the use of an Enterprise Secrets Vault featuring automated secret rotation policies to dynamically refresh internal and external credentials."
     },
     {
       "requirement_id": "4707eb7f667c3caaab321829-29-000001",
+      "requirement_text": "V4.1 - 4.1.1 Verify that the application enforces access control rules on a trusted service layer, especially if client-side access control is present and could be bypassed.",
       "label": "met",
       "notes": "Sections 11 and 18 explicitly state that Role-Based and Attribute-Based Access Control logic is rigorously validated and enforced by the trusted server-side Secure API Gateway."
     },
     {
       "requirement_id": "4a5bcd651e023dc3f391a845-29-000002",
+      "requirement_text": "V4.1 - 4.1.2 Verify that all user and data attributes and policy information used by access controls cannot be manipulated by end users unless specifically authorized.",
       "label": "met",
       "notes": "Section 12 explicitly mandates centralized server-side session tracking using an encrypted in-memory data store, specifically rejecting stateless client-side tokens to prevent state hijacking."
     },
     {
       "requirement_id": "3754472a55ec26cfd4ac84d3-29-000003",
+      "requirement_text": "V4.1 - 4.1.3 Verify that the principle of least privilege exists - users should only be able to access functions, data files, URLs, controllers, services, and other resources, for which they possess specific authorization. This implies protection against spoofing and elevation of privilege. (C7)",
       "label": "met",
       "notes": "Section 11 explicitly defines a comprehensive authorization architecture that blends rigid Role-Based Access Control with dynamic Attribute-Based Access Control to enforce precise digital boundaries."
     },
     {
       "requirement_id": "92f8b2a44c1a693aaa029d29-29-000004",
+      "requirement_text": "V4.1 - 4.1.5 Verify that access controls fail securely including when an exception occurs.",
       "label": "met",
       "notes": "Section 14 explicitly mandates a strict Fail Closed state for any critical failure or ambiguous authorization check, ensuring all operations are instantly halted."
     },
     {
       "requirement_id": "c223771df60dbdd138ecb806-29-000007",
+      "requirement_text": "V4.3 - 4.3.1 Verify administrative interfaces use appropriate multi-factor authentication to prevent unauthorized use.",
       "label": "met",
       "notes": "Section 11 explicitly mandates that System Administrators with Elevated Administrative Privileges must authenticate utilizing mandatory Multi-Factor Authentication via FIDO2 or WebAuthn."
     },
     {
       "requirement_id": "db91a1b412194581c7239435-29-000009",
+      "requirement_text": "V4.3 - 4.3.3 Verify that the application has additional authorization (such as step up or adaptive authentication) for lower value systems, and / or segregation of duties for high value applications to enforce anti-fraud controls as per the risk of application and past fraud.",
       "label": "not_met",
       "notes": "While Section 12 details continuous anomaly detection, the TSD is completely silent on implementing adaptive step-up authorization or explicit segregation of duties for anti-fraud purposes."
     },
     {
       "requirement_id": "3dc6f67a223cf26e26edfebf-29-000001",
+      "requirement_text": "6.1.1 Verify that regulated private data is stored encrypted while at rest, such as Personally Identifiable Information (PII), sensitive personal information, or data assessed likely to be subject to EU's GDPR.",
       "label": "met",
       "notes": "Sections 9 and 13 explicitly mandate that all permanent data at rest, including Personally Identifiable Information within the core database ledger, is secured using AES-256-GCM encryption."
     },
     {
       "requirement_id": "d1408622f3f551f0eaa08399-29-000002",
+      "requirement_text": "6.1.2 Verify that regulated health data is stored encrypted while at rest, such as medical records, medical device details, or de-anonymized research records.",
       "label": "not_met",
       "notes": "The TSD is completely silent on the collection or encryption of regulated health data, as the application's defined data model does not encompass medical records."
     },
     {
       "requirement_id": "a3bdd13588d2eae69ec229f0-29-000003",
+      "requirement_text": "6.1.3 Verify that regulated financial data is stored encrypted while at rest, such as financial accounts, defaults or credit history, tax records, pay history, beneficiaries, or de-anonymized market or research records.",
       "label": "not_met",
       "notes": "The TSD is completely silent on any requirements for encrypting regulated financial data or integrating payment gateways, as financial transactions are out of scope."
     },
     {
       "requirement_id": "9e2827884265b3eb67522180-29-000017",
+      "requirement_text": "8.3.8 Verify that sensitive personal information is subject to data retention classification, such that old or out of date data is deleted automatically, on a schedule, or as the situation requires.",
       "label": "met",
       "notes": "Section 20 explicitly mandates rigorous cryptographic erasure and digital shredding for sensitive data, ensuring it is mathematically unrecoverable at the end of its lifecycle."
     },
     {
       "requirement_id": "a09482b2a0aae657f4d864f8-29-000005",
+      "requirement_text": "V11.1 - 11.1.5 Verify the application has business logic limits or validation to protect against likely business risks or threats, identified using threat modeling or similar methodologies.",
       "label": "met",
       "notes": "Sections 4 and 10 enforce explicit business logic and capacity limits, such as a strict cap of 100 candidates per shortlist and daily token usage limits, to mitigate potential algorithmic abuse."
     },
     {
       "requirement_id": "0c9dbb545410ca4280e13a74-29-000009",
+      "requirement_text": "V13.2 - 13.2.6 Verify that the message headers and payload are trustworthy and not modified in transit. Requiring strong encryption for transport (TLS only) may be sufficient in many cases as it provides both confidentiality and integrity protection. Per-message digital signatures can provide additional assurance on top of the transport protections for high-security applications but bring with them additional complexity and risks to weigh against the benefits.",
       "label": "met",
       "notes": "Section 13 explicitly dictates that all in-transit communications across system boundaries mandate mutual Transport Layer Security (mTLS) 1.3 cryptographic protocols."
     },
     {
       "requirement_id": "bb999d143d925f112705e697-29-000011",
+      "requirement_text": "V13.3 - 13.3.2 Verify that the message payload is signed using WS-Security to ensure reliable transport between client and service.",
       "label": "not_met",
       "notes": "The TSD describes RESTful Push APIs and JSON Web Tokens in Section 8 but is completely silent on utilizing WS-Security to sign message payloads."
     },
     {
       "requirement_id": "35ebc5e70e6221b348e54515-29-000013",
+      "requirement_text": "V13.4 - 13.4.2 Verify that GraphQL or other data layer authorization logic should be implemented at the business logic layer instead of the GraphQL layer.",
       "label": "met",
       "notes": "Sections 11 and 18 explicitly dictate that a sophisticated authorization architecture combining Role-Based and Attribute-Based Access Control is enforced by the Secure API Gateway."
     },
     {
       "requirement_id": "21b95dc9208454088a14e029-29-000011",
+      "requirement_text": "V14.2 - 14.2.6 Verify that the attack surface is reduced by sandboxing or encapsulating third party libraries to expose only the required behaviour into the application. (C2)",
       "label": "not_met",
       "notes": "While Section 16 discusses rigorous vulnerability scanning and SBOM generation for third-party libraries, the TSD is completely silent on sandboxing or encapsulating them to expose only required behavior."
     }

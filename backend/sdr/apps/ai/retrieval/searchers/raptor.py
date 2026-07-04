@@ -103,6 +103,16 @@ class RAPTORSearchResponse:
         """Per-chunk source block ids, index-aligned with get_context_chunks()."""
         return [list(r.source_block_ids) for r in self.results if r.text]
 
+    def get_context_chunk_levels(self) -> List[int]:
+        """Per-chunk RAPTOR tree level, index-aligned with get_context_chunks().
+
+        Level 0 chunks are literal leaf text tied to their real source pages;
+        level > 0 chunks are LLM-synthesized cluster summaries that paraphrase
+        content spanning many pages and must never be treated as a citable,
+        page-pinpointable source.
+        """
+        return [r.level for r in self.results if r.text]
+
 
 # ---------------------------------------------------------------------------
 # RAPTOR Searcher

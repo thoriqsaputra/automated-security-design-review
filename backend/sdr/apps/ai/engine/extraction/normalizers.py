@@ -26,14 +26,14 @@ _OWASP_SUBSECTION_HEADING_RE = re.compile(
     r"^\s*V\d+\.\d+\b(?!\s*-\s*\d+\.\d+\.\d+\b)",
     re.IGNORECASE,
 )
-_CONTROL_ID_RE = re.compile(r"\b(?:[A-Z]{2,}(?:-[A-Z0-9]+)+|\d+\.\d+\.\d+(?:\.\d+)*)\b")
+_CONTROL_ID_RE = re.compile(r"\b(?:[A-Z]{2,}(?:-[A-Z0-9]+)+|[Vv]?\d+\.\d+\.\d+(?:\.\d+)*)\b")
 
 
 _DELETED_RESERVED_RE = re.compile(r"\[\s*(?:deleted|reserved|blank)\b", re.IGNORECASE)
 
 _ID_LEADING_RE = re.compile(
-    r"^\s*(?:V\d+(?:\.\d+)*\s*[-–]\s*)?"
-    r"(?:[A-Z]{2,}(?:-[A-Z0-9]+)+|\d+\.\d+\.\d+(?:\.\d+)*)\b",
+    r"^\s*(?:V\d+(?:\.\d+)*(?:\s+[^\-–\n]{0,80})?\s*[-–]\s*)?"
+    r"(?:[A-Z]{2,}(?:-[A-Z0-9]+)+|[Vv]?\d+\.\d+\.\d+(?:\.\d+)*)\b",
 )
 
 

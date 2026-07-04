@@ -214,6 +214,10 @@ export function FindingDetails({ finding, activeCitationId = null, onCitationSel
   const evidenceSources = (finding.evidence_sources || []).filter(
     (source): source is FindingEvidenceSource => Boolean(source?.key && source?.label),
   );
+  // Match ReviewFindingsPanel's "Jump to citation" filter so both agree on
+  // which citation is first — otherwise the two can point to different
+  // citations when an invalid (page_number < 1) citation leads the raw list.
+  const visibleCitations = (finding.citations || []).filter((citation) => citation.page_number >= 1);
 
   const auditItems = [
     { label: 'Finding ID', value: finding.id },
@@ -347,14 +351,14 @@ export function FindingDetails({ finding, activeCitationId = null, onCitationSel
         </section>
       )}
 
-      {finding.citations && finding.citations.length > 0 && (
+      {visibleCitations.length > 0 && (
         <section className="space-y-2 rounded-xl border border-surface-border bg-surface-base/50 p-4">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Evidence Citations</p>
             <p className="text-[11px] text-text-muted">Click a citation to jump the PDF viewer.</p>
           </div>
           <div className="space-y-2">
-            {finding.citations.map((citation) => {
+            {visibleCitations.map((citation) => {
               const isActive = activeCitationId === citation.id;
               return (
                 <button

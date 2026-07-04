@@ -52,6 +52,10 @@ class RetrievalResult:
     # has no traceable source block (e.g. the VECTOR_ONLY full-text fallback) and must
     # stay non-citable.
     context_chunk_block_ids: List[List[str]] = field(default_factory=list)
+    # Index-aligned with context_chunks: 0 for literal leaf text, >0 for an
+    # LLM-synthesized RAPTOR cluster summary spanning many pages. Chunks with
+    # level > 0 must never be used as a citable, page-pinpointable source.
+    context_chunk_levels: List[int] = field(default_factory=list)
     source_block_ids: List[str] = field(default_factory=list)
     block_source_map: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     diagram_block_ids: List[str] = field(default_factory=list)

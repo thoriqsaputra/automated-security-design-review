@@ -200,6 +200,41 @@ def test_parent_applicability_classification_sanitizes_multiline_reasoning_witho
     assert calls["count"] == 1
 
 
+def test_parent_applicability_classification_trusts_high_confidence_unclear_verdict(monkeypatch):
+    # Regression test: the model frequently pairs decision_mode="unclear" with a
+    # high, decisive confidence (e.g. review 22's "V13 API and Web Service" call,
+    # confidence 0.75, reasoning clearly concludes the subsystem isn't described).
+    # The gate must trust that confidence verbatim instead of clamping it to <=0.4.
+    def fake_chat_completion(**_kwargs):
+        return SimpleNamespace(
+            content=(
+                '{"applicable": false, "confidence": 0.75, "decision_mode": "unclear", '
+                '"reasoning": "TSD discusses TLS and data integrity but does not '
+                'explicitly describe an API or web service subsystem.", '
+                '"evidence": ["no mention of API or web service"]}'
+            ),
+            error=None,
+        )
+
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.classification.parent_applicability.chat_completion",
+        fake_chat_completion,
+    )
+
+    result = classify_parent_applicability(
+        category_code="web_application",
+        version_label="v19",
+        parent_title="V13 API and Web Service",
+        parent_description="Controls extracted for baseline v19.",
+        child_requirements=["Verify that the message headers and payload are trustworthy."],
+        retrieved_context="TLS 1.2/1.3 is used for in-transit communication and AES-256 for data at rest.",
+    )
+
+    assert result.applicable is False
+    assert result.confidence == 0.75
+    assert result.decision_mode == "unclear"
+
+
 def test_parent_applicability_classification_consults_llm_when_context_has_no_family_signal(monkeypatch):
     calls = {"count": 0}
 

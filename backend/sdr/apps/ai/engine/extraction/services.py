@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import concurrent.futures
 import logging
+import re
 import threading
 import time
 from typing import Any, Dict, List, Optional
@@ -30,6 +31,57 @@ from .screening import StandardScreeningError, StandardScreeningService
 
 logger = logging.getLogger(__name__)
 _AI_RESPONSE_PREVIEW_LIMIT = 800
+
+# Matches a markdown top-level OWASP-style chapter heading (e.g. "## V1 Architecture,
+# Design and Threat Modeling") while excluding sub-section headings (e.g. "## V1.12
+# Secure File Upload Architecture") via the negative lookahead on a following dot-digit.
+_CHAPTER_HEADING_RE = re.compile(r"^#{1,6}\s*(V\d+)(?!\.\d)\s+(.+?)\s*$", re.MULTILINE)
+_CHUNK_BANNER_RE = re.compile(r"^--- DOCUMENT CHUNK \d+ OF \d+ ---\n\n")
+_MID_CHAPTER_HEADING_LOOKAHEAD_CHARS = 300
+
+
+def _annotate_chunks_with_chapter_context(
+    chunks: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    """
+    Chunking splits the document with zero overlap, so a chunk that opens
+    mid-chapter (e.g. right after "V1.11...", before "V1.12...") never sees the
+    top-level chapter heading that appeared only once, in an earlier chunk. The
+    extraction prompt requires the LLM to key requirements by that top-level
+    heading, so without it the LLM has no reliable way to attribute orphaned
+    trailing sub-sections to the correct chapter. This carries the last-seen
+    top-level heading forward as an explicit context line on any chunk that
+    doesn't open with its own new top-level heading.
+    """
+    active_heading: Optional[str] = None
+    for chunk in chunks:
+        text = chunk.get("text", "")
+        banner_match = _CHUNK_BANNER_RE.match(text)
+        banner = banner_match.group(0) if banner_match else ""
+        body = text[len(banner):]
+
+        matches = list(_CHAPTER_HEADING_RE.finditer(body))
+        first_heading_offset = matches[0].start() if matches else None
+        opens_mid_chapter = active_heading is not None and (
+            first_heading_offset is None
+            or first_heading_offset > _MID_CHAPTER_HEADING_LOOKAHEAD_CHARS
+        )
+
+        if opens_mid_chapter:
+            chapter_tag, _, chapter_title = active_heading.partition(" ")
+            context_line = (
+                f'[CONTEXT: This chunk continues the chapter titled "{chapter_title}" '
+                f'(JSON section key: "{active_heading}"). Keep each requirement\'s own ID '
+                f'in its original bare numeric form, e.g. "8.1.1" -- never fuse the chapter '
+                f'letter "{chapter_tag}" onto it.]\n\n'
+            )
+            chunk["text"] = banner + context_line + body
+
+        if matches:
+            last_match = matches[-1]
+            active_heading = f"{last_match.group(1)} {last_match.group(2)}".strip()
+
+    return chunks
 
 
 def _extract_document_requirements(
@@ -108,6 +160,8 @@ def _extract_document_requirements(
             len(source_doc_text),
         )
         return {}
+
+    chunks = _annotate_chunks_with_chapter_context(chunks)
 
     total_chunks = len(chunks)
     merged: Dict[str, List[Any]] = {}

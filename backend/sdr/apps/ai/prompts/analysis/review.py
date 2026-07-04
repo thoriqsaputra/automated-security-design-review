@@ -169,17 +169,17 @@ Return only valid JSON:
 }}
 
 Rules:
-- applicable=true only when the TSD explicitly describes the subsystem, capability, or scope that this parent control family governs.
-- applicable=false when the TSD indicates the design does not use that subsystem/capability, or when the retrieved context is generic and does not directly match this family.
-- If applicability is unclear, return applicable=false and decision_mode="unclear".
+- applicable=true only when the TSD explicitly describes the subsystem, capability, or scope that this parent control family governs. Use decision_mode="positive_match".
+- applicable=false when the TSD clearly indicates the design does not use that subsystem/capability, or when the retrieved context is generic and does not directly match this family. This is the common case for an out-of-scope family — concluding "not described anywhere in this TSD" is a confident, decisive judgment, not an uncertain one. Use decision_mode="negative_match" with a correspondingly high confidence.
+- Reserve decision_mode="unclear" for genuine indecision only — cases where the evidence could reasonably support either applicable or not-applicable and you cannot tell which. In that case set applicable=false, but confidence must be low (<=0.5) to reflect the real ambiguity. Do not use "unclear" just because the TSD never explicitly rules the family out — inferring absence from silence is still a "negative_match", not "unclear".
 - Do not treat missing implementation detail as out of scope. This step is only about scope/applicability.
 - Do not infer applicability from broad security language unless it directly matches the family-specific scope terms.
 - FAMILY SCOPE TERMS are heuristic hints to help you focus your reading; the TSD may describe
   the same capability using different wording. Do not conclude inapplicable solely because
   none of these literal terms appear in the context — judge applicability by meaning.
 - confidence → your certainty in this specific applicable/not-applicable call (1.0 = certain,
-  0.5 = genuinely ambiguous). If you are not confident, prefer decision_mode="unclear" with a
-  low confidence value rather than forcing a high-confidence guess.
+  0.5 = genuinely ambiguous). This value is used verbatim to decide whether to skip debate for
+  this family, so it must reflect your true certainty, independent of decision_mode.
 - reasoning must be exactly one sentence on a single line.
 - evidence must be a JSON array with 0 to 3 short single-line strings.
 - Do not use markdown, bullets, code fences, or multiline string values.

@@ -15,6 +15,7 @@ from sdr.apps.reviews.models import Finding, Review, CitationAnchor
 from sdr.apps.reviews.models.choices import FindingType, AnchorType
 from sdr.apps.workspace.services.storage import storage_service
 from sdr.apps.ai.agents.base import Citation
+from sdr.apps.ai.retrieval.postprocessing.quote_grounding import is_quote_grounded
 from sdr.apps.standards.models import CategoryParameterChild
 from sdr.apps.standards.utils import build_parameter_analysis_text
 from sdr.apps.ai.engine.dto import PersistenceInput, AnalysisSummary
@@ -742,8 +743,8 @@ class PersistenceService:
                 if bid != chunk_id and bid not in chunk_map:
                     block_alias_map[bid] = chunk_id
 
-        quote_matched: List[Citation] = []
-        fallback: List[Citation] = []
+        resolved: List[Citation] = []
+        modes: set[str] = set()
         seen: set[str] = set()
 
         for citation in citations:
@@ -758,33 +759,139 @@ class PersistenceService:
                     citation = dataclasses.replace(citation, block_id=resolved_id)
 
             payload = chunk_map.get(resolved_id) or {}
-            if not self._is_citation_grade_payload(payload, resolved_id):
-                continue
-
             seen.add(resolved_id)
-            hydrated = self._hydrate_citation_location(citation, chunk_map)
-            fallback.append(hydrated)
-            matched = self._find_quote_matched_citation(hydrated, chunk_map)
-            if matched:
-                quote_matched.append(matched)
 
-        if quote_matched:
-            return quote_matched, "quote_matched"
-        if fallback:
-            return fallback, "validated_block_fallback"
-        return [], "none"
+            # Resolve per-citation, independently — a sibling citation in the
+            # same finding failing to ground must never cause this one to be
+            # dropped, and vice versa (previously this was an all-or-nothing
+            # decision across the whole finding's citation list).
+            #
+            # When the LLM's own cited block isn't citation-grade (e.g. it
+            # cited a RAPTOR level>0 synthesized-summary chunk, which has no
+            # single true page/bbox location), never hydrate a location from
+            # it or page-span-match against it — instead fall straight through
+            # to a whole-chunk_map quote search, which can still recover the
+            # citation by anchoring it to the genuine literal block that
+            # actually, verbatim, contains the quote (or drop it as
+            # ungrounded if no such block exists).
+            if self._is_citation_grade_payload(payload, resolved_id):
+                hydrated = self._hydrate_citation_location(citation, chunk_map)
+                match = self._resolve_citation_within_page_spans(hydrated, payload)
+                if match:
+                    modes.add("page_span_matched")
+                    resolved.append(match)
+                    continue
+            else:
+                # The original block's page_number is just as untrustworthy as
+                # its bbox (both were borrowed from the synthesized-summary
+                # chunk's arbitrary first-block placeholder) — zero it out so
+                # that if quote-matching redirects to a different, genuine
+                # block, that block's OWN page is adopted instead of the
+                # stale bogus one being carried over.
+                hydrated = dataclasses.replace(citation, page_number=0)
+            match = self._find_quote_matched_citation(hydrated, chunk_map)
+            if match:
+                modes.add("quote_matched")
+                resolved.append(match)
+                continue
+            # No candidate anywhere in the retrieved context actually grounds
+            # this citation's quote — never persist an anchor pointing to a
+            # location that was never verified to contain the cited text.
+            self.logger.warning(
+                "PersistenceService._resolve_citations_for_anchoring: dropping ungrounded citation block_id=%s",
+                resolved_id,
+            )
+
+        if not resolved:
+            return [], "none"
+        mode = "+".join(sorted(modes)) if modes else "none"
+        return resolved, mode
+
+    def _resolve_citation_within_page_spans(self, citation: Citation, payload: dict) -> Optional[Citation]:
+        """Resolve a citation to the specific page/box its quote actually
+        came from, within a chunk that merges several pages/blocks (e.g. a
+        multi-page RAPTOR leaf) — instead of trusting the chunk's default
+        location (always the first block of the first constituent page).
+        """
+        page_spans = (payload or {}).get("page_spans") or []
+        if not page_spans:
+            return None
+        quote = citation.quoted_text
+        if not self._normalize_quote_text(quote):
+            return None
+
+        for span in page_spans:
+            span_text = span.get("text") or ""
+            if not is_quote_grounded(quote, span_text):
+                continue
+            # Within the matched page, try to pinpoint the single block whose
+            # own raw text contains the quote for a tighter box; fall back to
+            # the page-level union bbox (still the correct page) otherwise.
+            best_block = None
+            for block in span.get("blocks") or []:
+                if is_quote_grounded(quote, block.get("text") or ""):
+                    if best_block is None or len(block.get("text") or "") < len(best_block.get("text") or ""):
+                        best_block = block
+            if best_block is not None:
+                block_id = best_block.get("block_id") or (span.get("block_ids") or [None])[0]
+                bbox_x0 = best_block.get("bbox_x0")
+                bbox_y0 = best_block.get("bbox_y0")
+                bbox_x1 = best_block.get("bbox_x1")
+                bbox_y1 = best_block.get("bbox_y1")
+            else:
+                block_id = (span.get("block_ids") or [None])[0]
+                bbox_x0 = span.get("bbox_x0")
+                bbox_y0 = span.get("bbox_y0")
+                bbox_x1 = span.get("bbox_x1")
+                bbox_y1 = span.get("bbox_y1")
+            if not block_id:
+                continue
+            return Citation(
+                block_id=block_id,
+                page_number=int(span.get("page_number") or citation.page_number or 0),
+                quoted_text=citation.quoted_text,
+                bbox_x0=self._safe_float(bbox_x0),
+                bbox_y0=self._safe_float(bbox_y0),
+                bbox_x1=self._safe_float(bbox_x1),
+                bbox_y1=self._safe_float(bbox_y1),
+            )
+        return None
 
     def _find_quote_matched_citation(self, citation: Citation, chunk_map: dict) -> Optional[Citation]:
         quote = self._normalize_quote_text(citation.quoted_text)
         if not quote:
             return None
         current_payload = chunk_map.get(citation.block_id) or {}
-        candidates = []
-        if current_payload:
-            candidates.append((citation.block_id, current_payload))
+        # A non-citation-grade original block (e.g. a RAPTOR level>0
+        # synthesized-summary chunk, or a baseline requirement) must never be
+        # used as a candidate at all — same-page or not — otherwise its
+        # paraphrased text can win the quote match and reproduce the exact
+        # bogus-location anchor citation_grade was introduced to prevent. Its
+        # page_number is equally untrustworthy (borrowed from an arbitrary
+        # first-block placeholder), so it must not even seed citation_page.
+        current_payload_grade_ok = self._is_citation_grade_payload(current_payload, citation.block_id)
         citation_page = self._safe_int(
-            citation.page_number or current_payload.get("page_number") or current_payload.get("page")
+            citation.page_number
+            or (current_payload_grade_ok and (current_payload.get("page_number") or current_payload.get("page")))
         )
+        current_payload_page = self._safe_int(
+            current_payload.get("page_number") or current_payload.get("page")
+        )
+
+        # Tier the candidates by trustworthiness rather than pooling them
+        # together: the ORIGINAL (LLM-cited) block is only reliable when its
+        # own page matches the citation's page_number. When it disagrees, it
+        # must never compete on equal footing with a genuine same-page block
+        # — otherwise the "prefer shortest matching text" tiebreak below can
+        # let an off-page block win outright whenever boilerplate/duplicated
+        # phrasing (common in generated TSDs) happens to also appear in its
+        # text, reproducing the exact wrong-page-bbox bug this function
+        # exists to correct. same_page candidates are tried first; the
+        # original block is only consulted as an absolute last resort.
+        same_page_candidates = []
+        other_candidates = []
+        if current_payload_grade_ok and (not citation_page or current_payload_page == citation_page):
+            same_page_candidates.append((citation.block_id, current_payload))
         for block_id, payload in (chunk_map or {}).items():
             if block_id == citation.block_id:
                 continue
@@ -792,31 +899,51 @@ class PersistenceService:
                 continue
             payload_page = self._safe_int(payload.get("page_number") or payload.get("page"))
             if citation_page and payload_page == citation_page:
-                candidates.append((block_id, payload))
-        for block_id, payload in (chunk_map or {}).items():
-            if any(block_id == existing_id for existing_id, _ in candidates):
-                continue
-            if not self._is_citation_grade_payload(payload, block_id):
-                continue
-            candidates.append((block_id, payload))
+                same_page_candidates.append((block_id, payload))
+            else:
+                other_candidates.append((block_id, payload))
+        if current_payload_grade_ok and (citation_page and current_payload_page != citation_page):
+            other_candidates.append((citation.block_id, current_payload))
 
-        for block_id, payload in candidates:
-            text = self._normalize_quote_text(payload.get("text") or "")
-            if quote and quote in text:
-                hydrated = self._hydrate_citation_location(
-                    Citation(
-                        block_id=block_id,
-                        page_number=citation.page_number,
-                        quoted_text=citation.quoted_text,
-                        bbox_x0=citation.bbox_x0,
-                        bbox_y0=citation.bbox_y0,
-                        bbox_x1=citation.bbox_x1,
-                        bbox_y1=citation.bbox_y1,
-                    ),
-                    chunk_map,
-                )
-                return hydrated
-        return None
+        def _find_best_match(candidates: list) -> Optional[tuple]:
+            # Collect all matching candidates, then prefer the most specific
+            # one. Large aggregate chunks (e.g. a whole-page RAPTOR node) may
+            # contain any quote from that page, causing all citations to
+            # anchor to the first sub-block's bbox. Prefer the shortest
+            # matching chunk text so that individual supplemental blocks win
+            # over the aggregate that wraps them.
+            matching: list = []
+            for block_id, payload in candidates:
+                text = self._normalize_quote_text(payload.get("text") or "")
+                if quote and quote in text:
+                    matching.append((len(text), block_id, payload))
+            if not matching:
+                return None
+            matching.sort(key=lambda t: t[0])
+            return matching[0]
+
+        best = _find_best_match(same_page_candidates) or _find_best_match(other_candidates)
+        if best is None:
+            return None
+        _, best_block_id, _ = best
+        # Do NOT carry over citation.bbox_x0..y1 here — citation is already
+        # hydrated from the ORIGINAL (possibly wrong) block, so its bbox
+        # reflects that block, not best_block_id. Passing None forces
+        # _hydrate_citation_location to pull best_block_id's own bbox from
+        # chunk_map instead of silently keeping the stale original box.
+        hydrated = self._hydrate_citation_location(
+            Citation(
+                block_id=best_block_id,
+                page_number=citation.page_number,
+                quoted_text=citation.quoted_text,
+                bbox_x0=None,
+                bbox_y0=None,
+                bbox_x1=None,
+                bbox_y1=None,
+            ),
+            chunk_map,
+        )
+        return hydrated
 
     def _is_citation_grade_payload(self, payload: dict, block_id: str) -> bool:
         if not payload:  # block_id not in chunk_map — reject rather than silently pass through
@@ -824,7 +951,7 @@ class PersistenceService:
         if payload.get("citation_grade", True) is False:
             return False
         evidence_kind = str(payload.get("evidence_kind") or "").lower()
-        if evidence_kind in {"baseline_requirement"}:
+        if evidence_kind in {"baseline_requirement", "hierarchical_summary"}:
             return False
         return True
 
