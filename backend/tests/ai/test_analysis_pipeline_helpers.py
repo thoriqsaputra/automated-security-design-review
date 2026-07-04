@@ -475,6 +475,95 @@ def test_resolve_citations_for_anchoring_resolves_multi_page_chunk_to_correct_pa
     assert resolved[0].bbox_y0 == 15.0
 
 
+def test_resolve_citations_for_anchoring_grounds_quote_split_across_adjacent_blocks():
+    # A table row rendered as two separate PDF blocks (label + description):
+    # neither block alone contains the full quote, but their concatenation
+    # does. Before the windowed-grounding fallback, this degraded to a
+    # whole-page union bbox; now it should resolve to a tight 2-block union.
+    service = PersistenceService()
+    citations = [
+        Citation(
+            block_id="p21_b0",
+            page_number=21,
+            quoted_text="DATABASE_PASSWORD is an AES 256 encrypted master password",
+        )
+    ]
+    analysis_trace = {
+        "context_chunk_map": {
+            "p21_b0": {
+                "citation_grade": True,
+                "text": (
+                    "DATABASE_PASSWORD\nDATABASE_PASSWORD is an AES 256 encrypted master password\n"
+                    "MAXIMUM_ROUTE_WAYPOINTS\n8 waypoints permitted"
+                ),
+                "section": "10. Configuration Parameters",
+                "page_number": 21,
+                "bbox": {"x0": 72.0, "y0": 72.0, "x1": 543.0, "y1": 400.0},
+                "block_ids": ["p21_b0", "p21_b1", "p21_b2", "p21_b3"],
+                "page_spans": [
+                    {
+                        "page_number": 21,
+                        "text": (
+                            "DATABASE_PASSWORD\nDATABASE_PASSWORD is an AES 256 encrypted master password\n"
+                            "MAXIMUM_ROUTE_WAYPOINTS\n8 waypoints permitted"
+                        ),
+                        "block_ids": ["p21_b0", "p21_b1", "p21_b2", "p21_b3"],
+                        "bbox_x0": 72.0,
+                        "bbox_y0": 72.0,
+                        "bbox_x1": 543.0,
+                        "bbox_y1": 400.0,
+                        "blocks": [
+                            {
+                                "block_id": "p21_b0",
+                                "text": "DATABASE_PASSWORD",
+                                "bbox_x0": 72.0,
+                                "bbox_y0": 72.0,
+                                "bbox_x1": 200.0,
+                                "bbox_y1": 84.0,
+                            },
+                            {
+                                "block_id": "p21_b1",
+                                "text": "is an AES 256 encrypted master password",
+                                "bbox_x0": 205.0,
+                                "bbox_y0": 72.0,
+                                "bbox_x1": 400.0,
+                                "bbox_y1": 84.0,
+                            },
+                            {
+                                "block_id": "p21_b2",
+                                "text": "MAXIMUM_ROUTE_WAYPOINTS",
+                                "bbox_x0": 72.0,
+                                "bbox_y0": 300.0,
+                                "bbox_x1": 200.0,
+                                "bbox_y1": 312.0,
+                            },
+                            {
+                                "block_id": "p21_b3",
+                                "text": "8 waypoints permitted",
+                                "bbox_x0": 205.0,
+                                "bbox_y0": 300.0,
+                                "bbox_x1": 400.0,
+                                "bbox_y1": 400.0,
+                            },
+                        ],
+                    },
+                ],
+            }
+        }
+    }
+
+    resolved, mode = service._resolve_citations_for_anchoring(citations, analysis_trace)
+
+    assert mode == "page_span_matched"
+    assert [citation.block_id for citation in resolved] == ["p21_b0"]
+    # Tight 2-block union (the label + description blocks), not the whole
+    # page's union bbox (which would extend down to y1=400.0).
+    assert resolved[0].bbox_x0 == 72.0
+    assert resolved[0].bbox_y0 == 72.0
+    assert resolved[0].bbox_x1 == 400.0
+    assert resolved[0].bbox_y1 == 84.0
+
+
 def test_resolve_citations_for_anchoring_prefers_same_page_block_over_wrong_page_duplicate():
     # The LLM cites block p8_b1 (page 8) but names page_number=21. p8_b1's own
     # text happens to ALSO contain the quoted phrase (boilerplate/duplicated

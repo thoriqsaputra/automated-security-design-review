@@ -832,12 +832,28 @@ class PersistenceService:
                 if is_quote_grounded(quote, block.get("text") or ""):
                     if best_block is None or len(block.get("text") or "") < len(best_block.get("text") or ""):
                         best_block = block
+            window_match = None
+            if best_block is None:
+                # No single block grounds the quote — this commonly happens
+                # when a sentence is split across 2-3 adjacent PDF text
+                # blocks (a table row rendered as separate label/value cells,
+                # or a line wrapped across a column break). Try a small,
+                # bounded window of consecutive blocks before giving up to
+                # the whole-page union box, so the highlight stays tight in
+                # this common case instead of degrading to the entire page.
+                window_match = self._find_grounded_block_window(quote, span.get("blocks") or [])
             if best_block is not None:
                 block_id = best_block.get("block_id") or (span.get("block_ids") or [None])[0]
                 bbox_x0 = best_block.get("bbox_x0")
                 bbox_y0 = best_block.get("bbox_y0")
                 bbox_x1 = best_block.get("bbox_x1")
                 bbox_y1 = best_block.get("bbox_y1")
+            elif window_match is not None:
+                block_id = window_match["block_id"] or (span.get("block_ids") or [None])[0]
+                bbox_x0 = window_match["bbox_x0"]
+                bbox_y0 = window_match["bbox_y0"]
+                bbox_x1 = window_match["bbox_x1"]
+                bbox_y1 = window_match["bbox_y1"]
             else:
                 block_id = (span.get("block_ids") or [None])[0]
                 bbox_x0 = span.get("bbox_x0")
@@ -855,6 +871,35 @@ class PersistenceService:
                 bbox_x1=self._safe_float(bbox_x1),
                 bbox_y1=self._safe_float(bbox_y1),
             )
+        return None
+
+    def _find_grounded_block_window(self, quote: str, blocks: list) -> Optional[dict]:
+        """Try grounding a quote against 2-3 consecutive blocks (in existing
+        document reading order) concatenated together. Bounded to a small
+        window so it can never degrade into "quote grounds against an
+        arbitrarily large blob" — that's what the whole-page union bbox
+        fallback is for. Returns the union bbox over just the matched window.
+        """
+        n = len(blocks or [])
+        for window_size in (2, 3):
+            if n < window_size:
+                continue
+            for start in range(0, n - window_size + 1):
+                window = blocks[start:start + window_size]
+                combined_text = " ".join((b.get("text") or "") for b in window)
+                if not is_quote_grounded(quote, combined_text):
+                    continue
+                x0s = [b.get("bbox_x0") for b in window if b.get("bbox_x0") is not None]
+                y0s = [b.get("bbox_y0") for b in window if b.get("bbox_y0") is not None]
+                x1s = [b.get("bbox_x1") for b in window if b.get("bbox_x1") is not None]
+                y1s = [b.get("bbox_y1") for b in window if b.get("bbox_y1") is not None]
+                return {
+                    "block_id": window[0].get("block_id"),
+                    "bbox_x0": min(x0s) if x0s else None,
+                    "bbox_y0": min(y0s) if y0s else None,
+                    "bbox_x1": max(x1s) if x1s else None,
+                    "bbox_y1": max(y1s) if y1s else None,
+                }
         return None
 
     def _find_quote_matched_citation(self, citation: Citation, chunk_map: dict) -> Optional[Citation]:
