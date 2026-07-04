@@ -137,69 +137,6 @@ Rules:
 
 
 # ---------------------------------------------------------------------------
-# Parent Applicability
-# ---------------------------------------------------------------------------
-
-PARENT_APPLICABILITY_SYSTEM_PROMPT = (
-    "You are a senior application security analyst deciding whether a control family "
-    "is in scope for the documented design. Return strict JSON only."
-)
-
-
-def build_parent_applicability_prompt(
-    category_code: str,
-    version_label: str,
-    parent_title: str,
-    parent_description: str,
-    child_block: str,
-    context_text: str,
-    scope_terms: Optional[list[str]] = None,
-) -> str:
-    scope_term_block = ", ".join([str(item).strip() for item in (scope_terms or []) if str(item).strip()]) or "none"
-    return f"""\
-Decide whether this parent control family from a security standard is applicable to the documented TSD scope.
-
-Return only valid JSON:
-{{
-  "applicable": false,
-  "confidence": 0.42,
-  "decision_mode": "unclear",
-  "reasoning": "The retrieved context mentions authentication generally but does not clearly establish whether this subsystem is in scope.",
-  "evidence": ["mentions authentication", "no explicit subsystem boundary"]
-}}
-
-Rules:
-- applicable=true only when the TSD explicitly describes the subsystem, capability, or scope that this parent control family governs. Use decision_mode="positive_match".
-- applicable=false when the TSD clearly indicates the design does not use that subsystem/capability, or when the retrieved context is generic and does not directly match this family. This is the common case for an out-of-scope family — concluding "not described anywhere in this TSD" is a confident, decisive judgment, not an uncertain one. Use decision_mode="negative_match" with a correspondingly high confidence.
-- Reserve decision_mode="unclear" for genuine indecision only — cases where the evidence could reasonably support either applicable or not-applicable and you cannot tell which. In that case set applicable=false, but confidence must be low (<=0.5) to reflect the real ambiguity. Do not use "unclear" just because the TSD never explicitly rules the family out — inferring absence from silence is still a "negative_match", not "unclear".
-- Do not treat missing implementation detail as out of scope. This step is only about scope/applicability.
-- Do not infer applicability from broad security language unless it directly matches the family-specific scope terms.
-- FAMILY SCOPE TERMS are heuristic hints to help you focus your reading; the TSD may describe
-  the same capability using different wording. Do not conclude inapplicable solely because
-  none of these literal terms appear in the context — judge applicability by meaning.
-- confidence → your certainty in this specific applicable/not-applicable call (1.0 = certain,
-  0.5 = genuinely ambiguous). This value is used verbatim to decide whether to skip debate for
-  this family, so it must reflect your true certainty, independent of decision_mode.
-- reasoning must be exactly one sentence on a single line.
-- evidence must be a JSON array with 0 to 3 short single-line strings.
-- Do not use markdown, bullets, code fences, or multiline string values.
-- If you include quotes inside a JSON string value, they must be properly escaped.
-
-STANDARD CATEGORY: {category_code}
-STANDARD VERSION: {version_label}
-
-PARENT TITLE: {parent_title}
-PARENT DESCRIPTION: {parent_description}
-FAMILY SCOPE TERMS: {scope_term_block}
-CHILD REQUIREMENTS:
-{child_block}
-
-RETRIEVED TSD CONTEXT:
-{context_text[:8000]}
-"""
-
-
-# ---------------------------------------------------------------------------
 # Contract Synthesis
 # ---------------------------------------------------------------------------
 
@@ -240,12 +177,10 @@ __all__ = [
     # System prompts
     "TSD_SCREENING_SYSTEM_PROMPT",
     "SEVERITY_JUSTIFICATION_SYSTEM_PROMPT",
-    "PARENT_APPLICABILITY_SYSTEM_PROMPT",
     "CONTRACT_SYNTHESIS_SYSTEM_PROMPT",
     # Prompt builders
     "build_tsd_screening_prompt",
     "build_severity_justification_prompt",
-    "build_parent_applicability_prompt",
     "build_contract_synthesis_prompt",
     "build_contract_repair_prompt",
 ]

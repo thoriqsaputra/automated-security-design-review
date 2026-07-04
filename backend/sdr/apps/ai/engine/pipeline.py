@@ -5,7 +5,6 @@ from collections import deque
 from typing import Any, Callable, Dict, List, Optional
 
 from sdr.apps.ai.client.session import build_tsd_analysis_session_id, job_session_context
-from sdr.apps.ai.engine.classification.parent_applicability import classify_parent_applicability
 from sdr.apps.ai.engine.config import AnalysisPipelineConfig
 from sdr.apps.ai.engine.debate.category_analysis_coordinator import CategoryAnalysisCoordinator
 from sdr.apps.ai.engine.debate.debate_input_factory import DebateInputFactory
@@ -13,7 +12,6 @@ from sdr.apps.ai.engine.debate.debate_service import DebateService
 from sdr.apps.ai.engine.debate.diagram_analysis_coordinator import DiagramAnalysisCoordinator
 from sdr.apps.ai.engine.debate.diagram_debate_service import DiagramDebateService
 from sdr.apps.ai.engine.debate.text_debate_coordinator import TextDebateCoordinator
-import sdr.apps.ai.engine.debate.text_debate_coordinator as text_debate_module
 from sdr.apps.ai.engine.dto import AnalysisSummary
 from sdr.apps.ai.engine.persistence.persistence_service import PersistenceService
 from sdr.apps.ai.engine.persistence.progress_tracker import SummaryProgressService
@@ -269,9 +267,6 @@ class TSDAnalysisPipeline:
         )
         raise AnalysisCancelledError("Analysis was cancelled by user.")
 
-    def _group_parameters_by_parent(self, parameters: List[Any]):
-        return self.text_debate.group_parameters_by_parent(parameters)
-
     def _run_diagram_analysis(self, **kwargs) -> None:
         self.diagram_analysis.run(**kwargs)
 
@@ -327,28 +322,8 @@ class TSDAnalysisPipeline:
             source_block_ids=source_block_ids,
         )
 
-    def _apply_parent_applicability_gate(self, **kwargs):
-        original_is_cancelled = self.run_state.is_cancelled
-        original_get_parent = self.text_debate.get_parent_retrieval_result
-        original_persist = self.text_debate.persist_debate_output
-        original_classifier = text_debate_module.classify_parent_applicability
-        try:
-            self.run_state.is_cancelled = self._is_cancelled
-            self.text_debate.get_parent_retrieval_result = self._get_parent_retrieval_result
-            self.text_debate.persist_debate_output = self._persist_debate_output
-            text_debate_module.classify_parent_applicability = classify_parent_applicability
-            return self.text_debate.apply_parent_applicability_gate(**kwargs)
-        finally:
-            self.run_state.is_cancelled = original_is_cancelled
-            self.text_debate.get_parent_retrieval_result = original_get_parent
-            self.text_debate.persist_debate_output = original_persist
-            text_debate_module.classify_parent_applicability = original_classifier
-
     def _apply_not_met_evidence_gate(self, **kwargs):
         return self.text_debate.apply_not_met_evidence_gate(**kwargs)
-
-    def _get_parent_retrieval_result(self, **kwargs):
-        return TextDebateCoordinator.get_parent_retrieval_result(self.text_debate, **kwargs)
 
     def _persist_debate_output(self, **kwargs):
         return TextDebateCoordinator.persist_debate_output(self.text_debate, **kwargs)

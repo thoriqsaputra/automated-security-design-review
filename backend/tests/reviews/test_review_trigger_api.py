@@ -216,7 +216,6 @@ def test_review_progress_exposes_live_debate_and_persistence_counts():
         "persistence_completed_parameters": 2,
         "persistence_remaining_parameters": 8,
         "error_count": 1,
-        "applicability": {"children_marked_na_by_parent": 3},
         "asvs": {"categories": {"web_application": {"debate_total_count": 10}}},
     }
 
@@ -229,7 +228,6 @@ def test_review_progress_exposes_live_debate_and_persistence_counts():
     assert progress["failed_items"] == 1
     assert progress["preparation"]["debate"]["total"] == 10
     assert progress["preparation"]["persistence"]["completed"] == 2
-    assert progress["preparation"]["skipped_by_parent_applicability"] == 3
 
 
 def test_review_progress_exposes_current_live_requirement(monkeypatch):

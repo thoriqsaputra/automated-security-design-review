@@ -22,8 +22,6 @@ from sdr.apps.ai.retrieval.routing.router import HybridRetrievalRouter
 from sdr.apps.ai.utils.parsing import strip_thinking_block
 from sdr.apps.ai.client import chat_completion
 from sdr.apps.standards.models import (
-    CategoryParameterParent,
-    CategoryParameterChild,
     StandardCategory,
     StandardIngestionJob,
 )
@@ -55,18 +53,6 @@ class RetrievalService:
             return max(1, int(override))
         config = getattr(self.router, "advanced_config", None)
         return max(1, int(getattr(config, "retrieve_many_max_concurrency", 2)))
-
-    def get_parent_retrieval_max_child_snippets(self) -> int:
-        return max(1, int(getattr(settings, "AI_PARENT_RETRIEVAL_MAX_CHILD_SNIPPETS", 4)))
-
-    def get_parent_retrieval_max_child_snippet_chars(self) -> int:
-        return max(80, int(getattr(settings, "AI_PARENT_RETRIEVAL_MAX_CHILD_SNIPPET_CHARS", 240)))
-
-    def get_parent_retrieval_max_context_chunks(self) -> int:
-        return max(1, int(getattr(settings, "AI_PARENT_RETRIEVAL_MAX_CONTEXT_CHUNKS", 6)))
-
-    def get_parent_retrieval_retry_max_context_chunks(self) -> int:
-        return max(1, int(getattr(settings, "AI_PARENT_RETRIEVAL_RETRY_MAX_CONTEXT_CHUNKS", 14)))
 
     def build_indexes(self, tsd_document: TSDDocument, progress_callbacks: Optional[Dict[str, Any]] = None) -> RetrievalIndexes:
         self.logger.info(
@@ -274,83 +260,6 @@ class RetrievalService:
             if len(output) >= max_diagrams:
                 break
         return output, skipped
-
-    def retrieve_for_parent_group(
-        self,
-        *,
-        parent,
-        child_parameters: List[CategoryParameterChild],
-        category: StandardCategory,
-        ingestion_job: Optional[StandardIngestionJob],
-        indexes: RetrievalIndexes,
-        tsd_document: Optional[TSDDocument] = None,
-        query_details: Optional[Dict[str, Any]] = None,
-        max_context_chunks_override: Optional[int] = None,
-    ) -> RetrievalResult:
-        if not child_parameters:
-            return RetrievalResult(error="No child parameters supplied for parent retrieval.")
-
-        parent_title = (getattr(parent, "title", "") or "").strip()
-        parent_description = (getattr(parent, "description", "") or "").strip()
-        child_snippets = []
-        max_child_snippets = self.get_parent_retrieval_max_child_snippets()
-        max_child_snippet_chars = self.get_parent_retrieval_max_child_snippet_chars()
-        # Sample evenly across ALL children rather than taking the first N, so a
-        # family with more children than the snippet cap still gets query coverage
-        # representative of the whole family, not just its first few entries.
-        if len(child_parameters) <= max_child_snippets:
-            sampled_children = child_parameters
-        else:
-            step = len(child_parameters) / max_child_snippets
-            sampled_children = [
-                child_parameters[min(int(idx * step), len(child_parameters) - 1)]
-                for idx in range(max_child_snippets)
-            ]
-        for child in sampled_children:
-            text = (
-                build_parameter_analysis_text(child)
-            ).strip()
-            if text:
-                child_snippets.append(text[:max_child_snippet_chars])
-
-        details = dict(query_details or {})
-        details.update(
-            {
-                "parent_title": parent_title,
-                "parent_description": parent_description,
-                "child_requirement": "\n".join(child_snippets),
-            }
-        )
-        self.logger.info(
-            "RetrievalService.retrieve_for_parent_group: parent=%s children=%d",
-            getattr(parent, "id", None),
-            len(child_parameters),
-        )
-        result = self.retrieve_for_parameter(
-            parameter=child_parameters[0],
-            category=category,
-            ingestion_job=ingestion_job,
-            indexes=indexes,
-            tsd_document=tsd_document,
-            query_details=details,
-        )
-        max_context_chunks = (
-            max(1, int(max_context_chunks_override))
-            if max_context_chunks_override is not None
-            else self.get_parent_retrieval_max_context_chunks()
-        )
-        if len(result.context_chunks or []) > max_context_chunks:
-            result.context_chunks = list(result.context_chunks[:max_context_chunks])
-            result.context_chunk_block_ids = list(
-                (result.context_chunk_block_ids or [])[:max_context_chunks]
-            )
-        self.logger.info(
-            "RetrievalService.retrieve_for_parent_group: parent=%s prompt_child_snippets=%d context_chunks=%d",
-            getattr(parent, "id", None),
-            len(child_snippets),
-            len(result.context_chunks or []),
-        )
-        return result
 
     def _build_override_query_text(self, query_details: Optional[Dict[str, Any]]) -> Optional[str]:
         if not query_details:

@@ -488,8 +488,6 @@ class PersistenceService:
             return "rag_gate_no_evidence"
         if trace.get("evidence_gate_outcome"):
             return f"evidence_gate:{trace.get('evidence_gate_outcome')}"
-        if trace.get("parent_applicability"):
-            return "parent_applicability_gate"
         return "text_debate"
 
     def _ensure_not_met_recommendation(

@@ -15,24 +15,6 @@ class SummaryProgressService:
     ) -> None:
         with summary.lock:
             category_stats = summary.category_stats.setdefault(category_code, {})
-            parent_ids = set()
-            parent_titles = []
-            seen_parent_titles = set()
-
-            for parameter in parameters or []:
-                parent_id = getattr(parameter, "parent_id", None)
-                if parent_id is not None:
-                    parent_ids.add(parent_id)
-                parent = getattr(parameter, "parent", None)
-                parent_title = str(getattr(parent, "title", "") or "").strip()
-                if parent_title and parent_title not in seen_parent_titles:
-                    seen_parent_titles.add(parent_title)
-                    if len(parent_titles) < 10:
-                        parent_titles.append(parent_title)
-
-            category_stats["parameter_count_before_parent_applicability"] = len(parameters or [])
-            category_stats["parent_count_before_parent_applicability"] = len(parent_ids)
-            category_stats["parent_titles_sample"] = parent_titles
             category_stats.setdefault("debate_total_count", 0)
             category_stats.setdefault("debate_completed_count", 0)
             category_stats.setdefault("debate_remaining_count", 0)

@@ -12,7 +12,6 @@ from sdr.apps.ai.retrieval.core import RetrievalResult
 from sdr.apps.ai.engine.debate.debate_service import DebateService
 from sdr.apps.ai.engine.debate.category_analysis_coordinator import CategoryAnalysisCoordinator
 from sdr.apps.ai.engine.dto import AnalysisSummary, DebateOutput
-from sdr.apps.ai.engine.classification.parent_applicability import ParentApplicabilityResult
 from sdr.apps.ai.engine.persistence.persistence_service import PersistenceService
 from sdr.apps.ai.engine.persistence.review_run_state_service import AnalysisCancelledError
 from sdr.apps.ai.engine.pipeline import TSDAnalysisPipeline
@@ -760,23 +759,6 @@ def test_mediator_evidence_policy_downgrade_na_requires_explicit_opt_in(settings
     assert ungrounded_not_met.final_verdict == "na"
 
 
-def test_group_parameters_by_parent_preserves_order():
-    pipeline = _pipeline()
-    parent_a = _parent(1, title="Parent A")
-    parent_b = _parent(2, title="Parent B")
-    grouped = pipeline._group_parameters_by_parent(
-        [
-            _parameter(1, parent_a),
-            _parameter(2, parent_a),
-            _parameter(3, parent_b),
-            _parameter(4, parent_a),
-        ]
-    )
-
-    assert [group[0] for group in grouped] == [parent_a, parent_b]
-    assert [[p.id for p in group[1]] for group in grouped] == [[1, 2, 4], [3]]
-
-
 def test_is_cancelled_detects_cancelled_status(monkeypatch):
     review = SimpleNamespace(id=77)
     latest = SimpleNamespace(status="cancelled", error_message="Analysis was cancelled by user.")
@@ -797,196 +779,6 @@ def test_is_cancelled_supports_legacy_failed_marker(monkeypatch):
     )
 
     assert _pipeline()._is_cancelled(review) is True
-
-
-def test_parent_applicability_gate_marks_children_na(monkeypatch, settings_override):
-    settings_override(
-        AI_PARENT_APPLICABILITY_ENABLED=True,
-        AI_PARENT_APPLICABILITY_CONFIDENCE_THRESHOLD=0.7,
-    )
-    pipeline = _pipeline()
-    review = SimpleNamespace(id=81)
-    category = SimpleNamespace(id=7, code="web_application")
-    ingestion_job = SimpleNamespace(id=11, version_no=5)
-    parent = _parent(1, title="Session Controls", description="Browser session requirements")
-    parameters = [
-        _parameter(1, parent=parent, text="Use secure cookie flags."),
-        _parameter(2, parent=parent, text="Expire browser sessions after inactivity."),
-    ]
-    summary = AnalysisSummary()
-    persisted = []
-
-    monkeypatch.setattr(TSDAnalysisPipeline, "_is_cancelled", lambda self, review: False)
-    monkeypatch.setattr(
-        TSDAnalysisPipeline,
-        "_persist_summary_snapshot",
-        lambda self, review_obj, summary_obj: setattr(review_obj, "summary_json", summary_obj.to_dict()),
-    )
-    monkeypatch.setattr(
-        TSDAnalysisPipeline,
-        "_persist_debate_output",
-        lambda self, **kwargs: persisted.append(
-            (
-                kwargs["parameter"].id,
-                kwargs["debate_output"].mediator_result.final_verdict,
-                kwargs["debate_output"].analysis_trace["parent_applicability"]["reasoning"],
-            )
-        ),
-    )
-    monkeypatch.setattr(
-        TSDAnalysisPipeline,
-        "_get_parent_retrieval_result",
-        lambda self, **kwargs: RetrievalResult(
-            context_chunks=["The design is API-only and has no browser session state."],
-            source_block_ids=["p1_b1"],
-        ),
-    )
-    monkeypatch.setattr(
-        "sdr.apps.ai.engine.pipeline.classify_parent_applicability",
-        lambda **kwargs: ParentApplicabilityResult(
-            applicable=False,
-            confidence=0.92,
-            reasoning="The design is API-only and has no browser sessions.",
-            evidence=["API-only", "no browser session state"],
-        ),
-    )
-
-    applicable_parameters, parent_cache = pipeline._apply_parent_applicability_gate(
-        review=review,
-        category=category,
-        ingestion_job=ingestion_job,
-        parameters=parameters,
-        indexes=SimpleNamespace(),
-        tsd_document=SimpleNamespace(),
-        summary=summary,
-    )
-
-    assert applicable_parameters == []
-    assert parent_cache == {}
-    assert [item[0] for item in persisted] == [1, 2]
-    assert all(item[1] == "na" for item in persisted)
-    assert summary.applicability["parents_total"] == 1
-    assert summary.applicability["parents_not_applicable"] == 1
-    assert summary.applicability["parents_applicable"] == 0
-    assert summary.applicability["children_marked_na_by_parent"] == 2
-
-
-def test_parent_applicability_gate_skips_on_low_confidence_by_default(monkeypatch, settings_override):
-    settings_override(
-        AI_PARENT_APPLICABILITY_ENABLED=True,
-        AI_PARENT_APPLICABILITY_CONFIDENCE_THRESHOLD=0.7,
-    )
-    pipeline = _pipeline()
-    review = SimpleNamespace(id=82)
-    category = SimpleNamespace(id=7, code="web_application")
-    ingestion_job = SimpleNamespace(id=11, version_no=5)
-    parent = _parent(1, title="Session Controls", description="Browser session requirements")
-    parameters = [_parameter(1, parent=parent, text="Use secure cookie flags.")]
-    summary = AnalysisSummary()
-
-    monkeypatch.setattr(TSDAnalysisPipeline, "_is_cancelled", lambda self, review: False)
-    monkeypatch.setattr(
-        TSDAnalysisPipeline,
-        "_persist_summary_snapshot",
-        lambda self, review_obj, summary_obj: setattr(review_obj, "summary_json", summary_obj.to_dict()),
-    )
-    monkeypatch.setattr(
-        TSDAnalysisPipeline,
-        "_get_parent_retrieval_result",
-        lambda self, **kwargs: RetrievalResult(
-            context_chunks=["The design documentation is ambiguous about browser usage."],
-            source_block_ids=["p1_b1"],
-        ),
-    )
-    monkeypatch.setattr(
-        "sdr.apps.ai.engine.pipeline.classify_parent_applicability",
-        lambda **kwargs: ParentApplicabilityResult(
-            applicable=False,
-            confidence=0.45,
-            reasoning="Browser use is unclear.",
-            evidence=["ambiguous scope"],
-            decision_mode="unclear",
-        ),
-    )
-    persisted = []
-    monkeypatch.setattr(
-        TSDAnalysisPipeline,
-        "_persist_debate_output",
-        lambda self, **kwargs: persisted.append(kwargs["parameter"].id),
-    )
-
-    applicable_parameters, _ = pipeline._apply_parent_applicability_gate(
-        review=review,
-        category=category,
-        ingestion_job=ingestion_job,
-        parameters=parameters,
-        indexes=SimpleNamespace(),
-        tsd_document=SimpleNamespace(),
-        summary=summary,
-    )
-
-    assert applicable_parameters == []
-    assert persisted == [1]
-    assert summary.applicability["parents_total"] == 1
-    assert summary.applicability["parents_not_applicable"] == 1
-    assert summary.applicability["parents_applicable"] == 0
-    assert summary.applicability["parents"][0]["fallback_mode"] == "skip"
-
-
-def test_parent_applicability_gate_can_assume_applicable_on_low_confidence(monkeypatch, settings_override):
-    settings_override(
-        AI_PARENT_APPLICABILITY_ENABLED=True,
-        AI_PARENT_APPLICABILITY_CONFIDENCE_THRESHOLD=0.7,
-        AI_PARENT_APPLICABILITY_FALLBACK_MODE="assume_applicable",
-    )
-    pipeline = _pipeline()
-    review = SimpleNamespace(id=82)
-    category = SimpleNamespace(id=7, code="web_application")
-    ingestion_job = SimpleNamespace(id=11, version_no=5)
-    parent = _parent(1, title="Session Controls", description="Browser session requirements")
-    parameters = [_parameter(1, parent=parent, text="Use secure cookie flags.")]
-    summary = AnalysisSummary()
-
-    monkeypatch.setattr(TSDAnalysisPipeline, "_is_cancelled", lambda self, review: False)
-    monkeypatch.setattr(
-        TSDAnalysisPipeline,
-        "_persist_summary_snapshot",
-        lambda self, review_obj, summary_obj: setattr(review_obj, "summary_json", summary_obj.to_dict()),
-    )
-    monkeypatch.setattr(
-        TSDAnalysisPipeline,
-        "_get_parent_retrieval_result",
-        lambda self, **kwargs: RetrievalResult(
-            context_chunks=["The design documentation is ambiguous about browser usage."],
-            source_block_ids=["p1_b1"],
-        ),
-    )
-    monkeypatch.setattr(
-        "sdr.apps.ai.engine.pipeline.classify_parent_applicability",
-        lambda **kwargs: ParentApplicabilityResult(
-            applicable=False,
-            confidence=0.45,
-            reasoning="Browser use is unclear.",
-            evidence=["ambiguous scope"],
-            decision_mode="unclear",
-        ),
-    )
-
-    applicable_parameters, _ = pipeline._apply_parent_applicability_gate(
-        review=review,
-        category=category,
-        ingestion_job=ingestion_job,
-        parameters=parameters,
-        indexes=SimpleNamespace(),
-        tsd_document=SimpleNamespace(),
-        summary=summary,
-    )
-
-    assert [parameter.id for parameter in applicable_parameters] == [1]
-    assert summary.applicability["parents_total"] == 1
-    assert summary.applicability["parents_not_applicable"] == 0
-    assert summary.applicability["parents_applicable"] == 1
-    assert summary.applicability["parents"][0]["fallback_mode"] == "assume_applicable"
 
 
 def test_build_retrieval_snapshot_serializes_raptor_and_graph():
@@ -1226,7 +1018,6 @@ def test_category_analysis_coordinator_skips_diagrams_in_text_only_mode(monkeypa
     coordinator.run_state.update_stage = lambda *_args, **kwargs: stages.append(kwargs.get("stage") or _args[2])
     coordinator.run_state.persist_summary_snapshot = lambda *_args, **_kwargs: None
     coordinator.run_state.is_cancelled = lambda _review: False
-    coordinator.text_debate.apply_parent_applicability_gate = lambda **_kwargs: ([parameter], {})
     coordinator.text_debate.run_single_analysis_for_category = lambda **_kwargs: calls.__setitem__("text", calls["text"] + 1)
     coordinator.diagram_analysis.run = lambda **_kwargs: calls.__setitem__("diagram", calls["diagram"] + 1)
 
@@ -1247,7 +1038,7 @@ def test_category_analysis_coordinator_skips_diagrams_in_text_only_mode(monkeypa
 def test_category_analysis_coordinator_skips_text_path_in_diagram_only_mode(monkeypatch):
     coordinator = _category_analysis_coordinator()
     parameter = _parameter(1)
-    calls = {"text_gate": 0, "text": 0, "diagram": 0}
+    calls = {"text": 0, "diagram": 0}
     stages = []
     summary = AnalysisSummary()
     summary.asvs["categories"] = {}
@@ -1260,7 +1051,6 @@ def test_category_analysis_coordinator_skips_text_path_in_diagram_only_mode(monk
     coordinator.run_state.update_stage = lambda *_args, **kwargs: stages.append(kwargs.get("stage") or _args[2])
     coordinator.run_state.persist_summary_snapshot = lambda *_args, **_kwargs: None
     coordinator.run_state.is_cancelled = lambda _review: False
-    coordinator.text_debate.apply_parent_applicability_gate = lambda **_kwargs: calls.__setitem__("text_gate", calls["text_gate"] + 1)
     coordinator.text_debate.run_single_analysis_for_category = lambda **_kwargs: calls.__setitem__("text", calls["text"] + 1)
     coordinator.diagram_analysis.run = lambda **_kwargs: calls.__setitem__("diagram", calls["diagram"] + 1)
 
@@ -1273,203 +1063,10 @@ def test_category_analysis_coordinator_skips_text_path_in_diagram_only_mode(monk
         killed_assumptions_memory=deque(),
     )
 
-    assert calls["text_gate"] == 0
     assert calls["text"] == 0
     assert calls["diagram"] == 1
     assert stages[-1] == "7_diagram_debate"
     assert summary.total_parameters == 0
-
-
-def test_parent_applicability_failure_modes_fail_open():
-    from sdr.apps.ai.engine.classification.parent_applicability import classify_parent_applicability
-
-    # Missing child requirements
-    result = classify_parent_applicability(
-        category_code="web_application",
-        version_label="4.0",
-        parent_title="Session Controls",
-        parent_description="Browser session requirements",
-        child_requirements=[],
-        retrieved_context="Some retrieved context.",
-    )
-    assert result.applicable is True
-    assert result.confidence == 0.0
-    assert result.decision_mode == "missing_child_requirements"
-
-    # Missing retrieved context
-    result = classify_parent_applicability(
-        category_code="web_application",
-        version_label="4.0",
-        parent_title="Session Controls",
-        parent_description="Browser session requirements",
-        child_requirements=["Use secure cookie flags."],
-        retrieved_context="",
-    )
-    assert result.applicable is True
-    assert result.confidence == 0.0
-    assert result.decision_mode == "missing_context"
-
-
-def test_parent_applicability_llm_error_fails_open(monkeypatch):
-    import sdr.apps.ai.engine.classification.parent_applicability as parent_applicability_module
-
-    monkeypatch.setattr(
-        parent_applicability_module,
-        "chat_completion",
-        lambda **_kwargs: SimpleNamespace(error="provider unavailable", content=None),
-    )
-
-    result = parent_applicability_module.classify_parent_applicability(
-        category_code="web_application",
-        version_label="4.0",
-        parent_title="Session Controls",
-        parent_description="Browser session requirements",
-        child_requirements=["Use secure cookie flags."],
-        retrieved_context="The application uses browser sessions with secure cookie flags.",
-    )
-
-    assert result.applicable is True
-    assert result.confidence == 0.0
-    assert result.decision_mode == "error"
-    assert result.error == "provider unavailable"
-
-
-def test_parent_applicability_parse_error_fails_open(monkeypatch):
-    import sdr.apps.ai.engine.classification.parent_applicability as parent_applicability_module
-
-    monkeypatch.setattr(
-        parent_applicability_module,
-        "chat_completion",
-        lambda **_kwargs: SimpleNamespace(error=None, content="not valid json{{{"),
-    )
-    monkeypatch.setattr(
-        parent_applicability_module,
-        "parse_json_with_repair",
-        lambda *_args, **_kwargs: (None, "invalid_json"),
-    )
-
-    result = parent_applicability_module.classify_parent_applicability(
-        category_code="web_application",
-        version_label="4.0",
-        parent_title="Session Controls",
-        parent_description="Browser session requirements",
-        child_requirements=["Use secure cookie flags."],
-        retrieved_context="The application uses browser sessions with secure cookie flags.",
-    )
-
-    assert result.applicable is True
-    assert result.confidence == 0.0
-    assert result.decision_mode == "parse_error"
-
-
-def test_parent_applicability_exception_fails_open(monkeypatch):
-    import sdr.apps.ai.engine.classification.parent_applicability as parent_applicability_module
-
-    def _raise(**_kwargs):
-        raise RuntimeError("boom")
-
-    monkeypatch.setattr(parent_applicability_module, "chat_completion", _raise)
-
-    result = parent_applicability_module.classify_parent_applicability(
-        category_code="web_application",
-        version_label="4.0",
-        parent_title="Session Controls",
-        parent_description="Browser session requirements",
-        child_requirements=["Use secure cookie flags."],
-        retrieved_context="The application uses browser sessions with secure cookie flags.",
-    )
-
-    assert result.applicable is True
-    assert result.confidence == 0.0
-    assert result.decision_mode == "exception"
-    assert result.error == "boom"
-
-
-def test_parent_applicability_unclear_decision_mode_clamps_confidence(monkeypatch):
-    import sdr.apps.ai.engine.classification.parent_applicability as parent_applicability_module
-
-    monkeypatch.setattr(
-        parent_applicability_module,
-        "chat_completion",
-        lambda **_kwargs: SimpleNamespace(
-            error=None,
-            content='{"applicable": false, "confidence": 0.9, "decision_mode": "unclear", "reasoning": "Ambiguous scope.", "evidence": []}',
-        ),
-    )
-
-    result = parent_applicability_module.classify_parent_applicability(
-        category_code="web_application",
-        version_label="4.0",
-        parent_title="Session Controls",
-        parent_description="Browser session requirements",
-        child_requirements=["Use secure cookie flags."],
-        retrieved_context="The application uses browser sessions with secure cookie flags.",
-    )
-
-    assert result.decision_mode == "unclear"
-    assert result.confidence <= 0.4
-
-
-def test_parent_applicability_consults_llm_even_without_keyword_overlap(monkeypatch):
-    import sdr.apps.ai.engine.classification.parent_applicability as parent_applicability_module
-
-    calls = {"count": 0}
-
-    def fake_chat_completion(**_kwargs):
-        calls["count"] += 1
-        return SimpleNamespace(
-            error=None,
-            content='{"applicable": false, "confidence": 0.6, "decision_mode": "negative_match", "reasoning": "No session handling described.", "evidence": []}',
-        )
-
-    monkeypatch.setattr(parent_applicability_module, "chat_completion", fake_chat_completion)
-
-    result = parent_applicability_module.classify_parent_applicability(
-        category_code="web_application",
-        version_label="4.0",
-        parent_title="Session Controls",
-        parent_description="Browser session requirements",
-        child_requirements=["Use secure cookie flags."],
-        retrieved_context="The design is a headless batch job with no user interface at all.",
-    )
-
-    assert calls["count"] == 1
-    assert result.applicable is False
-    assert result.decision_mode == "negative_match"
-
-
-def test_parent_applicability_does_not_override_positive_llm_verdict_without_keyword_overlap(monkeypatch):
-    import sdr.apps.ai.engine.classification.parent_applicability as parent_applicability_module
-
-    monkeypatch.setattr(
-        parent_applicability_module,
-        "chat_completion",
-        lambda **_kwargs: SimpleNamespace(
-            error=None,
-            content='{"applicable": true, "confidence": 0.75, "decision_mode": "positive_match", "reasoning": "MFA is described even though the literal term differs.", "evidence": ["multi-factor authentication"]}',
-        ),
-    )
-
-    result = parent_applicability_module.classify_parent_applicability(
-        category_code="web_application",
-        version_label="4.0",
-        parent_title="Authentication",
-        parent_description="MFA requirements",
-        child_requirements=["Require MFA for admin access."],
-        retrieved_context="Operators must verify identity with a one-time code from a registered device before reaching the control panel.",
-    )
-
-    assert result.applicable is True
-    assert result.confidence == 0.75
-    assert result.decision_mode == "positive_match"
-
-
-def test_match_scope_terms_uses_word_boundaries():
-    from sdr.apps.ai.engine.classification.parent_applicability import _match_scope_terms
-
-    matches = _match_scope_terms(["log"], "Users authenticate via the login form.")
-
-    assert matches == []
 
 
 def test_should_continue_debate_grants_one_escalation_round_on_overturn():

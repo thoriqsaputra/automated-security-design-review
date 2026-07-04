@@ -19,7 +19,6 @@ interface ReviewDebatePanelProps {
   persistenceTotal: number | null;
   persistenceProcessed: number | null;
   persistenceRemaining: number | null;
-  skippedByParentApplicability: number | null;
 }
 
 export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
@@ -33,7 +32,6 @@ export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
     persistenceTotal,
     persistenceProcessed,
     persistenceRemaining,
-    skippedByParentApplicability,
   } = props;
   const { debates, connected, streamError, errorMessage } = useReviewDebateStream(reviewId, reviewStatus, analysisMode);
   const [selectedDebateId, setSelectedDebateId] = useState<string | null>(null);
@@ -72,8 +70,7 @@ export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
     || isPresent(debatedRemaining)
     || isPresent(persistenceTotal)
     || isPresent(persistenceProcessed)
-    || isPresent(persistenceRemaining)
-    || isPresent(skippedByParentApplicability);
+    || isPresent(persistenceRemaining);
 
   if (analysisMode === 'diagram_only') {
     return (
@@ -102,12 +99,11 @@ export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
               {connected ? 'Live' : 'Polling fallback'}
             </div>
           </div>
-          <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-4">
+          <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-3">
             {[
               { label: 'Debated Total', value: debatedTotal ?? '—' },
               { label: 'Debated Completed', value: debatedProcessed ?? '—' },
               { label: 'Debated Remaining', value: debatedRemaining ?? '—' },
-              { label: 'Skipped By Parent Applicability', value: skippedByParentApplicability ?? '—' },
             ].map((item) => (
               <div key={item.label} className="rounded-lg border border-surface-border bg-midnight/30 p-3">
                 <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">{item.label}</p>

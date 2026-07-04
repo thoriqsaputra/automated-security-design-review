@@ -19,11 +19,10 @@ const stageColors: Record<string, { bg: string; border: string; text: string }> 
 
 const STAGE_WEIGHTS: Record<string, number> = {
   '4_parameter_resolution': 0,
-  '6_7_concurrent_debate': 1, // backend emits this before parent retrieval currently
-  '5_parent_retrieval': 1,
-  '6_text_debate': 2,
-  '7_diagram_debate': 2,
-  '8_overview': 3,
+  '6_7_concurrent_debate': 1, // backend emits this before per-branch stages
+  '6_text_debate': 1,
+  '7_diagram_debate': 1,
+  '8_overview': 2,
 };
 
 function getStageState(reviewStatus: string, currentStage: string | undefined, nodeStageId: string): string {
@@ -40,12 +39,11 @@ function getStageState(reviewStatus: string, currentStage: string | undefined, n
   }
 
   const currentWeight = STAGE_WEIGHTS[currentStage] ?? -1;
-  
+
   let nodeWeight = -1;
   if (nodeStageId === '4_parameter_resolution') nodeWeight = 0;
-  if (nodeStageId === '5_parent_retrieval') nodeWeight = 1;
-  if (nodeStageId === '6_text_debate' || nodeStageId === '7_diagram_debate') nodeWeight = 2; // concurrent
-  if (nodeStageId === '8_overview') nodeWeight = 3;
+  if (nodeStageId === '6_text_debate' || nodeStageId === '7_diagram_debate') nodeWeight = 1; // concurrent
+  if (nodeStageId === '8_overview') nodeWeight = 2;
 
   if (currentWeight === -1 || nodeWeight === -1) return 'pending';
   if (nodeWeight < currentWeight) return 'done';
@@ -86,10 +84,9 @@ export default function ReviewPipeline({ reviewStatus, currentStage }: Props) {
 
     const ns: Node[] = [
       createNode('n4', '1. Parameter Resolution', 0, 40, getStageState(reviewStatus, currentStage, '4_parameter_resolution')),
-      createNode('n5', '2. Applicability Filter', 250, 40, getStageState(reviewStatus, currentStage, '5_parent_retrieval')),
-      createNode('n6', '3A. Text Debate', 550, 0, getStageState(reviewStatus, currentStage, '6_text_debate')),
-      createNode('n7', '3B. Diagram Debate', 550, 80, getStageState(reviewStatus, currentStage, '7_diagram_debate')),
-      createNode('n8', '4. Generate Overview', 850, 40, getStageState(reviewStatus, currentStage, '8_overview')),
+      createNode('n6', '2A. Text Debate', 300, 0, getStageState(reviewStatus, currentStage, '6_text_debate')),
+      createNode('n7', '2B. Diagram Debate', 300, 80, getStageState(reviewStatus, currentStage, '7_diagram_debate')),
+      createNode('n8', '3. Generate Overview', 600, 40, getStageState(reviewStatus, currentStage, '8_overview')),
     ];
 
     const isEdgeActive = (targetStageId: string) => {
@@ -101,9 +98,8 @@ export default function ReviewPipeline({ reviewStatus, currentStage }: Props) {
       const currentWeight = STAGE_WEIGHTS[currentStage] ?? -1;
       let targetWeight = -1;
       if (targetStageId === '4_parameter_resolution') targetWeight = 0;
-      if (targetStageId === '5_parent_retrieval') targetWeight = 1;
-      if (targetStageId === '6_text_debate' || targetStageId === '7_diagram_debate') targetWeight = 2;
-      if (targetStageId === '8_overview') targetWeight = 3;
+      if (targetStageId === '6_text_debate' || targetStageId === '7_diagram_debate') targetWeight = 1;
+      if (targetStageId === '8_overview') targetWeight = 2;
       return currentWeight >= targetWeight;
     };
 
@@ -117,9 +113,8 @@ export default function ReviewPipeline({ reviewStatus, currentStage }: Props) {
     });
 
     const es: Edge[] = [
-      createEdge('n4', 'n5', isEdgeActive('5_parent_retrieval')),
-      createEdge('n5', 'n6', isEdgeActive('6_text_debate')),
-      createEdge('n5', 'n7', isEdgeActive('7_diagram_debate')),
+      createEdge('n4', 'n6', isEdgeActive('6_text_debate')),
+      createEdge('n4', 'n7', isEdgeActive('7_diagram_debate')),
       createEdge('n6', 'n8', isEdgeActive('8_overview')),
       createEdge('n7', 'n8', isEdgeActive('8_overview')),
     ];

@@ -87,18 +87,11 @@ class Review(Base):
         persistence_completed = int(summary.get("persistence_completed_parameters") or 0)
         persistence_remaining = int(summary.get("persistence_remaining_parameters") or 0)
         error_count = int(summary.get("error_count") or 0)
-        skipped_by_parent = int(
-            ((summary.get("applicability") or {}) if isinstance(summary.get("applicability"), dict) else {}).get(
-                "children_marked_na_by_parent",
-                0,
-            ) or 0
-        )
 
         if (
             self.status not in {ReviewStatus.RUNNING.value}
             and debate_total == 0
             and persistence_total == 0
-            and skipped_by_parent == 0
         ):
             return None
 
@@ -156,7 +149,6 @@ class Review(Base):
                     "completed": persistence_completed,
                     "remaining": persistence_remaining,
                 },
-                "skipped_by_parent_applicability": skipped_by_parent,
                 "categories": summary.get("category_stats", {}) if isinstance(summary.get("category_stats"), dict) else {},
             },
         }

@@ -71,7 +71,6 @@ class Settings(BaseSettings):
     AI_MODEL_EMBEDDING: str = Field(default="nvidia/nv-embedqa-e5-v5")
     AI_MODEL_FALLBACK: str = Field(default="meta/llama-3.1-8b-instruct")
     AI_MODEL_LONG_CONTEXT: str = Field(default="meta/llama-3.1-70b-instruct")
-    AI_MODEL_PARENT_APPLICABILITY: str = Field(default="meta/llama-3.1-8b-instruct")
 
     AI_LLM_MAX_RETRIES: int = Field(default=3)
     AI_LLM_RETRY_INITIAL_DELAY_SECONDS: float = Field(default=2.0)
@@ -90,7 +89,6 @@ class Settings(BaseSettings):
     AI_DEBATE_CRITIC_AUTO_UPHOLD_STRONG_NOT_MET: bool = Field(default=True)
 
     AI_BATCH_DEBATE_MAX_CONCURRENCY: int = Field(default=3)
-    AI_BATCH_DEBATE_PARENT_CONTEXT_CACHE_ENABLED: bool = Field(default=True)
     AI_BATCH_DEBATE_UNGROUNDED_NOT_MET_POLICY: str = Field(default="preserve_not_met")
     AI_DEBATE_CONTEXT_SUPPLEMENTAL_BLOCK_LIMIT: int = Field(default=12)
     AI_DEBATE_SUPPLEMENTAL_BLOCK_CANDIDATE_LIMIT: int = Field(default=32)
@@ -100,15 +98,6 @@ class Settings(BaseSettings):
     AI_DEBATE_WARN_CONTEXT_CHUNK_THRESHOLD: int = Field(default=40)
     AI_LLM_LOG_ENABLED: bool = Field(default=False)
     AI_LLM_LOG_DIR: str = Field(default=str(BASE_DIR / "llm_logs"))
-    AI_PARENT_APPLICABILITY_ENABLED: bool = Field(default=True)
-    AI_PARENT_APPLICABILITY_MAX_CHILD_TEXTS: int = Field(default=20)
-    AI_PARENT_APPLICABILITY_CONFIDENCE_THRESHOLD: float = Field(default=0.7)
-    AI_PARENT_APPLICABILITY_RETRY_CONFIDENCE_FLOOR: float = Field(default=0.35)
-    AI_PARENT_APPLICABILITY_FALLBACK_MODE: str = Field(default="assume_applicable")
-    AI_PARENT_RETRIEVAL_MAX_CHILD_SNIPPETS: int = Field(default=12)
-    AI_PARENT_RETRIEVAL_MAX_CHILD_SNIPPET_CHARS: int = Field(default=240)
-    AI_PARENT_RETRIEVAL_MAX_CONTEXT_CHUNKS: int = Field(default=10)
-    AI_PARENT_RETRIEVAL_RETRY_MAX_CONTEXT_CHUNKS: int = Field(default=14)
 
     AI_RETRIEVAL_QUERY_EXPANSION_ENABLED: bool = Field(default=True)
     AI_RETRIEVAL_QUERY_EXPANSION_VARIANT_COUNT: int = Field(default=3)

@@ -51,7 +51,6 @@ export interface UseReviewDetailResult {
   persistenceTotal: number | null;
   persistenceProcessed: number | null;
   persistenceRemaining: number | null;
-  skippedByParentApplicability: number | null;
   reload: (isBackground?: boolean) => Promise<void>;
   handleTrigger: () => Promise<void>;
   handleCancel: () => Promise<void>;
@@ -217,7 +216,6 @@ export function useReviewDetail(reviewId?: string): UseReviewDetailResult {
   const livePreparation = progress && isRecord(progress.preparation) ? progress.preparation : null;
   const liveDebate = livePreparation && isRecord(livePreparation.debate) ? livePreparation.debate : null;
   const livePersistence = livePreparation && isRecord(livePreparation.persistence) ? livePreparation.persistence : null;
-  const applicabilitySummary = isRecord(summary.applicability) ? summary.applicability : {};
 
   const debatedTotal =
     typeof liveDebate?.total === 'number'
@@ -267,13 +265,6 @@ export function useReviewDetail(reviewId?: string): UseReviewDetailResult {
         ? summary.persistence_remaining_parameters
         : null;
 
-  const skippedByParentApplicability =
-    typeof livePreparation?.skipped_by_parent_applicability === 'number'
-      ? livePreparation.skipped_by_parent_applicability
-      : typeof applicabilitySummary.children_marked_na_by_parent === 'number'
-        ? applicabilitySummary.children_marked_na_by_parent
-        : null;
-
   const currentStage =
     isRecord(review?.summary_json) && typeof review.summary_json.current_stage === 'string'
       ? review.summary_json.current_stage
@@ -316,7 +307,6 @@ export function useReviewDetail(reviewId?: string): UseReviewDetailResult {
     persistenceTotal,
     persistenceProcessed,
     persistenceRemaining,
-    skippedByParentApplicability,
     reload,
     handleTrigger,
     handleCancel,

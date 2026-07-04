@@ -54,7 +54,6 @@ export default function ReviewWorkspace({ reviewId, reviewState, showControls = 
     persistenceTotal,
     persistenceProcessed,
     persistenceRemaining,
-    skippedByParentApplicability,
     handleTrigger,
     handleCancel,
   } = state;
@@ -148,7 +147,6 @@ export default function ReviewWorkspace({ reviewId, reviewState, showControls = 
           persistenceTotal={persistenceTotal}
           persistenceProcessed={persistenceProcessed}
           persistenceRemaining={persistenceRemaining}
-          skippedByParentApplicability={skippedByParentApplicability}
         />
       )}
 

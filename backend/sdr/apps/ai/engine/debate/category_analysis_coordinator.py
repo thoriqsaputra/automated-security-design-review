@@ -150,43 +150,26 @@ class CategoryAnalysisCoordinator:
             parameters=parameters,
             category_code=category_code,
         )
-        with summary.lock:
-            parent_skip_before = int(summary.applicability.get("children_marked_na_by_parent", 0) or 0)
-        self.run_state.update_stage(review, summary, "5_parent_retrieval")
-        applicable_parameters, parent_context_cache = self.text_debate.apply_parent_applicability_gate(
-            review=review,
-            category=category,
-            ingestion_job=ingestion_job,
-            parameters=parameters,
-            indexes=indexes,
-            tsd_document=tsd_document,
-            summary=summary,
-        )
-        if not applicable_parameters:
+        if not parameters:
             return
 
         with summary.lock:
-            summary.debate_total_parameters += len(applicable_parameters)
-            summary.debate_remaining_parameters += len(applicable_parameters)
-            summary.persistence_total_parameters += len(applicable_parameters)
-            summary.persistence_remaining_parameters += len(applicable_parameters)
+            summary.debate_total_parameters += len(parameters)
+            summary.debate_remaining_parameters += len(parameters)
+            summary.persistence_total_parameters += len(parameters)
+            summary.persistence_remaining_parameters += len(parameters)
         self.progress_service.initialize_category_progress(
             summary=summary,
             category_code=category_code,
-            total_count=len(applicable_parameters),
+            total_count=len(parameters),
         )
         self.progress_service.sync_analysis_aliases(summary=summary, category_code=category_code)
         self.run_state.persist_summary_snapshot(review, summary)
 
-        parent_skipped_for_category = max(
-            int(summary.applicability.get("children_marked_na_by_parent", 0) or 0) - parent_skip_before,
-            0,
-        )
         self.logger.info(
-            "CategoryAnalysisCoordinator._run_raw_children_analysis: category=%s applicable=%d skipped_by_parent=%d",
+            "CategoryAnalysisCoordinator._run_raw_children_analysis: category=%s applicable=%d",
             category_code,
-            len(applicable_parameters),
-            parent_skipped_for_category,
+            len(parameters),
         )
 
         self.run_state.update_stage(review, summary, "6_text_debate")
@@ -194,7 +177,7 @@ class CategoryAnalysisCoordinator:
             review=review,
             category=category,
             ingestion_job=ingestion_job,
-            parameters=applicable_parameters,
+            parameters=parameters,
             indexes=indexes,
             tsd_document=tsd_document,
             summary=summary,
