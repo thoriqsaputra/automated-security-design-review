@@ -94,6 +94,8 @@ class PreparationProgressTracker:
         self._last_persisted_percent = -1
         self._last_persisted_step = ""
         self._last_persisted_at = 0.0
+        self._max_overall_percent = 0
+        self._max_step_percent: Dict[str, int] = {}
 
     def start(self) -> None:
         self._update_phase(
@@ -175,20 +177,28 @@ class PreparationProgressTracker:
         with self._lock:
             mapped_status = self._map_status(incoming.get("status"))
             label = str(incoming.get("current_step") or default_label)
-            progress_percent = max(0, min(100, int(incoming.get("progress_percent") or 0)))
+            incoming_percent = incoming.get("progress_percent")
+            if incoming_percent is None:
+                progress_percent = int(self.payload["steps"].get(key, {}).get("progress_percent") or 0)
+            else:
+                progress_percent = max(0, min(100, int(incoming_percent)))
             self._update_step(key, status=mapped_status, progress_percent=progress_percent, label=label)
 
             raptor_progress = int(self.payload["steps"]["raptor_index"]["progress_percent"] or 0)
             overall = min(90, 25 + int(round(0.65 * raptor_progress)))
+            overall = max(overall, self._max_overall_percent)
+            self._max_overall_percent = overall
             self.payload["phase"] = "building_indexes"
             self.payload["percentage"] = overall
-            self.payload["status_label"] = f"Building retrieval indexes • {raptor_progress}%"
+            self.payload["status_label"] = "Building retrieval indexes"
             self.payload["current_step"] = self.payload["steps"]["raptor_index"].get("label") or "Building RAPTOR index"
             self.payload["updated_at"] = _utc_now().isoformat()
         self._persist()
 
     def _update_phase(self, *, phase: str, percentage: int, status_label: str, current_step: str) -> None:
         with self._lock:
+            percentage = max(percentage, self._max_overall_percent)
+            self._max_overall_percent = percentage
             self.payload["phase"] = phase
             self.payload["percentage"] = percentage
             self.payload["status_label"] = status_label
@@ -197,8 +207,14 @@ class PreparationProgressTracker:
 
     def _update_step(self, key: str, *, status: str, progress_percent: int, label: str) -> None:
         step = self.payload.setdefault("steps", {}).setdefault(key, {})
+        prev_max = self._max_step_percent.get(key, 0)
+        if status == "completed":
+            clamped = 100
+        else:
+            clamped = max(progress_percent, prev_max)
+        self._max_step_percent[key] = clamped
         step["status"] = status
-        step["progress_percent"] = progress_percent
+        step["progress_percent"] = clamped
         step["label"] = label
         self.payload["updated_at"] = _utc_now().isoformat()
 

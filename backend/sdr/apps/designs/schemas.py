@@ -22,6 +22,10 @@ class DesignSchema(BaseModel):
     active_preparation_id: Optional[int] = None
     preparation_snapshot_json: Optional[dict] = None
     preparation_progress: Optional[dict] = None
+    preparation_stats_json: Optional[dict] = None
+    preparation_started_at: Optional[datetime] = None
+    preparation_completed_at: Optional[datetime] = None
+    preparation_duration_seconds: Optional[float] = None
     can_start_analysis: bool = False
 
     model_config = ConfigDict(from_attributes=True)

@@ -221,6 +221,13 @@ def cancel_design_preparation(design_id: int, db: Session = Depends(get_db)):
 
 
 def _build_design_detail_payload(design: Design) -> dict:
+    preparation = design.active_preparation
+    preparation_duration_seconds = None
+    if preparation and preparation.started_at and preparation.completed_at:
+        preparation_duration_seconds = (
+            preparation.completed_at - preparation.started_at
+        ).total_seconds()
+
     return {
         "id": design.id,
         "name": design.name,
@@ -239,6 +246,10 @@ def _build_design_detail_payload(design: Design) -> dict:
         "active_preparation_id": design.active_preparation_id,
         "preparation_snapshot_json": design.preparation_snapshot_json,
         "preparation_progress": design.preparation_progress_json,
+        "preparation_stats_json": preparation.stats_json if preparation else None,
+        "preparation_started_at": preparation.started_at if preparation else None,
+        "preparation_completed_at": preparation.completed_at if preparation else None,
+        "preparation_duration_seconds": preparation_duration_seconds,
         "can_start_analysis": design.can_start_analysis,
         "review_status": "no_review",
         "review_id": None,

@@ -50,6 +50,17 @@ _MIN_CLUSTER_SIZE = 2
 # Maximum tree depth — prevents runaway recursion on very large documents.
 _MAX_TREE_DEPTH = 3
 
+# Progress bands (0-100 scale within the RAPTOR-index step) for each level's
+# summarize/embed sub-phases. Fixed since _MAX_TREE_DEPTH is a constant — each
+# level gets a summarize slice followed by an embed slice, both monotonically
+# increasing across levels so the raw progress signal never regresses.
+_LEVEL_PROGRESS_BANDS: Dict[int, Tuple[int, int, int]] = {
+    # level: (summarize_end, embed_start, embed_end)
+    1: (30, 30, 45),
+    2: (55, 55, 70),
+    3: (80, 80, 90),
+}
+
 # Embedding model dimensions — must match CategoryParameterEmbedding.model_dim [3]
 _EMBEDDING_DIMENSIONS = 1024
 
@@ -268,7 +279,7 @@ class RAPTORTreeBuilder:
             progress_callback(
                 {
                     "status": "running",
-                    "progress_percent": 20,
+                    "progress_percent": 5,
                     "current_step": "Creating RAPTOR leaf nodes",
                     "leaf_nodes": len(leaf_nodes),
                     "summary_levels_completed": 0,
@@ -288,7 +299,12 @@ class RAPTORTreeBuilder:
         # Embed leaf nodes now (rather than only at the very end) so
         # clustering can group them by similarity instead of falling back
         # to document-order chunking.
-        self._embed_all_nodes(leaf_nodes, progress_callback=progress_callback)
+        self._embed_all_nodes(
+            leaf_nodes,
+            progress_callback=progress_callback,
+            progress_range=(5, 20),
+            phase_label="Embedding leaf nodes",
+        )
 
         # ------------------------------------------------------------------
         # Steps 2–4: Iteratively cluster and summarise up the tree
@@ -334,20 +350,32 @@ class RAPTORTreeBuilder:
                 len(summary_nodes),
                 len(clusters),
             )
-            # Embed this level's nodes immediately so the next loop
-            # iteration can cluster them by similarity as well.
-            self._embed_all_nodes(summary_nodes, progress_callback=progress_callback)
+            summarize_end, embed_start, embed_end = _LEVEL_PROGRESS_BANDS.get(
+                next_level, _LEVEL_PROGRESS_BANDS[max(_LEVEL_PROGRESS_BANDS)]
+            )
             if progress_callback:
                 progress_callback(
                     {
                         "status": "running",
-                        "progress_percent": min(65, 20 + next_level * 15),
-                        "current_step": f"Summarizing RAPTOR level {next_level}",
+                        "progress_percent": summarize_end,
+                        "current_step": (
+                            f"Summarizing RAPTOR level {next_level} of {self.max_depth} "
+                            f"— {len(clusters)} cluster(s)"
+                        ),
                         "leaf_nodes": len(leaf_nodes),
                         "summary_levels_completed": next_level,
                         "total_nodes": sum(len(level_nodes) for level_nodes in tree.levels),
                     }
                 )
+
+            # Embed this level's nodes immediately so the next loop
+            # iteration can cluster them by similarity as well.
+            self._embed_all_nodes(
+                summary_nodes,
+                progress_callback=progress_callback,
+                progress_range=(embed_start, embed_end),
+                phase_label=f"Embedding RAPTOR level {next_level} nodes",
+            )
 
             current_level_nodes = summary_nodes
             current_level = next_level
@@ -384,15 +412,20 @@ class RAPTORTreeBuilder:
             progress_callback(
                 {
                     "status": "running",
-                    "progress_percent": 70,
-                    "current_step": "Embedding RAPTOR nodes",
+                    "progress_percent": 90,
+                    "current_step": "Embedding remaining RAPTOR nodes",
                     "leaf_nodes": len(leaf_nodes),
                     "summary_levels_completed": max(0, len(tree.levels) - 1),
                     "total_nodes": len(all_nodes),
                     "embedded_nodes": len(all_nodes) - len(nodes_to_embed),
                 }
             )
-        self._embed_all_nodes(nodes_to_embed, progress_callback=progress_callback)
+        self._embed_all_nodes(
+            nodes_to_embed,
+            progress_callback=progress_callback,
+            progress_range=(90, 99),
+            phase_label="Embedding remaining RAPTOR nodes",
+        )
 
         # ------------------------------------------------------------------
         # Finalise tree metadata
@@ -1027,7 +1060,14 @@ class RAPTORTreeBuilder:
     # Embedding generation
     # ------------------------------------------------------------------
 
-    def _embed_all_nodes(self, nodes: List[RAPTORNode], progress_callback=None) -> None:
+    def _embed_all_nodes(
+        self,
+        nodes: List[RAPTORNode],
+        progress_callback=None,
+        *,
+        progress_range: Tuple[int, int] = (70, 99),
+        phase_label: str = "Embedding RAPTOR nodes",
+    ) -> None:
         if not nodes:
             return
 
@@ -1125,12 +1165,13 @@ class RAPTORTreeBuilder:
                                 failure_count += 1
                     if progress_callback:
                         processed = success_count + failure_count
-                        embed_progress = 70 + int(round((processed / max(len(nodes), 1)) * 30))
+                        low, high = progress_range
+                        embed_progress = low + int(round((processed / max(len(nodes), 1)) * (high - low)))
                         progress_callback(
                             {
                                 "status": "running",
-                                "progress_percent": min(99, embed_progress),
-                                "current_step": "Embedding RAPTOR nodes",
+                                "progress_percent": min(high, embed_progress),
+                                "current_step": f"{phase_label} ({processed} of {len(nodes)})",
                                 "total_nodes": len(nodes),
                                 "embedded_nodes": success_count,
                             }

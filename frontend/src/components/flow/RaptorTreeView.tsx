@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import dagre from '@dagrejs/dagre';
 import { Background, Controls, MiniMap, ReactFlow, type Edge, type Node } from '@xyflow/react';
+import { Network } from 'lucide-react';
 import Card from '../ui/Card';
 import type { RaptorNodeSnapshot, RaptorSnapshot } from '../../api/reviews';
 
@@ -146,25 +147,33 @@ export default function RaptorTreeView({ snapshot }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
-        <div>
-          <p className="text-sm font-semibold text-text-primary">RAPTOR Tree</p>
-          <p className="text-xs text-text-muted">
-            {snapshot.total_nodes} nodes across {snapshot.max_level + 1} levels
-          </p>
+      <Card className="space-y-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className="flex items-start gap-3">
+            <Network size={18} className="mt-0.5 shrink-0 text-flame" />
+            <div className="space-y-1">
+              <p className="text-sm font-semibold text-text-primary">
+                RAPTOR status: {snapshot.status || 'unknown'}
+              </p>
+              <p className="text-xs text-text-muted">
+                {snapshot.total_nodes} node(s) across {snapshot.max_level + 1} levels
+              </p>
+            </div>
+          </div>
+
+          <label className="flex w-full max-w-sm flex-col gap-1 text-xs text-text-muted">
+            <span>Visible nodes: {visibleLimit}</span>
+            <input
+              type="range"
+              min={10}
+              max={maxVisible}
+              value={visibleLimit}
+              onChange={(event) => setVisibleLimit(Number(event.target.value))}
+              className="accent-flame"
+            />
+          </label>
         </div>
-        <label className="flex min-w-72 flex-col gap-1 text-xs text-text-muted">
-          <span>Visible nodes: {visibleLimit}</span>
-          <input
-            type="range"
-            min={10}
-            max={maxVisible}
-            value={visibleLimit}
-            onChange={(event) => setVisibleLimit(Number(event.target.value))}
-            className="accent-flame"
-          />
-        </label>
-      </div>
+      </Card>
 
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
         <Card className="p-0 overflow-hidden">

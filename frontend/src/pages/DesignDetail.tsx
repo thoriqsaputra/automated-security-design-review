@@ -1,14 +1,16 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Check, ChevronDown, FileText, Network, Play, Search } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, FileText, Play, Search } from 'lucide-react';
 import type { JsonRecord, RetrievalVisualization } from '../api/reviews';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import Card from '../components/ui/Card';
+import LlmUsageCard from '../components/ui/LlmUsageCard';
 import StatusBadge from '../components/ui/StatusBadge';
 import RaptorTreeView from '../components/flow/RaptorTreeView';
 import { getDesign, retryDesignPreparation, cancelDesignPreparation, type DesignDetail } from '../api/designs';
 import { listCategories, type StandardCategory } from '../api/standards';
 import {
+  cancelReview,
   createReview,
   listReviews,
   triggerReview,
@@ -40,22 +42,16 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
-function getStepProgress(
-  progress: Record<string, unknown> | null,
-  key: string,
-): { status: string; progressPercent: number; label: string } | null {
-  if (!progress) return null;
-  const steps = isRecord(progress.steps) ? progress.steps : null;
-  const rawStep = steps && isRecord(steps[key]) ? steps[key] : null;
-  if (!rawStep) return null;
-  return {
-    status: typeof rawStep.status === 'string' ? rawStep.status : 'pending',
-    progressPercent:
-      typeof rawStep.progress_percent === 'number'
-        ? rawStep.progress_percent
-        : Number(rawStep.progress_percent || 0),
-    label: typeof rawStep.label === 'string' ? rawStep.label : key,
-  };
+function formatDuration(totalSeconds: number): string {
+  if (!totalSeconds || totalSeconds <= 0) {
+    return '0s';
+  }
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = Math.round(totalSeconds % 60);
+  if (minutes <= 0) {
+    return `${seconds}s`;
+  }
+  return `${minutes}m ${seconds}s`;
 }
 
 export default function DesignDetailPage() {
@@ -74,7 +70,7 @@ export default function DesignDetailPage() {
   const [cancellingPreparation, setCancellingPreparation] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [reviewSearch, setReviewSearch] = useState('');
-  const [activeTab, setActiveTab] = useState<'prepared_retrieval' | 'review_details'>('review_details');
+  const [activeTab, setActiveTab] = useState<'prepared_retrieval' | 'review_details' | 'usage'>('review_details');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -86,9 +82,12 @@ export default function DesignDetailPage() {
     ]).finally(() => setLoading(false));
   }, [id]);
 
+  const requestSeqRef = useRef(0);
   const refreshPreparationStatus = useCallback(async () => {
     if (!id) return;
+    const seq = ++requestSeqRef.current;
     const response = await getDesign(Number(id));
+    if (seq !== requestSeqRef.current) return;
     setDesign(response.data);
   }, [id]);
 
@@ -129,6 +128,7 @@ export default function DesignDetailPage() {
     setRetryingPreparation(true);
     try {
       await retryDesignPreparation(Number(id));
+      maxSeenPercentRef.current = 0;
       await load();
     } finally {
       setRetryingPreparation(false);
@@ -202,10 +202,23 @@ export default function DesignDetailPage() {
 
   const selectedReviewState = useReviewDetail(selectedReview ? String(selectedReview.id) : undefined);
 
-  const hasRunningReview = useMemo(
-    () => reviews.some((review) => review.status === 'running'),
+  const runningReview = useMemo(
+    () => reviews.find((review) => review.status === 'running') || null,
     [reviews]
   );
+  const hasRunningReview = Boolean(runningReview);
+
+  const [cancellingRunningReview, setCancellingRunningReview] = useState(false);
+  const handleCancelRunningReview = async () => {
+    if (!runningReview) return;
+    setCancellingRunningReview(true);
+    try {
+      await cancelReview(runningReview.id);
+      await load();
+    } finally {
+      setCancellingRunningReview(false);
+    }
+  };
 
   const hasControls = Boolean(
     selectedReview &&
@@ -238,11 +251,18 @@ export default function DesignDetailPage() {
     return design.preparation_progress as Record<string, unknown>;
   }, [design]);
 
+  const maxSeenPercentRef = useRef(0);
+  useEffect(() => {
+    maxSeenPercentRef.current = 0;
+  }, [id]);
+
   const overallPreparationPercent = useMemo(() => {
-    if (!preparationProgress) return 0;
+    if (!preparationProgress) return maxSeenPercentRef.current;
     const raw = preparationProgress.percentage;
-    if (typeof raw === 'number') return raw;
-    return Number(raw || 0);
+    const value = typeof raw === 'number' ? raw : Number(raw || 0);
+    const clamped = Math.max(value, maxSeenPercentRef.current);
+    maxSeenPercentRef.current = clamped;
+    return clamped;
   }, [preparationProgress]);
 
   const preparationCurrentStep = useMemo(() => {
@@ -252,10 +272,13 @@ export default function DesignDetailPage() {
       : '';
   }, [preparationProgress]);
 
-  const raptorProgress = useMemo(
-    () => getStepProgress(preparationProgress, 'raptor_index'),
-    [preparationProgress],
-  );
+  const preparationStatusLabel = useMemo(() => {
+    if (!preparationProgress) return '';
+    return typeof preparationProgress.status_label === 'string'
+      ? preparationProgress.status_label
+      : '';
+  }, [preparationProgress]);
+
   const preparationSnapshot = useMemo(() => {
     if (!design) return null;
     const snapshot = design.preparation_snapshot_json;
@@ -264,6 +287,28 @@ export default function DesignDetailPage() {
     }
     return snapshot as RetrievalVisualization;
   }, [design]);
+
+  const preparationStats = useMemo(() => {
+    if (!design || !isRecord(design.preparation_stats_json)) {
+      return null;
+    }
+    return design.preparation_stats_json as Record<string, unknown>;
+  }, [design]);
+
+  const preparationLlmUsage = useMemo(() => {
+    if (!preparationStats || !isRecord(preparationStats.llm_usage)) {
+      return null;
+    }
+    return preparationStats.llm_usage as Record<string, unknown>;
+  }, [preparationStats]);
+
+  const preparationDurationLabel = useMemo(() => {
+    const totalSeconds = Number(design?.preparation_duration_seconds) || 0;
+    if (totalSeconds <= 0) {
+      return null;
+    }
+    return formatDuration(totalSeconds);
+  }, [design?.preparation_duration_seconds]);
 
   useEffect(() => {
     if (selectedReview) {
@@ -302,9 +347,16 @@ export default function DesignDetailPage() {
         {['queued', 'running'].includes(design.preparation_status) && preparationProgress && (
           <div className="space-y-3">
             <div>
-              <div className="mb-1 flex items-center justify-between text-xs text-text-muted">
-                <span>{preparationCurrentStep || 'Preparing TSD for retrieval and debate'}</span>
-                <span>{overallPreparationPercent}%</span>
+              <div className="mb-1 flex items-start justify-between text-xs">
+                <div className="flex flex-col">
+                  <span className="font-medium text-text-primary">
+                    {preparationStatusLabel || 'Preparing TSD for retrieval and debate'}
+                  </span>
+                  {preparationCurrentStep && (
+                    <span className="text-text-muted">{preparationCurrentStep}</span>
+                  )}
+                </div>
+                <span className="text-text-muted">{overallPreparationPercent}%</span>
               </div>
               <div className="h-2 rounded-full bg-surface-border overflow-hidden">
                 <div
@@ -317,10 +369,10 @@ export default function DesignDetailPage() {
           </div>
         )}
 
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
-          <div className={`flex w-full flex-col gap-4 ${hasControls ? 'lg:flex-row lg:items-start lg:mr-4' : 'mr-4'}`}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
+          <div className={`flex w-full flex-col gap-4 lg:flex-1 ${hasControls ? 'lg:flex-row lg:items-center' : ''}`}>
           {hasControls && (
-            <div>
+            <div className="lg:shrink-0">
               {selectedReview && ['pending', 'cancelled', 'failed'].includes(selectedReviewState.review?.status || '') ? (
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
                 <div className="min-w-[220px]">
@@ -370,7 +422,7 @@ export default function DesignDetailPage() {
             ) : null}
             </div>
           )}
-          <div className={`relative w-full ${hasControls ? 'max-w-xl' : ''}`}>
+          <div className="relative w-full flex-1 min-w-[240px]">
             <button
               onClick={() => setPickerOpen((open) => !open)}
               className="flex w-full items-center justify-between rounded-xl border border-surface-border bg-surface-base px-4 py-3 text-left transition-colors hover:border-burgundy"
@@ -392,9 +444,6 @@ export default function DesignDetailPage() {
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-semibold text-text-primary">No reviews yet</span>
                     </div>
-                    <p className="mt-1 truncate text-xs text-text-muted">
-                      Create a review to inspect retrieval, debate, and findings.
-                    </p>
                   </>
                 )}
               </div>
@@ -406,20 +455,32 @@ export default function DesignDetailPage() {
             {pickerOpen && (
               <div className="absolute right-0 z-20 mt-2 w-full rounded-2xl border border-surface-border bg-midnight shadow-2xl shadow-black/30">
                 <div className="space-y-3 border-b border-surface-border p-3">
-                  <button
-                    onClick={() => {
-                      if (!design.can_start_analysis || creating || hasRunningReview) {
-                        return;
-                      }
-                      setPickerOpen(false);
-                      setShowReviewModal(true);
-                    }}
-                    disabled={!design.can_start_analysis || creating || hasRunningReview}
-                    title={hasRunningReview ? "Cannot start a new analysis while a review is running" : undefined}
-                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-crimson to-flame px-4 py-2.5 text-sm font-semibold text-white transition-all hover:shadow-lg hover:shadow-crimson/30 disabled:opacity-40 disabled:cursor-not-allowed"
-                  >
-                    <Play size={16} /> Start TSD Analysis
-                  </button>
+                  {hasRunningReview ? (
+                    <button
+                      onClick={() => {
+                        setPickerOpen(false);
+                        void handleCancelRunningReview();
+                      }}
+                      disabled={cancellingRunningReview}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl border border-crimson/50 bg-surface-base px-4 py-2.5 text-sm font-semibold text-crimson transition-all hover:bg-crimson/10 disabled:opacity-40"
+                    >
+                      {cancellingRunningReview ? 'Cancelling...' : 'Cancel Review'}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => {
+                        if (!design.can_start_analysis || creating) {
+                          return;
+                        }
+                        setPickerOpen(false);
+                        setShowReviewModal(true);
+                      }}
+                      disabled={!design.can_start_analysis || creating}
+                      className="flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-crimson to-flame px-4 py-2.5 text-sm font-semibold text-white transition-all hover:shadow-lg hover:shadow-crimson/30 disabled:opacity-40 disabled:cursor-not-allowed"
+                    >
+                      <Play size={16} /> Start TSD Analysis
+                    </button>
+                  )}
                   {reviews.length > 0 && (
                     <div className="flex items-center gap-2 rounded-xl border border-surface-border bg-surface-base px-3 py-2.5">
                       <Search size={16} className="text-text-muted" />
@@ -493,15 +554,24 @@ export default function DesignDetailPage() {
               {retryingPreparation ? 'Retrying...' : 'Retry Preparation'}
             </button>
           )}
-          <button
-            onClick={() => setShowReviewModal(true)}
-            disabled={!design.can_start_analysis || creating || hasRunningReview}
-            title={hasRunningReview ? "Cannot start a new analysis while a review is running" : undefined}
-            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-crimson to-flame px-4 py-2.5 text-sm font-semibold text-white transition-all hover:shadow-lg hover:shadow-crimson/30 disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Play size={16} />
-            Start TSD Analysis
-          </button>
+          {hasRunningReview ? (
+            <button
+              onClick={() => void handleCancelRunningReview()}
+              disabled={cancellingRunningReview}
+              className="flex items-center gap-2 rounded-xl border border-crimson/50 bg-surface-base px-4 py-2.5 text-sm font-semibold text-crimson transition-all hover:bg-crimson/10 disabled:opacity-40"
+            >
+              {cancellingRunningReview ? 'Cancelling...' : 'Cancel Review'}
+            </button>
+          ) : (
+            <button
+              onClick={() => setShowReviewModal(true)}
+              disabled={!design.can_start_analysis || creating}
+              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-crimson to-flame px-4 py-2.5 text-sm font-semibold text-white transition-all hover:shadow-lg hover:shadow-crimson/30 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              <Play size={16} />
+              Start TSD Analysis
+            </button>
+          )}
         </div>
       </div>
     </Card>
@@ -529,6 +599,18 @@ export default function DesignDetailPage() {
         >
           Review Details
         </button>
+        {(preparationDurationLabel || preparationLlmUsage) && (
+          <button
+            onClick={() => setActiveTab('usage')}
+            className={`border-b-2 pb-3 text-sm font-semibold whitespace-nowrap transition-colors ${
+              activeTab === 'usage'
+                ? 'border-flame text-flame'
+                : 'border-transparent text-text-muted hover:text-text-primary'
+            }`}
+          >
+            Token & Time Usage
+          </button>
+        )}
       </div>
 
       {activeTab === 'prepared_retrieval' && design.preparation_status === 'ready' && preparationSnapshot && (
@@ -546,18 +628,6 @@ export default function DesignDetailPage() {
               </p>
             )}
           </div>
-
-          <Card className="flex items-center gap-3">
-            <Network size={18} className="text-flame shrink-0" />
-            <div>
-              <p className="text-sm font-semibold text-text-primary">
-                RAPTOR status: {preparationSnapshot.raptor?.status || 'unknown'}
-              </p>
-              <p className="text-xs text-text-muted">
-                {preparationSnapshot.raptor?.total_nodes || 0} node(s) ready for visualization
-              </p>
-            </div>
-          </Card>
 
           {preparationSnapshot.raptor?.status === 'ready' ? (
             <RaptorTreeView snapshot={preparationSnapshot.raptor} />
@@ -585,6 +655,30 @@ export default function DesignDetailPage() {
             </p>
           </Card>
         ))}
+
+      {activeTab === 'usage' && (preparationDurationLabel || preparationLlmUsage) && (
+        <div className="space-y-4">
+          <div>
+            <h2 className="text-lg font-semibold text-text-primary">Token and Time Usage</h2>
+            <p className="mt-1 text-sm text-text-muted">
+              Resource usage for TSD ingestion and preparation before review execution.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[240px_minmax(0,1fr)]">
+            {preparationDurationLabel && (
+              <Card>
+                <p className="text-sm font-semibold text-text-primary">Preparation Duration</p>
+                <p className="mt-1 text-xs text-text-muted">End-to-end TSD ingestion and indexing time</p>
+                <div className="mt-4 text-2xl font-bold text-text-primary">{preparationDurationLabel}</div>
+              </Card>
+            )}
+            {preparationLlmUsage && (
+              <LlmUsageCard title="TSD Ingestion LLM Usage" usage={preparationLlmUsage} />
+            )}
+          </div>
+        </div>
+      )}
 
       <CreateReviewModal
         open={showReviewModal}

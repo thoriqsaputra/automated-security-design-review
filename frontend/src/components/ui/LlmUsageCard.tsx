@@ -47,7 +47,7 @@ export default function LlmUsageCard({ title = 'LLM Usage', usage }: LlmUsageCar
     { label: 'Prompt Tokens', value: formatCount(usage.prompt_tokens) },
     { label: 'Completion Tokens', value: formatCount(usage.completion_tokens) },
     { label: 'Total Tokens', value: formatCount(usage.total_tokens) },
-    { label: 'LLM Time', value: formatDuration(durationSeconds) },
+    { label: 'Cumulative LLM Call Time', value: formatDuration(durationSeconds) },
   ];
 
   return (

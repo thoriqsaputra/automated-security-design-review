@@ -323,7 +323,6 @@ class RetrievalService:
                 progress_callback(
                     {
                         "status": "failed",
-                        "progress_percent": 100,
                         "current_step": "RAPTOR index failed",
                     }
                 )

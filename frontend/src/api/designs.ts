@@ -19,6 +19,10 @@ export interface Design {
   active_preparation_id: number | null;
   preparation_snapshot_json: RetrievalVisualization | null;
   preparation_progress: Record<string, unknown> | null;
+  preparation_stats_json: Record<string, unknown> | null;
+  preparation_started_at: string | null;
+  preparation_completed_at: string | null;
+  preparation_duration_seconds: number | null;
   can_start_analysis: boolean;
 }
 
