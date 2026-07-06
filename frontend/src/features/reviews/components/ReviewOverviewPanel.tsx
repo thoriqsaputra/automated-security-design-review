@@ -1,7 +1,8 @@
 import { XCircle } from 'lucide-react';
 import type { Review } from '../../../api/reviews';
 import Card from '../../../components/ui/Card';
-import { formatAnalysisModeLabel, normalizeAnalysisMode } from '../utils/reviewPresentation';
+import LlmUsageCard from '../../../components/ui/LlmUsageCard';
+import { formatAnalysisModeLabel, isRecord, normalizeAnalysisMode } from '../utils/reviewPresentation';
 
 interface ReviewOverviewPanelProps {
   review: Review;
@@ -25,6 +26,11 @@ export default function ReviewOverviewPanel({ review, findingCount }: ReviewOver
           </Card>
         ))}
       </div>
+
+      <LlmUsageCard
+        title="LLM Usage (Review)"
+        usage={isRecord(review.summary_json.llm_usage) ? review.summary_json.llm_usage : null}
+      />
 
       {review.overview && (
         <Card>

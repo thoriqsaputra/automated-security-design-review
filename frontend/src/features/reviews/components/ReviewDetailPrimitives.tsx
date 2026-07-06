@@ -6,6 +6,7 @@ import {
   formatValue,
   isPresent,
   isRecord,
+  metStatusIcons,
   stringList,
 } from '../utils/reviewPresentation';
 import type { DetailItem } from '../utils/reviewPresentation';
@@ -203,6 +204,84 @@ export function SeverityAnalysisSection({ analysis }: { analysis: Record<string,
   );
 }
 
+interface ParsedAssessedRequirement {
+  ordinal: string | null;
+  stableKey: string | null;
+  primaryText: string;
+  secondaryText: string;
+  verdict: string;
+}
+
+// A diagram finding is evaluated against a whole checklist of requirements in
+// one pass. Depending on which code path produced it, an item's
+// requirement_id comes back either as a bare stable key (with the actual
+// observation in "summary"/"reasoning"), or as a compound "N. [stable_key]
+// full requirement text" line the vision model echoed back verbatim. Handle
+// both so each requirement renders as its own clean row instead of one giant
+// concatenated paragraph.
+function parseAssessedRequirements(metadata: JsonRecord | null): ParsedAssessedRequirement[] {
+  const raw = metadata?.assessed_requirements;
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw
+    .filter(isRecord)
+    .map((item) => {
+      const rawId = String(item.requirement_id || '').trim();
+      const match = rawId.match(/^(\d+)\.\s*\[([^\]]+)\]\s*(.*)$/s);
+      const ordinal = match ? match[1] : null;
+      const stableKey = match ? match[2] : rawId || null;
+      const embeddedText = match ? match[3].trim() : '';
+      const summary = String(item.summary || item.reasoning || '').trim();
+      const primaryText = embeddedText || summary;
+      const secondaryText = embeddedText && summary && summary !== embeddedText ? summary : '';
+      const verdict = String(item.verdict || '').trim().toLowerCase();
+      return { ordinal, stableKey, primaryText, secondaryText, verdict };
+    })
+    .filter((item) => item.primaryText);
+}
+
+export function DiagramAssessedRequirementsList({ metadata }: { metadata: JsonRecord | null }) {
+  const items = parseAssessedRequirements(metadata);
+  if (items.length === 0) {
+    return null;
+  }
+
+  return (
+    <section>
+      <p className="text-xs font-semibold text-text-muted uppercase tracking-wider mb-2">
+        Assessed Diagram Requirements ({items.length})
+      </p>
+      <div className="space-y-2">
+        {items.map((item, index) => (
+          <div
+            key={item.stableKey || index}
+            className="rounded-lg border border-surface-border bg-midnight/30 p-3"
+          >
+            <div className="flex items-start gap-2">
+              <span className="mt-0.5 shrink-0" title={item.verdict || 'unknown'}>
+                {metStatusIcons[item.verdict] || metStatusIcons.na}
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="text-sm text-text-primary">
+                  {item.ordinal && <span className="text-text-muted mr-1">{item.ordinal}.</span>}
+                  {item.primaryText}
+                </p>
+                {item.secondaryText && (
+                  <p className="mt-1 text-xs text-text-secondary leading-relaxed">{item.secondaryText}</p>
+                )}
+              </div>
+              <span className="shrink-0 rounded-full border border-surface-border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+                {formatLabel(item.verdict || 'unknown')}
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 interface FindingDetailsProps {
   finding: Finding;
   activeCitationId?: number | null;
@@ -259,16 +338,20 @@ export function FindingDetails({ finding, activeCitationId = null, onCitationSel
             { label: 'Child Ordinal', value: finding.child_parameter_ordinal },
           ]}
         />
-        <TextBlock title="Requirement Text">
-          {finding.requirement_text && (
-            <span className="italic">
-              {finding.requirement_reference && (
-                <span className="font-semibold text-text-primary mr-2">[{finding.requirement_reference}]</span>
-              )}
-              {finding.requirement_text}
-            </span>
-          )}
-        </TextBlock>
+        {finding.finding_type === 'diagram' ? (
+          <DiagramAssessedRequirementsList metadata={finding.requirement_metadata} />
+        ) : (
+          <TextBlock title="Requirement Text">
+            {finding.requirement_text && (
+              <span className="italic">
+                {finding.requirement_reference && (
+                  <span className="font-semibold text-text-primary mr-2">[{finding.requirement_reference}]</span>
+                )}
+                {finding.requirement_text}
+              </span>
+            )}
+          </TextBlock>
+        )}
       </section>
 
       <SeverityAnalysisSection analysis={finding.severity_analysis} />
@@ -355,7 +438,6 @@ export function FindingDetails({ finding, activeCitationId = null, onCitationSel
         <section className="space-y-2 rounded-xl border border-surface-border bg-surface-base/50 p-4">
           <div className="flex items-center justify-between gap-3">
             <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Evidence Citations</p>
-            <p className="text-[11px] text-text-muted">Click a citation to jump the PDF viewer.</p>
           </div>
           <div className="space-y-2">
             {visibleCitations.map((citation) => {
@@ -384,7 +466,7 @@ export function FindingDetails({ finding, activeCitationId = null, onCitationSel
                       "{citation.quoted_text}"
                     </p>
                   )}
-                  <FieldGrid
+                  {/* <FieldGrid
                     items={[
                       { label: 'X0', value: typeof citation.bbox_x0 === 'number' ? citation.bbox_x0.toFixed(2) : citation.bbox_x0 },
                       { label: 'Y0', value: typeof citation.bbox_y0 === 'number' ? citation.bbox_y0.toFixed(2) : citation.bbox_y0 },
@@ -392,7 +474,7 @@ export function FindingDetails({ finding, activeCitationId = null, onCitationSel
                       { label: 'Y1', value: typeof citation.bbox_y1 === 'number' ? citation.bbox_y1.toFixed(2) : citation.bbox_y1 },
                       { label: 'Created At', value: new Date(citation.created_at).toLocaleString() },
                     ]}
-                  />
+                  /> */}
                 </button>
               );
             })}

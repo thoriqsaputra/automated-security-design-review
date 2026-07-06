@@ -77,13 +77,11 @@ export default function StandardsHub() {
                 </div>
                 <div>
                   <h3 className="text-base font-semibold text-text-primary">{cat.name}</h3>
-                  <p className="text-xs text-text-muted">{cat.code}</p>
+                  {cat.description && (
+                    <p className="text-xs text-text-muted line-clamp-3">{cat.description}</p>
+                  )}
                 </div>
               </div>
-
-              {cat.description && (
-                <p className="text-xs text-text-muted mb-4 line-clamp-2">{cat.description}</p>
-              )}
 
               <div className="grid grid-cols-2 gap-3">
                 <div className="bg-midnight rounded-lg p-3">

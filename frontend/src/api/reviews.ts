@@ -135,6 +135,8 @@ export interface Review {
 export type DebateAgent = 'hunter' | 'critic' | 'mediator' | 'system';
 export type DebateStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type DebateExecutionMode = 'single' | 'batch' | 'fallback';
+export type DebateFindingType = 'requirement' | 'diagram';
+export type CriticOutcome = 'UPHOLD' | 'OVERTURN' | 'PARTIAL';
 
 export interface DebateTranscriptMessage {
   message_id: string;
@@ -145,11 +147,15 @@ export interface DebateTranscriptMessage {
   started_at: string | null;
   completed_at: string | null;
   updated_at: string | null;
+  critic_outcome?: CriticOutcome | null;
+  requires_rebuttal?: boolean | null;
 }
 
 export interface DebateStreamState {
   debate_id: string;
+  finding_type: DebateFindingType;
   parameter_id: number | null;
+  diagram_id: string | null;
   requirement_reference: string | null;
   requirement_text: string | null;
   section_title: string | null;
@@ -162,6 +168,8 @@ export interface DebateStreamState {
   updated_at: string | null;
   finding_id: number | null;
   transcript: DebateTranscriptMessage[];
+  critic_outcome?: CriticOutcome | null;
+  requires_rebuttal?: boolean | null;
 }
 
 export interface DebateSnapshotPayload {

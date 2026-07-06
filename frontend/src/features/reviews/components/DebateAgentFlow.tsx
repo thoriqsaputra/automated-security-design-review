@@ -65,7 +65,7 @@ export default function DebateAgentFlow({ debate, selectedAgent, onSelectAgent }
       {
         id: 'requirement',
         position: { x: 0, y: 60 },
-        data: { label: 'Requirement' },
+        data: { label: debate.finding_type === 'diagram' ? 'Diagram' : 'Requirement' },
         sourcePosition: Position.Right,
         targetPosition: Position.Left,
         selectable: false,

@@ -104,7 +104,6 @@ export default function CategoryDetail() {
         totalJobsPages={totalJobsPages}
         jobsPage={jobsPage}
         onJobsPageChange={setJobsPage}
-        parameters={parameters}
         onActivate={(jobId) => void handleActivate(jobId)}
         onDelete={(jobId) => void handleDeleteJob(jobId)}
         onCancel={(jobId) => void handleCancelJob(jobId)}

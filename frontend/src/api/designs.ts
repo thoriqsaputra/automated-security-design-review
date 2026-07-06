@@ -47,3 +47,6 @@ export const deleteDesign = (id: number) => api.delete(`/designs/${id}`);
 
 export const retryDesignPreparation = (id: number) =>
   api.post<DesignDetail>(`/designs/${id}/prepare`);
+
+export const cancelDesignPreparation = (id: number) =>
+  api.post<DesignDetail>(`/designs/${id}/cancel-preparation`);

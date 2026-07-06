@@ -1,8 +1,29 @@
 import { Ban, Trash2, Zap } from 'lucide-react';
-import type { IngestionJob, ParameterParent } from '../../../api/standards';
+import type { IngestionJob } from '../../../api/standards';
 import Card from '../../../components/ui/Card';
 import PaginationControls from '../../../components/ui/PaginationControls';
 import StatusBadge from '../../../components/ui/StatusBadge';
+
+function formatJobLlmUsage(summaryJson: Record<string, unknown>): string | null {
+  const usage = summaryJson.llm_usage;
+  if (!usage || typeof usage !== 'object') {
+    return null;
+  }
+  const record = usage as Record<string, unknown>;
+  const callCount = Number(record.call_count) || 0;
+  if (callCount === 0) {
+    return null;
+  }
+  const totalTokens = Number(record.total_tokens) || 0;
+  const jobDurationSeconds = Number(summaryJson.job_duration_seconds);
+  const durationSeconds = Number.isFinite(jobDurationSeconds) && jobDurationSeconds > 0
+    ? jobDurationSeconds
+    : Number(record.duration_seconds) || 0;
+  const minutes = Math.floor(durationSeconds / 60);
+  const seconds = Math.round(durationSeconds % 60);
+  const durationLabel = minutes > 0 ? `${minutes}m ${seconds}s` : `${seconds}s`;
+  return `${totalTokens.toLocaleString()} tokens · ${durationLabel}`;
+}
 
 interface CategoryJobsSectionProps {
   jobs: IngestionJob[];
@@ -10,7 +31,6 @@ interface CategoryJobsSectionProps {
   totalJobsPages: number;
   jobsPage: number;
   onJobsPageChange: (page: number) => void;
-  parameters: ParameterParent[];
   onActivate: (jobId: number) => void;
   onDelete: (jobId: number) => void;
   onCancel: (jobId: number) => void;
@@ -22,7 +42,6 @@ export default function CategoryJobsSection({
   totalJobsPages,
   jobsPage,
   onJobsPageChange,
-  parameters,
   onActivate,
   onDelete,
   onCancel,
@@ -57,12 +76,13 @@ export default function CategoryJobsSection({
                       {job.status === 'completed' && (
                         <>
                           {' · '}
-                          {job.is_active
-                            ? `${parameters.reduce((sum, parent) => sum + parent.children.length, 0)} params`
-                            : `${Number((job.summary_json as { inserted?: number }).inserted || 0)} params`}
+                          {Number((job.summary_json as { inserted?: number }).inserted || 0)} params
                         </>
                       )}
                     </p>
+                    {formatJobLlmUsage(job.summary_json) && (
+                      <p className="mt-0.5 text-text-muted">{formatJobLlmUsage(job.summary_json)}</p>
+                    )}
                   </div>
                   <div className="flex justify-between mt-3">
                     <div className="flex items-center gap-3">

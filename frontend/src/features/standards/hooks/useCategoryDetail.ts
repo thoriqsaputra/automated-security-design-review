@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   activateIngestionJob,
@@ -48,6 +48,15 @@ export function useCategoryDetail(code?: string) {
 
   const jobsPerPage = 3;
 
+  // Tracks which job's parameters are currently loaded into `parameters`, so
+  // the polling loop can tell when the backend has auto-activated a DIFFERENT
+  // job (on ingestion completion, with no explicit user action) and knows it
+  // needs to refetch — otherwise the parameter tree silently goes stale.
+  const activeJobIdRef = useRef<number | null>(null);
+
+  const findActiveJobId = (jobList: IngestionJob[]): number | null =>
+    jobList.find((job) => job.is_active)?.id ?? null;
+
   const [prevCode, setPrevCode] = useState(code);
   if (code !== prevCode) {
     setPrevCode(code);
@@ -82,6 +91,7 @@ export function useCategoryDetail(code?: string) {
       setParameters(data.parameters);
       setDiagramRequirements(data.diagram_requirements);
       setJobs(data.jobs);
+      activeJobIdRef.current = findActiveJobId(data.jobs);
       setFeedback(null);
     } catch (error) {
       setFeedback(error instanceof Error ? error.message : 'Failed to load category details.');
@@ -96,6 +106,24 @@ export function useCategoryDetail(code?: string) {
     }
     const response = await listIngestionJobs(code);
     setJobs(response.data);
+
+    // The backend auto-activates a job on successful completion with no
+    // explicit "Activate" click — if that just happened, the parameter tree
+    // (and diagram requirements) for the newly-active job haven't been
+    // fetched yet. Refresh them the moment the poll notices the active job
+    // changed, instead of waiting for a user action or a page reload.
+    const newActiveJobId = findActiveJobId(response.data);
+    if (newActiveJobId !== activeJobIdRef.current) {
+      activeJobIdRef.current = newActiveJobId;
+      try {
+        const data = await fetchCategoryData(code);
+        setCategory(data.category);
+        setParameters(data.parameters);
+        setDiagramRequirements(data.diagram_requirements);
+      } catch (error) {
+        setFeedback(error instanceof Error ? error.message : 'Failed to refresh updated parameters.');
+      }
+    }
   };
 
   useEffect(() => {
@@ -109,6 +137,7 @@ export function useCategoryDetail(code?: string) {
         setParameters(data.parameters);
         setDiagramRequirements(data.diagram_requirements);
         setJobs(data.jobs);
+        activeJobIdRef.current = findActiveJobId(data.jobs);
         setFeedback(null);
         setLoading(false);
       })
@@ -135,8 +164,12 @@ export function useCategoryDetail(code?: string) {
     setDiagramParamsPage(1);
   }
 
+  const hasRunningJob = useMemo(
+    () => jobs.some((job) => job.status === 'running' || job.status === 'pending'),
+    [jobs],
+  );
+
   useEffect(() => {
-    const hasRunningJob = jobs.some((job) => job.status === 'running' || job.status === 'pending');
     if (!hasRunningJob) {
       return;
     }
@@ -146,7 +179,11 @@ export function useCategoryDetail(code?: string) {
     }, 3000);
 
     return () => clearInterval(interval);
-  }, [jobs, code]);
+    // hasRunningJob is a derived boolean primitive, not the `jobs` array
+    // itself, so this interval is only torn down/recreated when the
+    // running/pending set actually flips — not on every 3s poll tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasRunningJob, code]);
 
   const commitSearch = () => {
     setParamsPage(1);

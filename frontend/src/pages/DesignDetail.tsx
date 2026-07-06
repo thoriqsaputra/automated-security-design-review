@@ -6,7 +6,7 @@ import LoadingSpinner from '../components/ui/LoadingSpinner';
 import Card from '../components/ui/Card';
 import StatusBadge from '../components/ui/StatusBadge';
 import RaptorTreeView from '../components/flow/RaptorTreeView';
-import { getDesign, retryDesignPreparation, type DesignDetail } from '../api/designs';
+import { getDesign, retryDesignPreparation, cancelDesignPreparation, type DesignDetail } from '../api/designs';
 import { listCategories, type StandardCategory } from '../api/standards';
 import {
   createReview,
@@ -71,6 +71,7 @@ export default function DesignDetailPage() {
   const [analysisMode, setAnalysisMode] = useState<ReviewAnalysisMode>('default');
   const [creating, setCreating] = useState(false);
   const [retryingPreparation, setRetryingPreparation] = useState(false);
+  const [cancellingPreparation, setCancellingPreparation] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [reviewSearch, setReviewSearch] = useState('');
   const [activeTab, setActiveTab] = useState<'prepared_retrieval' | 'review_details'>('review_details');
@@ -133,6 +134,18 @@ export default function DesignDetailPage() {
       setRetryingPreparation(false);
     }
   };
+
+  const handleCancelPreparation = async () => {
+    if (!id) return;
+    setCancellingPreparation(true);
+    try {
+      await cancelDesignPreparation(Number(id));
+      await load();
+    } finally {
+      setCancellingPreparation(false);
+    }
+  };
+
 
   const requestedReviewId = searchParams.get('reviewId');
 
@@ -285,43 +298,9 @@ export default function DesignDetailPage() {
         </div>
       </div>
 
-      <Card>
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold text-text-primary">Preparation Status</p>
-            <p className="text-sm text-text-muted">
-              {design.preparation_status === 'ready'
-                ? 'The uploaded TSD has been parsed and indexed. You can start a new analysis immediately.'
-                : design.preparation_status === 'failed'
-                  ? 'Preparation failed before debate could start.'
-                  : design.preparation_status === 'stale'
-                    ? 'The uploaded file changed and the preparation needs to be rebuilt.'
-                    : 'The uploaded TSD is being prepared for retrieval and debate.'}
-            </p>
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            {(design.preparation_status === 'failed' || design.preparation_status === 'stale') && (
-              <button
-                onClick={() => void handleRetryPreparation()}
-                disabled={retryingPreparation}
-                className="rounded-xl border border-surface-border px-4 py-2 text-sm font-semibold text-text-primary transition-colors hover:border-burgundy disabled:opacity-40"
-              >
-                {retryingPreparation ? 'Retrying...' : 'Retry Preparation'}
-              </button>
-            )}
-            <button
-              onClick={() => setShowReviewModal(true)}
-              disabled={!design.can_start_analysis || creating || hasRunningReview}
-              title={hasRunningReview ? "Cannot start a new analysis while a review is running" : undefined}
-              className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-crimson to-flame px-4 py-2.5 text-sm font-semibold text-white transition-all hover:shadow-lg hover:shadow-crimson/30 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              <Play size={16} />
-              Start TSD Analysis
-            </button>
-          </div>
-        </div>
+      <Card className="overflow-visible flex flex-col gap-4">
         {['queued', 'running'].includes(design.preparation_status) && preparationProgress && (
-          <div className="mt-4 space-y-3">
+          <div className="space-y-3">
             <div>
               <div className="mb-1 flex items-center justify-between text-xs text-text-muted">
                 <span>{preparationCurrentStep || 'Preparing TSD for retrieval and debate'}</span>
@@ -334,29 +313,12 @@ export default function DesignDetailPage() {
                 />
               </div>
             </div>
-            <div className="grid gap-2 md:grid-cols-2">
-              {raptorProgress && (
-                <div className="rounded-xl border border-surface-border bg-surface-base px-3 py-2">
-                  <div className="mb-1 flex items-center justify-between text-xs text-text-muted">
-                    <span>RAPTOR</span>
-                    <span>{raptorProgress.progressPercent}%</span>
-                  </div>
-                  <div className="h-1.5 rounded-full bg-surface-border overflow-hidden">
-                    <div
-                      className="h-full bg-flame transition-all duration-500 ease-out"
-                      style={{ width: `${Math.max(4, raptorProgress.progressPercent)}%` }}
-                    />
-                  </div>
-                  <p className="mt-1 text-xs text-text-muted">{raptorProgress.label}</p>
-                </div>
-              )}
-            </div>
+
           </div>
         )}
-      </Card>
 
-      <Card className="overflow-visible">
-        <div className={`flex flex-col gap-4 ${hasControls ? 'lg:flex-row lg:items-start lg:justify-between' : ''}`}>
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+          <div className={`flex w-full flex-col gap-4 ${hasControls ? 'lg:flex-row lg:items-start lg:mr-4' : 'mr-4'}`}>
           {hasControls && (
             <div>
               {selectedReview && ['pending', 'cancelled', 'failed'].includes(selectedReviewState.review?.status || '') ? (
@@ -511,7 +473,38 @@ export default function DesignDetailPage() {
             )}
           </div>
         </div>
-      </Card>
+
+        <div className="flex shrink-0 items-center justify-end gap-3">
+          {['queued', 'running'].includes(design.preparation_status) && (
+            <button
+              onClick={() => void handleCancelPreparation()}
+              disabled={cancellingPreparation}
+              className="rounded-xl border border-crimson/50 bg-surface-base px-4 py-2.5 text-sm font-semibold text-crimson transition-colors hover:bg-crimson/10 disabled:opacity-40"
+            >
+              {cancellingPreparation ? 'Cancelling...' : 'Cancel Preparation'}
+            </button>
+          )}
+          {(design.preparation_status === 'failed' || design.preparation_status === 'stale' || design.preparation_status === 'cancelled') && (
+            <button
+              onClick={() => void handleRetryPreparation()}
+              disabled={retryingPreparation}
+              className="rounded-xl border border-surface-border px-4 py-2 text-sm font-semibold text-text-primary transition-colors hover:border-burgundy disabled:opacity-40"
+            >
+              {retryingPreparation ? 'Retrying...' : 'Retry Preparation'}
+            </button>
+          )}
+          <button
+            onClick={() => setShowReviewModal(true)}
+            disabled={!design.can_start_analysis || creating || hasRunningReview}
+            title={hasRunningReview ? "Cannot start a new analysis while a review is running" : undefined}
+            className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-crimson to-flame px-4 py-2.5 text-sm font-semibold text-white transition-all hover:shadow-lg hover:shadow-crimson/30 disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            <Play size={16} />
+            Start TSD Analysis
+          </button>
+        </div>
+      </div>
+    </Card>
 
       <div className="no-scrollbar mb-6 flex gap-6 overflow-x-auto border-b border-surface-border px-2">
         {design.preparation_status === 'ready' && preparationSnapshot && (

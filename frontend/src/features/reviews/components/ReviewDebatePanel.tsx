@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { ChevronLeft, ChevronRight, ListFilter } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Filter, ListFilter } from 'lucide-react';
 import type { ReviewAnalysisMode } from '../../../api/reviews';
 import Card from '../../../components/ui/Card';
 import Modal from '../../../components/ui/Modal';
@@ -8,6 +8,17 @@ import { isPresent } from '../utils/reviewPresentation';
 import ActiveDebateCard from './ActiveDebateCard';
 import DebateLiveStream from './DebateLiveStream';
 import DebateStatusBadge from './DebateStatusBadge';
+
+type FindingTypeFilter = 'all' | 'requirement' | 'diagram';
+type CriticStatusFilter = 'all' | 'needs_rebuttal' | 'upheld';
+
+const selectArrowStyle = {
+  backgroundImage:
+    "url(\"data:image/svg+xml;charset=UTF-8,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3e%3cpolyline points='6 9 12 15 18 9'%3e%3c/polyline%3e%3c/svg%3e\")",
+  backgroundRepeat: 'no-repeat',
+  backgroundPosition: 'right 0.25rem center',
+  backgroundSize: '1em',
+} as const;
 
 interface ReviewDebatePanelProps {
   reviewId: number;
@@ -25,7 +36,6 @@ export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
   const {
     reviewId,
     reviewStatus,
-    analysisMode,
     debatedTotal,
     debatedProcessed,
     debatedRemaining,
@@ -33,35 +43,54 @@ export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
     persistenceProcessed,
     persistenceRemaining,
   } = props;
-  const { debates, connected, streamError, errorMessage } = useReviewDebateStream(reviewId, reviewStatus, analysisMode);
+  const { debates, connected, streamError, errorMessage } = useReviewDebateStream(reviewId, reviewStatus);
   const [selectedDebateId, setSelectedDebateId] = useState<string | null>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
+  const [findingTypeFilter, setFindingTypeFilter] = useState<FindingTypeFilter>('all');
+  const [criticStatusFilter, setCriticStatusFilter] = useState<CriticStatusFilter>('all');
+
+  const filteredDebates = useMemo(
+    () =>
+      debates.filter((debate) => {
+        if (findingTypeFilter !== 'all' && debate.finding_type !== findingTypeFilter) {
+          return false;
+        }
+        if (criticStatusFilter === 'needs_rebuttal' && !debate.requires_rebuttal) {
+          return false;
+        }
+        if (criticStatusFilter === 'upheld' && (debate.requires_rebuttal || !debate.critic_outcome)) {
+          return false;
+        }
+        return true;
+      }),
+    [debates, findingTypeFilter, criticStatusFilter],
+  );
 
   useEffect(() => {
-    if (!debates.length) {
+    if (!filteredDebates.length) {
       setSelectedDebateId(null);
       return;
     }
-    const stillExists = selectedDebateId && debates.some((debate) => debate.debate_id === selectedDebateId);
+    const stillExists = selectedDebateId && filteredDebates.some((debate) => debate.debate_id === selectedDebateId);
     if (stillExists) {
       return;
     }
-    setSelectedDebateId(debates[0].debate_id);
-  }, [debates, selectedDebateId]);
+    setSelectedDebateId(filteredDebates[0].debate_id);
+  }, [filteredDebates, selectedDebateId]);
 
   const selectedDebate = useMemo(
-    () => debates.find((debate) => debate.debate_id === selectedDebateId) || null,
-    [debates, selectedDebateId],
+    () => filteredDebates.find((debate) => debate.debate_id === selectedDebateId) || null,
+    [filteredDebates, selectedDebateId],
   );
 
-  const selectedIndex = selectedDebate ? debates.findIndex((debate) => debate.debate_id === selectedDebateId) : -1;
+  const selectedIndex = selectedDebate ? filteredDebates.findIndex((debate) => debate.debate_id === selectedDebateId) : -1;
 
   const stepDebate = (offset: number) => {
-    if (!debates.length || selectedIndex === -1) {
+    if (!filteredDebates.length || selectedIndex === -1) {
       return;
     }
-    const nextIndex = (selectedIndex + offset + debates.length) % debates.length;
-    setSelectedDebateId(debates[nextIndex].debate_id);
+    const nextIndex = (selectedIndex + offset + filteredDebates.length) % filteredDebates.length;
+    setSelectedDebateId(filteredDebates[nextIndex].debate_id);
   };
 
   const showSummary =
@@ -71,18 +100,6 @@ export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
     || isPresent(persistenceTotal)
     || isPresent(persistenceProcessed)
     || isPresent(persistenceRemaining);
-
-  if (analysisMode === 'diagram_only') {
-    return (
-      <div className="space-y-6 animate-fade-in">
-        <Card>
-          <p className="text-sm text-text-muted">
-            Live debate monitoring is currently available only for text-based requirements.
-          </p>
-        </Card>
-      </div>
-    );
-  }
 
   return (
     <div className="space-y-6 animate-fade-in">
@@ -132,14 +149,59 @@ export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
         </Card>
       )}
 
-      {debates.length ? (
+      {debates.length > 0 && (
+        <Card>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-1.5 rounded-lg border border-surface-border bg-midnight px-1 py-1">
+              <Filter size={14} className="ml-2 text-text-muted" />
+              <select
+                value={findingTypeFilter}
+                onChange={(event) => setFindingTypeFilter(event.target.value as FindingTypeFilter)}
+                className="cursor-pointer appearance-none bg-transparent py-1 pr-6 text-sm text-text-primary focus:outline-none"
+                style={selectArrowStyle}
+              >
+                <option value="all">Type: All</option>
+                <option value="requirement">Type: Requirement</option>
+                <option value="diagram">Type: Diagram</option>
+              </select>
+            </div>
+            <div className="flex items-center gap-1.5 rounded-lg border border-surface-border bg-midnight px-1 py-1">
+              <Filter size={14} className="ml-2 text-text-muted" />
+              <select
+                value={criticStatusFilter}
+                onChange={(event) => setCriticStatusFilter(event.target.value as CriticStatusFilter)}
+                className="cursor-pointer appearance-none bg-transparent py-1 pr-6 text-sm text-text-primary focus:outline-none"
+                style={selectArrowStyle}
+              >
+                <option value="all">Critic: All</option>
+                <option value="needs_rebuttal">Critic: Needs rebuttal</option>
+                <option value="upheld">Critic: Upheld</option>
+              </select>
+            </div>
+            {(findingTypeFilter !== 'all' || criticStatusFilter !== 'all') && (
+              <button
+                type="button"
+                onClick={() => {
+                  setFindingTypeFilter('all');
+                  setCriticStatusFilter('all');
+                }}
+                className="text-xs font-semibold text-text-muted transition-colors hover:text-text-primary"
+              >
+                Clear filters
+              </button>
+            )}
+          </div>
+        </Card>
+      )}
+
+      {filteredDebates.length ? (
         <Card>
           <div className="flex flex-wrap items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <button
                 type="button"
                 onClick={() => stepDebate(-1)}
-                disabled={debates.length < 2}
+                disabled={filteredDebates.length < 2}
                 className="rounded-full border border-surface-border p-1.5 text-text-muted transition-colors hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Previous debate"
               >
@@ -161,7 +223,7 @@ export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
               <button
                 type="button"
                 onClick={() => stepDebate(1)}
-                disabled={debates.length < 2}
+                disabled={filteredDebates.length < 2}
                 className="rounded-full border border-surface-border p-1.5 text-text-muted transition-colors hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-40"
                 aria-label="Next debate"
               >
@@ -176,7 +238,7 @@ export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
               <ListFilter size={14} />
               Switch debate
               {selectedIndex !== -1 && (
-                <span className="text-text-muted">{selectedIndex + 1} of {debates.length}</span>
+                <span className="text-text-muted">{selectedIndex + 1} of {filteredDebates.length}</span>
               )}
             </button>
           </div>
@@ -184,7 +246,9 @@ export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
       ) : (
         <Card>
           <p className="text-sm text-text-muted">
-            No debate events have been emitted yet. Once text-requirement analysis starts, active debates will appear here.
+            {debates.length
+              ? 'No debates match the current filters.'
+              : 'No debate events have been emitted yet. Once requirement or diagram analysis starts, active debates will appear here.'}
           </p>
         </Card>
       )}
@@ -193,7 +257,7 @@ export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
 
       <Modal open={isPickerOpen} onClose={() => setIsPickerOpen(false)} title="Switch debate">
         <div className="max-h-[70vh] space-y-3 overflow-y-auto">
-          {debates.map((debate) => (
+          {filteredDebates.map((debate) => (
             <ActiveDebateCard
               key={debate.debate_id}
               debate={debate}

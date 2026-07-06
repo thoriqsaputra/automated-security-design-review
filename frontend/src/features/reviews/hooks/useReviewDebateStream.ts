@@ -4,7 +4,6 @@ import {
   type DebateSnapshotPayload,
   type DebateStreamState,
   type DebateUpdatePayload,
-  type ReviewAnalysisMode,
 } from '../../../api/reviews';
 
 interface DebateStreamStateShape {
@@ -122,7 +121,6 @@ function reducer(state: DebateStreamStateShape, action: Action): DebateStreamSta
 export function useReviewDebateStream(
   reviewId: number | null,
   reviewStatus: string | null,
-  analysisMode: ReviewAnalysisMode,
 ) {
   const [state, dispatch] = useReducer(reducer, initialState);
   const queueRef = useRef<DebateUpdatePayload[]>([]);
@@ -130,7 +128,7 @@ export function useReviewDebateStream(
   const [streamError, setStreamError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!reviewId || analysisMode === 'diagram_only') {
+    if (!reviewId) {
       dispatch({ type: 'snapshot', payload: { review_id: reviewId || 0, review_status: reviewStatus, updated_at: null, last_event_id: null, debates: [] } });
       return undefined;
     }
@@ -182,7 +180,7 @@ export function useReviewDebateStream(
       }
       queueRef.current = [];
     };
-  }, [analysisMode, reviewId, reviewStatus]);
+  }, [reviewId, reviewStatus]);
 
   const debates = useMemo(
     () => Object.values(state.debatesById).sort(sortDebates),

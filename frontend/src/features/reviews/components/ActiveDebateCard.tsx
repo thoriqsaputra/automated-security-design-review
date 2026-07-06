@@ -27,9 +27,17 @@ export default function ActiveDebateCard({ debate, selected, onSelect }: ActiveD
         <DebateStatusBadge status={debate.status} />
       </div>
 
-      <div className="mt-4 flex items-center gap-2 text-xs uppercase tracking-[0.18em] text-text-secondary">
+      <div className="mt-4 flex flex-wrap items-center gap-2 text-xs uppercase tracking-[0.18em] text-text-secondary">
+        <span className="rounded-full border border-surface-border px-2 py-0.5 text-[10px]">
+          {debate.finding_type === 'diagram' ? 'Diagram' : 'Requirement'}
+        </span>
         <span>{debate.execution_mode}</span>
         {debate.active_agent && <span>· {debate.active_agent}</span>}
+        {debate.requires_rebuttal && (
+          <span className="rounded-full border border-flame/30 bg-flame/10 px-2 py-0.5 text-[10px] text-flame">
+            Needs rebuttal
+          </span>
+        )}
       </div>
 
       <div className="mt-4 h-2 overflow-hidden rounded-full bg-midnight/60">

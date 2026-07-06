@@ -104,10 +104,12 @@ export default function DesignsList() {
                   </div>
                   <div>
                     <p className="text-sm font-medium text-text-primary">{d.name}</p>
-                    <p className="text-xs text-text-muted">{new Date(d.created_at).toLocaleDateString()}</p>
-                    <p className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${getPreparationTone(d.preparation_status)}`}>
-                      {d.preparation_status === 'ready' ? 'Ready for analysis' : `Preparation ${d.preparation_status}`}
-                    </p>
+                    <div className="flex items-center gap-2">
+                      <p className="text-xs text-text-muted">{new Date(d.created_at).toLocaleDateString()}</p>
+                      <p className={`mt-1 inline-flex rounded-full border px-2 py-0.5 text-[11px] font-medium uppercase tracking-wide ${getPreparationTone(d.preparation_status)}`}>
+                        {d.preparation_status === 'ready' ? 'Ready for analysis' : `Preparation ${d.preparation_status}`}
+                      </p>
+                    </div>
                     {['queued', 'running'].includes(d.preparation_status) &&
                       d.preparation_progress &&
                       typeof d.preparation_progress === 'object' &&
