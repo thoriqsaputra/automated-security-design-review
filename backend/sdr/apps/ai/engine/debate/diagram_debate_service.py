@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, List, Optional
+from typing import Any, Callable, List, Optional
 
 from sdr.core.config import settings
 from sdr.apps.ai.agents.vision import (
@@ -43,6 +43,9 @@ class DiagramDebateService:
         requirements: List[Any],
         tsd_context: str = "",
         cancel_check=None,
+        apply_markers: bool = True,
+        agent_started_handler: Optional[Callable[[str], None]] = None,
+        agent_completed_handler: Optional[Callable[..., None]] = None,
     ) -> DiagramDebateOutput:
         output = DiagramDebateOutput(
             diagram=diagram,
@@ -88,10 +91,11 @@ class DiagramDebateService:
             return output
 
         # Apply visual markers (Set-of-Mark) for better LLM grounding
-        image_bytes = apply_visual_markers(image_bytes)
-        
-        # Update the diagram object so the frontend gets the marked image
-        diagram.image_b64 = base64.b64encode(image_bytes).decode("utf-8")
+        if apply_markers:
+            image_bytes = apply_visual_markers(image_bytes)
+
+            # Update the diagram object so the frontend gets the marked image
+            diagram.image_b64 = base64.b64encode(image_bytes).decode("utf-8")
 
         compact_reqs = _format_requirements_compact(requirements)
         detailed_reqs = _format_requirements_with_hints(requirements)
@@ -105,6 +109,8 @@ class DiagramDebateService:
             diagram.diagram_id,
             len(requirements),
         )
+        if agent_started_handler:
+            agent_started_handler("hunter")
         hunter_prompt = build_vision_hunter_prompt(
             requirements_text=compact_reqs,
             diagram_caption=caption,
@@ -145,11 +151,15 @@ class DiagramDebateService:
             hunter_result.get("diagram_scope_verdict")
         )
         output.hunter_result = hunter_result
+        if agent_completed_handler:
+            agent_completed_handler("hunter", self._reasoning_content(hunter_result))
 
         self.logger.info(
             "DiagramDebateService: VisionCritic diagram_id=%s",
             diagram.diagram_id,
         )
+        if agent_started_handler:
+            agent_started_handler("critic")
         critic_prompt = build_vision_critic_debate_prompt(
             requirements_with_hints=detailed_reqs,
             hunter_result=hunter_result,
@@ -197,12 +207,25 @@ class DiagramDebateService:
             critic_result.get("diagram_scope_verdict")
         )
         output.critic_result = critic_result
+        if agent_completed_handler:
+            # Diagrams only have uphold/overturn (no partial) — normalize to the
+            # same uppercase vocabulary text findings use so a single frontend
+            # filter covers both finding types.
+            normalized_outcome = str(critic_result.get("outcome") or "uphold").strip().upper()
+            agent_completed_handler(
+                "critic",
+                self._reasoning_content(critic_result),
+                critic_outcome=normalized_outcome,
+                requires_rebuttal=normalized_outcome == "OVERTURN",
+            )
 
         self.logger.info(
             "DiagramDebateService: VisionMediator diagram_id=%s critic_outcome=%s",
             diagram.diagram_id,
             critic_outcome,
         )
+        if agent_started_handler:
+            agent_started_handler("mediator")
         mediator_prompt = build_vision_mediator_debate_prompt(
             hunter_result=hunter_result,
             critic_result=critic_result,
@@ -279,6 +302,8 @@ class DiagramDebateService:
         )
 
         output.mediator_result = mediator_result
+        if agent_completed_handler:
+            agent_completed_handler("mediator", self._reasoning_content(mediator_result))
         self.logger.info(
             "DiagramDebateService: COMPLETE diagram_id=%s verdict=%s confidence=%.2f",
             diagram.diagram_id,
@@ -293,6 +318,16 @@ class DiagramDebateService:
         if normalized in {"architecture_relevant", "non_architecture", "uncertain"}:
             return normalized
         return "uncertain"
+
+    @staticmethod
+    def _reasoning_content(result: Any) -> str:
+        """Chain-of-thought first: prefer cot_trace over the final-answer
+        logic_summary/reasoning, matching the text debate pipeline's preference."""
+        if not isinstance(result, dict):
+            return ""
+        return str(
+            result.get("cot_trace") or result.get("logic_summary") or result.get("reasoning") or ""
+        ).strip()
 
 
 __all__ = ["DiagramDebateService"]

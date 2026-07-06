@@ -100,6 +100,107 @@ def test_mixed_ungrounded_met_and_not_met_keeps_not_met_aggregate():
     assert result["verdict_policy_source"] == "diagram_requirement_not_corroborated"
 
 
+def test_topline_verdict_disagreeing_with_assessments_is_corrected_to_aggregate():
+    # Regression for the actual reported bug: the Mediator's own top-level
+    # final_verdict claimed "met" while one of its own assessed_requirements
+    # says "not_met", and no citation grounding downgrade occurred (both
+    # assessments are already validated by the Critic) — previously nothing
+    # would have caught this, and the wrong "met" claim would have been
+    # persisted verbatim. The topline verdict must always be corrected to the
+    # deterministic aggregate of the assessments, regardless of what the LLM
+    # itself claimed at the top level.
+    result = _apply_diagram_evidence_policy(
+        {
+            "final_verdict": "met",
+            "assessed_requirements": [
+                {"requirement_id": "D-1", "verdict": "met"},
+                {"requirement_id": "D-2", "verdict": "not_met"},
+            ],
+        },
+        {
+            "outcome": "uphold",
+            "validated_requirements": [
+                {"requirement_id": "D-1", "verdict": "met"},
+                {"requirement_id": "D-2", "verdict": "not_met"},
+            ],
+            "diagram_scope_verdict": "architecture_relevant",
+        },
+        {
+            "diagram_scope_verdict": "architecture_relevant",
+        },
+    )
+
+    assert result["final_verdict"] == "not_met"
+    assert result["verdict_policy_source"] == "diagram_verdict_aggregated_from_assessments"
+
+
+def test_all_met_assessments_aggregate_to_met():
+    result = _apply_diagram_evidence_policy(
+        {
+            "final_verdict": "met",
+            "assessed_requirements": [
+                {"requirement_id": "D-1", "verdict": "met"},
+                {"requirement_id": "D-2", "verdict": "met"},
+            ],
+        },
+        {
+            "outcome": "uphold",
+            "validated_requirements": [
+                {"requirement_id": "D-1", "verdict": "met"},
+                {"requirement_id": "D-2", "verdict": "met"},
+            ],
+            "diagram_scope_verdict": "architecture_relevant",
+        },
+        {"diagram_scope_verdict": "architecture_relevant"},
+    )
+
+    assert result["final_verdict"] == "met"
+
+
+def test_all_not_met_assessments_aggregate_to_not_met():
+    result = _apply_diagram_evidence_policy(
+        {
+            "final_verdict": "not_met",
+            "assessed_requirements": [
+                {"requirement_id": "D-1", "verdict": "not_met"},
+                {"requirement_id": "D-2", "verdict": "not_met"},
+            ],
+        },
+        {
+            "outcome": "uphold",
+            "validated_requirements": [],
+            "diagram_scope_verdict": "architecture_relevant",
+        },
+        {"diagram_scope_verdict": "architecture_relevant"},
+    )
+
+    assert result["final_verdict"] == "not_met"
+
+
+def test_mixed_met_and_na_assessments_aggregate_to_na():
+    # Documents the resolved ambiguity: a met+na mix with zero not_met
+    # resolves to "na", matching the existing _worst_case_diagram_verdict
+    # convention and the vision mediator prompt's own stated rule
+    # ("not_met > na > met"), rather than "met".
+    result = _apply_diagram_evidence_policy(
+        {
+            "final_verdict": "met",
+            "assessed_requirements": [
+                {"requirement_id": "D-1", "verdict": "met"},
+                {"requirement_id": "D-2", "verdict": "na"},
+            ],
+        },
+        {
+            "outcome": "uphold",
+            "validated_requirements": [{"requirement_id": "D-1", "verdict": "met"}],
+            "diagram_scope_verdict": "architecture_relevant",
+        },
+        {"diagram_scope_verdict": "architecture_relevant"},
+    )
+
+    assert result["final_verdict"] == "na"
+
+
 def test_no_assessments_with_validated_requirements_keeps_met():
     result = _apply_diagram_evidence_policy(
         {

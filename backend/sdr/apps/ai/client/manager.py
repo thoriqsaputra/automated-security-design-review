@@ -8,7 +8,8 @@ from sdr.apps.ai.client.llm_logger import log_llm_interaction
 from sdr.apps.ai.client.nvidia.service import NVIDIAAIService
 from sdr.apps.ai.client.openrouter.service import OpenRouterAIService
 from sdr.apps.ai.client.routellm.service import RouteLLMAIService
-from sdr.apps.ai.client.session import merge_request_metadata
+from sdr.apps.ai.client import usage_tracker
+from sdr.apps.ai.client.session import get_current_request_metadata, merge_request_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -155,12 +156,19 @@ class AIServiceManager:
         result = service.chat_completion(**request_kwargs)
 
         if isinstance(result, AIResponse):
+            duration_seconds = time.perf_counter() - started_at
             log_llm_interaction(
                 component=component,
                 provider=provider,
                 request_kwargs=request_kwargs,
                 response=result,
-                duration_seconds=time.perf_counter() - started_at,
+                duration_seconds=duration_seconds,
+            )
+            usage_tracker.record(
+                get_current_request_metadata().get("session_id"),
+                result.usage,
+                duration_seconds,
+                result.error,
             )
             return result
 
@@ -188,12 +196,21 @@ class AIServiceManager:
                     chunks.append(chunk)
                 yield chunk
         finally:
+            duration_seconds = time.perf_counter() - started_at
             log_llm_interaction(
                 component=component,
                 provider=provider,
                 request_kwargs=request_kwargs,
                 streamed_content="".join(chunks),
-                duration_seconds=time.perf_counter() - started_at,
+                duration_seconds=duration_seconds,
+            )
+            # Streamed responses don't carry a parsed usage object today — still
+            # record the duration so streamed calls count toward pipeline time,
+            # even though their token contribution is unknown.
+            usage_tracker.record(
+                get_current_request_metadata().get("session_id"),
+                None,
+                duration_seconds,
             )
 
     def chat_completion_with_fallback(self, *args, **kwargs) -> Union[AIResponse, Generator[str, None, None]]:

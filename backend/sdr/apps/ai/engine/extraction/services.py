@@ -7,8 +7,10 @@ import threading
 import time
 from typing import Any, Dict, List, Optional
 
+from sdr.apps.ai.client.session import capture_current_context
 from sdr.apps.ai.prompts.extraction import (
     DIAGRAM_REQ_EXTRACTION_SYSTEM_PROMPT,
+    VALID_DIAGRAM_TYPES,
     build_diagram_req_extraction_prompt,
     build_hierarchical_extraction_prompt,
 )
@@ -203,7 +205,7 @@ def _extract_document_requirements(
     )
     try:
         future_to_chunk = {
-            executor.submit(_process_chunk, idx, chunk_dict["text"]): (idx, chunk_dict)
+            executor.submit(capture_current_context(_process_chunk), idx, chunk_dict["text"]): (idx, chunk_dict)
             for idx, chunk_dict in enumerate(chunks, start=1)
         }
         completed_count = 0
@@ -404,8 +406,7 @@ class DiagramRequirementExtractionService:
             response = self.llm_client.complete_json(
                 system_prompt=DIAGRAM_REQ_EXTRACTION_SYSTEM_PROMPT,
                 user_prompt=build_diagram_req_extraction_prompt(
-                    requirements_text="\n".join(batch),
-                    diagram_types=self.config.diagram_types,
+                    requirements_text="\n".join(batch)
                 ),
                 component="diagram_requirement_extraction",
                 temperature=0.0,
@@ -438,7 +439,7 @@ class DiagramRequirementExtractionService:
                 stable_key_val = str(item.get("stable_key", "")).strip() or f"D-batch{batch_index}-{item_index}"
                 stable_key_val = f"job{ingestion_job_id}-{stable_key_val}"
                 raw_diagram_type = str(item.get("diagram_type", "")).strip().lower()
-                diagram_type = raw_diagram_type if raw_diagram_type in self.config.diagram_types else ""
+                diagram_type = raw_diagram_type if raw_diagram_type in VALID_DIAGRAM_TYPES else ""
                 batch_results.append(
                     {
                         "category_id": category_id,
@@ -467,7 +468,7 @@ class DiagramRequirementExtractionService:
             thread_name_prefix="DiagramReqExtract",
         ) as executor:
             future_map = {
-                executor.submit(wrapped_batch_processor, batch_index, batch): batch_index
+                executor.submit(capture_current_context(wrapped_batch_processor), batch_index, batch): batch_index
                 for batch_index, batch in enumerate(batched_lines)
             }
             for future in concurrent.futures.as_completed(future_map):

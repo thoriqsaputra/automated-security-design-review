@@ -11,6 +11,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from sdr.core.config import settings
 
 from sdr.apps.ai.client import chat_completion, get_embeddings
+from sdr.apps.ai.client.session import capture_current_context
 from sdr.apps.ai.tsd_processing.document_models import TextBlock, TSDDocument
 from sdr.apps.ai.tsd_processing.prepared_view import PreparedTSDView, prepare_tsd_view
 from sdr.apps.ai.utils.concurrency import ConcurrencyProbe
@@ -202,7 +203,7 @@ class RAPTORTreeBuilder:
         self.leaf_token_budget = int(
             getattr(settings, "AI_RAPTOR_LEAF_TOKEN_BUDGET", _LEVEL_TOKEN_BUDGETS[0])
         )
-        self.leaf_max_pages = int(getattr(settings, "AI_RAPTOR_LEAF_MAX_PAGES", 3))
+        self.leaf_max_pages = int(getattr(settings, "AI_RAPTOR_LEAF_MAX_PAGES", 1))
         self.contextual_enrichment_enabled = bool(
             getattr(settings, "AI_RAPTOR_CONTEXTUAL_ENRICHMENT_ENABLED", True)
         )
@@ -591,7 +592,7 @@ class RAPTORTreeBuilder:
             max_workers=min(self.context_concurrency, len(nodes_to_enrich))
         ) as executor:
             futures = {
-                executor.submit(self._generate_leaf_context, node, doc_title): node
+                executor.submit(capture_current_context(self._generate_leaf_context), node, doc_title): node
                 for node in nodes_to_enrich
             }
             for future in as_completed(futures):
@@ -757,7 +758,7 @@ class RAPTORTreeBuilder:
         ) as executor:
             futures = {
                 executor.submit(
-                    probe.wrap(self._summarise_cluster),
+                    capture_current_context(probe.wrap(self._summarise_cluster)),
                     cluster_idx=cluster_idx,
                     cluster=cluster,
                     level=level,
@@ -1075,7 +1076,7 @@ class RAPTORTreeBuilder:
             ) as executor:
                 futures = {
                     executor.submit(
-                        probe.wrap(get_embeddings),
+                        capture_current_context(probe.wrap(get_embeddings)),
                         texts=[hash_to_text[text_hash] for text_hash in hash_batch],
                         dimensions=self.embedding_dimensions,
                     ): hash_batch

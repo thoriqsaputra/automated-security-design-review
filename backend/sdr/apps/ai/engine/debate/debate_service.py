@@ -65,7 +65,7 @@ class DebateService:
         cancel_check: Optional[Any] = None,
         agent_chunk_handler: Optional[Callable[[str, str], None]] = None,
         agent_started_handler: Optional[Callable[[str], None]] = None,
-        agent_completed_handler: Optional[Callable[[str, str], None]] = None,
+        agent_completed_handler: Optional[Callable[..., None]] = None,
     ) -> DebateOutput:
         self._raise_if_cancelled(cancel_check, phase="run_debate.entry")
         self.logger.info(
@@ -179,7 +179,7 @@ class DebateService:
                     stream_handler=(lambda chunk: agent_chunk_handler("hunter", chunk)) if agent_chunk_handler else None,
                 )
             if agent_completed_handler:
-                agent_completed_handler("hunter", hunter_result.logic_summary or hunter_result.reasoning)
+                agent_completed_handler("hunter", hunter_result.cot_trace or hunter_result.logic_summary or hunter_result.reasoning)
             sanitized_hunter = self._sanitize_hunter_for_handoff(hunter_result)
 
             self.logger.info(
@@ -233,7 +233,12 @@ class DebateService:
                 rejected_citations=critic_rejected,
             )
             if agent_completed_handler:
-                agent_completed_handler("critic", critic_result.logic_summary or critic_result.reasoning)
+                agent_completed_handler(
+                    "critic",
+                    critic_result.cot_trace or critic_result.logic_summary or critic_result.reasoning,
+                    critic_outcome=critic_result.outcome,
+                    requires_rebuttal=critic_result.requires_rebuttal,
+                )
             sanitized_critic = self._sanitize_critic_for_handoff(critic_result)
 
             debate_history.append(
@@ -297,7 +302,7 @@ class DebateService:
             critic_result=critic_result,
         )
         if agent_completed_handler:
-            agent_completed_handler("mediator", mediator_result.logic_summary or mediator_result.reasoning)
+            agent_completed_handler("mediator", mediator_result.cot_trace or mediator_result.logic_summary or mediator_result.reasoning)
 
         timing["flow_total_seconds"] = round(time.monotonic() - start_ts, 4)
 
@@ -849,7 +854,17 @@ class DebateService:
         mediator_result.applicability_established = bool(in_scope and specific)
         mediator_result.evidence_sufficiency = "unverified"
         mediator_result.not_assessable_reason = None
-        if not in_scope or not specific:
+        # A confident "not_met" from the actual debate outranks a pre-debate
+        # contract guess about scope — contract synthesis runs before any TSD
+        # evidence has been reviewed, while the debate has actually looked at
+        # retrieved context and reached a definitive conclusion that the control
+        # is missing. This is deliberately asymmetric: a "met" verdict still gets
+        # the contract-gate scrutiny below (a wrong-scope guess pairing with a
+        # coincidental citation is a real false-"met" risk), but silently
+        # discarding a "not_met" the debate already reached is the worse failure
+        # mode for a security review — it hides a real, well-reasoned finding.
+        debate_reached_definitive_not_met = raw_verdict == VERDICT_NOT_MET
+        if (not in_scope or not specific) and not debate_reached_definitive_not_met:
             mediator_result.final_verdict = VERDICT_NA
             mediator_result.final_citations = []
             mediator_result.severity = None
@@ -859,7 +874,13 @@ class DebateService:
             mediator_result.not_assessable_reason = "contract_not_in_scope_or_not_specific"
             return mediator_result
 
-        if raw_verdict == VERDICT_NA or self._reasoning_indicates_not_assessable(mediator_result):
+        # Same principle for the free-text reasoning sniffer: it exists to catch
+        # cases where the mediator's structured final_verdict field is missing or
+        # ambiguous and its prose reveals the real intent. It must never override
+        # an explicit, structured "not_met" the mediator already committed to.
+        if raw_verdict == VERDICT_NA or (
+            not debate_reached_definitive_not_met and self._reasoning_indicates_not_assessable(mediator_result)
+        ):
             mediator_result.final_verdict = VERDICT_NA
             mediator_result.final_citations = []
             mediator_result.severity = None

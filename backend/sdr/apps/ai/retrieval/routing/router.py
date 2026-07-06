@@ -208,6 +208,7 @@ class HybridRetrievalRouter:
                             "page_numbers": list(result.node.page_numbers),
                             "section_heading": result.node.section_heading,
                             "sensitivity": "internal",
+                            "threshold_relaxed": result.threshold_relaxed,
                         },
                         token_count=result.node.token_estimate,
                     )
@@ -220,7 +221,13 @@ class HybridRetrievalRouter:
             for result in raptor_response.results:
                 candidates.append(
                     RetrievalCandidate(
-                        id=f"dense:{result.node.node_id}",
+                        # Same id scheme as _raptor_results_to_candidates (no
+                        # "dense:" prefix) — this represents the identical
+                        # underlying RAPTOR node, just found via a different
+                        # search path. Sharing the id lets dedupe_candidates
+                        # actually merge them instead of letting the same
+                        # chunk occupy two slots in the final context window.
+                        id=result.node.node_id,
                         source_type="dense",
                         text=result.node.text,
                         score=float(result.cosine_similarity),
@@ -230,6 +237,7 @@ class HybridRetrievalRouter:
                             "page_numbers": list(result.node.page_numbers),
                             "section_heading": result.node.section_heading,
                             "sensitivity": "internal",
+                            "threshold_relaxed": result.threshold_relaxed,
                         },
                         token_count=result.node.token_estimate,
                     )

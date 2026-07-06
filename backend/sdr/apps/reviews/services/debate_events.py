@@ -22,7 +22,15 @@ def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def build_debate_id(parameter_id: Any, requirement_reference: Optional[str] = None) -> str:
+def build_debate_id(
+    parameter_id: Any,
+    requirement_reference: Optional[str] = None,
+    *,
+    diagram_id: Optional[str] = None,
+) -> str:
+    if diagram_id is not None:
+        identifier = str(diagram_id).strip() or "unknown"
+        return f"diagram:{identifier}"
     if parameter_id is not None:
         return f"text:{parameter_id}"
     reference = (requirement_reference or "unknown").strip() or "unknown"
@@ -31,6 +39,34 @@ def build_debate_id(parameter_id: Any, requirement_reference: Optional[str] = No
 
 def _clean_text(value: Any) -> str:
     return str(value or "").replace("\x00", "").strip()
+
+
+def _extract_critic_outcome(analysis_trace: Any, *, is_diagram: bool) -> Optional[str]:
+    """Reads the persisted critic outcome out of a finding's analysis_trace.
+
+    Text findings: last round of debate_history[].critic.outcome (UPHOLD/OVERTURN/PARTIAL).
+    Diagram findings: critic_result.outcome (uphold/overturn only, no partial) — normalized
+    to the same uppercase vocabulary as text so a single frontend filter covers both.
+    """
+    if not isinstance(analysis_trace, dict):
+        return None
+    if is_diagram:
+        critic_result = analysis_trace.get("critic_result")
+        if not isinstance(critic_result, dict):
+            return None
+        outcome = str(critic_result.get("outcome") or "").strip().upper()
+        return outcome or None
+    debate_history = analysis_trace.get("debate_history")
+    if not isinstance(debate_history, list) or not debate_history:
+        return None
+    last_round = debate_history[-1]
+    if not isinstance(last_round, dict):
+        return None
+    critic = last_round.get("critic")
+    if not isinstance(critic, dict):
+        return None
+    outcome = str(critic.get("outcome") or "").strip().upper()
+    return outcome or None
 
 
 def _debate_sort_key(item: Dict[str, Any]) -> tuple[int, str, str]:
@@ -175,7 +211,9 @@ class ReviewDebateEventStore:
                 finding_id = existing.get("finding_id")
                 merged = {
                     "debate_id": debate_id,
+                    "finding_type": debate.get("finding_type") or existing.get("finding_type") or "requirement",
                     "parameter_id": debate.get("parameter_id"),
+                    "diagram_id": debate.get("diagram_id") or existing.get("diagram_id"),
                     "requirement_reference": debate.get("requirement_reference"),
                     "requirement_text": debate.get("requirement_text"),
                     "section_title": debate.get("section_title"),
@@ -281,6 +319,8 @@ class ReviewDebateEventStore:
         content: str,
         progress_percent: int,
         execution_mode: Optional[str] = None,
+        critic_outcome: Optional[str] = None,
+        requires_rebuttal: Optional[bool] = None,
     ) -> None:
         def mutate(snapshot: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             debate_state = (snapshot.get("debates") or {}).get(debate_id)
@@ -307,6 +347,12 @@ class ReviewDebateEventStore:
                 message["status"] = "completed"
                 message["completed_at"] = now
                 message["updated_at"] = now
+            if critic_outcome is not None:
+                message["critic_outcome"] = critic_outcome
+                debate_state["critic_outcome"] = critic_outcome
+            if requires_rebuttal is not None:
+                message["requires_rebuttal"] = requires_rebuttal
+                debate_state["requires_rebuttal"] = requires_rebuttal
             debate_state["status"] = "running"
             debate_state["progress_percent"] = max(0, min(100, int(progress_percent)))
             debate_state["last_snippet"] = _clean_text(content)[-280:]
@@ -424,39 +470,55 @@ class ReviewDebateEventStore:
         debates: Dict[str, Dict[str, Any]] = {}
         now = utc_now_iso()
         for finding in findings:
+            is_diagram = getattr(finding, "finding_type", None) == "diagram"
             requirement_reference = _clean_text(getattr(finding, "requirement_reference", None)) or None
-            debate_id = build_debate_id(getattr(finding, "child_parameter_id", None), requirement_reference)
+            diagram_id = _clean_text(getattr(finding, "diagram_id", None)) or None if is_diagram else None
+            debate_id = build_debate_id(
+                getattr(finding, "child_parameter_id", None),
+                requirement_reference,
+                diagram_id=diagram_id,
+            )
+            requirement_metadata = getattr(finding, "requirement_metadata", None) or {}
+            analysis_trace = requirement_metadata.get("analysis_trace") if isinstance(requirement_metadata, dict) else None
+            critic_outcome = _extract_critic_outcome(analysis_trace, is_diagram=is_diagram)
+
             transcript: List[Dict[str, Any]] = []
-            for agent, content in (
-                ("hunter", getattr(finding, "hunter_reasoning", None)),
-                ("critic", getattr(finding, "critic_reasoning", None)),
-                ("mediator", getattr(finding, "mediator_reasoning", None)),
+            # Chain-of-thought first: prefer the *_thought_process columns (real
+            # per-agent reasoning trace) over the *_reasoning final-answer summary.
+            for agent, cot, reasoning in (
+                ("hunter", getattr(finding, "hunter_thought_process", None), getattr(finding, "hunter_reasoning", None)),
+                ("critic", getattr(finding, "critic_thought_process", None), getattr(finding, "critic_reasoning", None)),
+                ("mediator", getattr(finding, "mediator_thought_process", None), getattr(finding, "mediator_reasoning", None)),
             ):
-                text = _clean_text(content)
+                text = _clean_text(cot) or _clean_text(reasoning)
                 if not text:
                     continue
-                transcript.append(
-                    {
-                        "message_id": f"{agent}:{len(transcript) + 1}",
-                        "agent": agent,
-                        "kind": "reasoning",
-                        "status": "completed",
-                        "content": text,
-                        "started_at": getattr(finding, "created_at", None).isoformat() if getattr(finding, "created_at", None) else now,
-                        "completed_at": getattr(finding, "updated_at", None).isoformat() if getattr(finding, "updated_at", None) else now,
-                        "updated_at": getattr(finding, "updated_at", None).isoformat() if getattr(finding, "updated_at", None) else now,
-                    }
-                )
-            requirement_metadata = getattr(finding, "requirement_metadata", None) or {}
+                message: Dict[str, Any] = {
+                    "message_id": f"{agent}:{len(transcript) + 1}",
+                    "agent": agent,
+                    "kind": "reasoning",
+                    "status": "completed",
+                    "content": text,
+                    "started_at": getattr(finding, "created_at", None).isoformat() if getattr(finding, "created_at", None) else now,
+                    "completed_at": getattr(finding, "updated_at", None).isoformat() if getattr(finding, "updated_at", None) else now,
+                    "updated_at": getattr(finding, "updated_at", None).isoformat() if getattr(finding, "updated_at", None) else now,
+                }
+                if agent == "critic" and critic_outcome:
+                    message["critic_outcome"] = critic_outcome
+                    message["requires_rebuttal"] = critic_outcome in ("OVERTURN", "PARTIAL")
+                transcript.append(message)
+
             section_title = None
             if isinstance(requirement_metadata, dict):
                 section_title = requirement_metadata.get("section")
             last_snippet = transcript[-1]["content"][-280:] if transcript else _clean_text(getattr(finding, "description", None))[-280:]
-            debates[debate_id] = {
+            debate_state = {
                 "debate_id": debate_id,
+                "finding_type": "diagram" if is_diagram else "requirement",
                 "parameter_id": getattr(finding, "child_parameter_id", None),
+                "diagram_id": diagram_id,
                 "requirement_reference": requirement_reference,
-                "requirement_text": _clean_text(getattr(finding, "requirement_text", None)) or _clean_text(getattr(finding, "title", None)),
+                "requirement_text": _clean_text(getattr(finding, "requirement_text", None)) or _clean_text(getattr(finding, "diagram_caption", None)) or _clean_text(getattr(finding, "title", None)),
                 "section_title": _clean_text(section_title) or _clean_text(getattr(finding, "parent_parameter_title", None)) or None,
                 "category_code": _clean_text(getattr(finding, "category_code", None)) or None,
                 "status": "completed",
@@ -468,6 +530,10 @@ class ReviewDebateEventStore:
                 "finding_id": getattr(finding, "id", None),
                 "transcript": transcript,
             }
+            if critic_outcome:
+                debate_state["critic_outcome"] = critic_outcome
+                debate_state["requires_rebuttal"] = critic_outcome in ("OVERTURN", "PARTIAL")
+            debates[debate_id] = debate_state
         snapshot = self._normalize_snapshot(
             {
                 "review_id": review_id,
@@ -503,7 +569,9 @@ class ReviewDebateEventStore:
         transcript = list(existing.get("transcript") or [])
         merged = {
             "debate_id": debate_id,
+            "finding_type": debate.get("finding_type") or existing.get("finding_type") or "requirement",
             "parameter_id": debate.get("parameter_id"),
+            "diagram_id": debate.get("diagram_id") or existing.get("diagram_id"),
             "requirement_reference": debate.get("requirement_reference"),
             "requirement_text": debate.get("requirement_text"),
             "section_title": debate.get("section_title"),

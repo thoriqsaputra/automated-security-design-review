@@ -7,6 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Tuple
 
 from sdr.apps.ai.agents.base import CriticResult, HunterResult, MediatorResult
+from sdr.apps.ai.client.session import capture_current_context
 from sdr.apps.ai.engine.dto import AnalysisSummary, DebateInput, DebateOutput, PersistenceInput
 from sdr.apps.ai.utils.concurrency import ConcurrencyProbe
 from sdr.apps.reviews.models import Review
@@ -95,7 +96,7 @@ class TextDebateCoordinator:
             future_map = {}
             for parameter in parameters:
                 self.run_state.raise_if_cancelled(review, phase="single.before_submission")
-                future = executor.submit(single_probe.wrap(_run_single), parameter)
+                future = executor.submit(capture_current_context(single_probe.wrap(_run_single)), parameter)
                 future_map[future] = parameter
             single_probe.mark_submitted(len(future_map))
             for idx, future in enumerate(as_completed(future_map), start=1):
@@ -228,13 +229,15 @@ class TextDebateCoordinator:
                 progress_percent=self.agent_progress_percent(agent, "started"),
                 content=f"{agent.title()} is analyzing this requirement.",
             ),
-            agent_completed_handler=lambda agent, content: self.publish_live_agent_complete(
+            agent_completed_handler=lambda agent, content, critic_outcome=None, requires_rebuttal=None: self.publish_live_agent_complete(
                 review=review,
                 parameter=parameter,
                 agent=agent,
                 content=content,
                 progress_percent=self.agent_progress_percent(agent, "completed"),
                 execution_mode=execution_mode,
+                critic_outcome=critic_outcome,
+                requires_rebuttal=requires_rebuttal,
             ),
         )
 
@@ -276,13 +279,15 @@ class TextDebateCoordinator:
                 progress_percent=self.agent_progress_percent(agent, "started"),
                 content=f"{agent.title()} is analyzing this requirement.",
             ),
-            agent_completed_handler=lambda agent, content: self.publish_live_agent_complete(
+            agent_completed_handler=lambda agent, content, critic_outcome=None, requires_rebuttal=None: self.publish_live_agent_complete(
                 review=review,
                 parameter=parameter,
                 agent=agent,
                 content=content,
                 progress_percent=self.agent_progress_percent(agent, "completed"),
                 execution_mode=execution_mode,
+                critic_outcome=critic_outcome,
+                requires_rebuttal=requires_rebuttal,
             ),
         )
 
@@ -719,6 +724,8 @@ class TextDebateCoordinator:
         content: str,
         progress_percent: int,
         execution_mode: str,
+        critic_outcome: Optional[str] = None,
+        requires_rebuttal: Optional[bool] = None,
     ) -> None:
         review_debate_event_store.complete_agent(
             review.id,
@@ -727,6 +734,8 @@ class TextDebateCoordinator:
             content=content,
             progress_percent=progress_percent,
             execution_mode=execution_mode,
+            critic_outcome=critic_outcome,
+            requires_rebuttal=requires_rebuttal,
         )
 
     def record_debate_progress(

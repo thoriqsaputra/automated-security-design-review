@@ -182,6 +182,38 @@ def _apply_diagram_evidence_policy(
         mediator_result["verdict_policy_source"] = "diagram_non_architecture_image"
         return mediator_result
 
+    if assessments:
+        assessments, downgraded = _ground_assessed_requirements_against_critic(assessments, critic_result)
+        mediator_result["assessed_requirements"] = assessments
+        # The topline verdict is never trusted from the Mediator's own
+        # free-standing claim — it's always the deterministic worst-case of
+        # the (citation-corrected) individual assessments: not_met > na > met.
+        # This is exactly what the mediator prompt itself instructs, but
+        # previously nothing enforced it outside the narrow "a citation got
+        # downgraded" branch, so a diagram whose top-level claim disagreed
+        # with its own assessments (e.g. claimed "met" while one assessment
+        # was "not_met") would silently keep the wrong topline verdict.
+        aggregated = _worst_case_diagram_verdict(assessments)
+        all_na = all(
+            str(assessment.get("verdict", "")).strip().lower() == VERDICT_NA
+            for assessment in assessments
+        )
+        if downgraded:
+            mediator_result["verdict_policy_source"] = "diagram_requirement_not_corroborated"
+        elif all_na and aggregated != verdict:
+            mediator_result["verdict_policy_source"] = "diagram_all_requirements_not_applicable"
+        elif aggregated != verdict:
+            mediator_result["verdict_policy_source"] = "diagram_verdict_aggregated_from_assessments"
+        verdict = aggregated
+        mediator_result["final_verdict"] = verdict
+
+    # Evidence-quality safety net: a not_met verdict (whether from the
+    # aggregate above or the raw claim, if there were no assessments at all)
+    # can still be suppressed to "na" when the Critic thinks the underlying
+    # claim is a hallucination artifact — this is about trustworthiness of
+    # the evidence, not about counting requirements, so it stays an
+    # independent layer on top of the aggregation rather than being folded
+    # into it.
     hallucinated = critic_result.get("hallucinated_claims") or []
     if hallucinated and verdict == VERDICT_NOT_MET:
         invalidated = critic_result.get("invalidated_requirements") or []
@@ -193,45 +225,18 @@ def _apply_diagram_evidence_policy(
             mediator_result["verdict_policy_source"] = "diagram_hallucinated_evidence"
             verdict = VERDICT_NA
 
-    if assessments:
-        assessments, downgraded = _ground_assessed_requirements_against_critic(assessments, critic_result)
-        if downgraded:
-            mediator_result["assessed_requirements"] = assessments
-            mediator_result["final_verdict"] = _worst_case_diagram_verdict(assessments)
-            mediator_result["verdict_policy_source"] = "diagram_requirement_not_corroborated"
-            verdict = mediator_result["final_verdict"]
-
+    # The remaining special cases only apply when there were no individual
+    # assessments to aggregate over at all (the aggregation above already
+    # covers every case where `assessments` is non-empty, including "all na"
+    # and "not_met claimed but nothing applicable" — both resolve to "na" via
+    # _worst_case_diagram_verdict without needing their own branches here).
     validated = critic_result.get("validated_requirements") or []
     if not assessments and verdict == VERDICT_MET and not validated:
         mediator_result["final_verdict"] = VERDICT_NA
         mediator_result["verdict_policy_source"] = "diagram_met_without_validated_evidence"
         verdict = VERDICT_NA
 
-    if assessments:
-        applicable_assessments = [
-            assessment
-            for assessment in assessments
-            if str(assessment.get("verdict", "")).strip().lower() in {VERDICT_MET, VERDICT_NOT_MET}
-        ]
-        if applicable_assessments:
-            mediator_result.setdefault("assessed_requirements", assessments)
-        elif all(
-            str(assessment.get("verdict", "")).strip().lower() == VERDICT_NA
-            for assessment in assessments
-        ):
-            if mediator_result.get("verdict_policy_source") != "diagram_requirement_not_corroborated":
-                mediator_result["assessed_requirements"] = _force_assessment_verdicts_na(
-                    assessments,
-                    default_summary="The requirement is not applicable because the image does not establish security-relevant architecture scope.",
-                )
-                mediator_result["verdict_policy_source"] = "diagram_all_requirements_not_applicable"
-            mediator_result["final_verdict"] = VERDICT_NA
-            verdict = VERDICT_NA
-        elif verdict == VERDICT_NOT_MET and not applicable_assessments:
-            mediator_result["final_verdict"] = VERDICT_NA
-            mediator_result["verdict_policy_source"] = "diagram_no_applicable_security_scope"
-            verdict = VERDICT_NA
-    elif verdict == VERDICT_NOT_MET:
+    if not assessments and verdict == VERDICT_NOT_MET:
         mediator_result["final_verdict"] = VERDICT_NA
         mediator_result["verdict_policy_source"] = "diagram_no_applicable_security_scope"
 

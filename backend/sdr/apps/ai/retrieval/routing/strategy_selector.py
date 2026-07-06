@@ -25,7 +25,6 @@ class RetrievalStrategySelector:
         raptor_tree: Optional[RAPTORTree],
     ) -> RetrievalStrategy:
         has_raptor = raptor_tree is not None and not raptor_tree.is_empty()
-        has_many_keywords = len(keywords) >= 4
 
         if query_type == QueryType.FACT_BASED:
             if has_raptor:
@@ -40,10 +39,6 @@ class RetrievalStrategySelector:
                 return RetrievalStrategy.RAPTOR_HIGH
             return RetrievalStrategy.VECTOR_ONLY
 
-        if has_raptor and has_many_keywords:
-            return RetrievalStrategy.RAPTOR_HIGH
-        if has_raptor:
-            return RetrievalStrategy.RAPTOR_LOW
         return RetrievalStrategy.VECTOR_ONLY
 
     def classify_query_type(
@@ -69,18 +64,19 @@ class RetrievalStrategySelector:
             "manipulate", "manipulated", "manipulation", "tamper", "tampering", "tampered",
             "immutable", "modify", "modified", "modification",
         )
-        reasoning_markers = ("between", "path", "flow", "across", "relationship", "all services")
+        reasoning_markers = ("relationship", "all services")
         if any(_marker_matches(marker, text) for marker in global_markers):
             return QueryType.GLOBAL_ARCHITECTURAL
         if any(_marker_matches(marker, text) for marker in multi_hop_markers):
             return QueryType.MULTI_HOP_SECURITY
         if any(_marker_matches(marker, text) for marker in integrity_markers):
             return QueryType.MULTI_HOP_SECURITY
-        if any(_marker_matches(marker, text) for marker in reasoning_markers) or len(inferred_relations) >= 1:
+        if any(_marker_matches(marker, text) for marker in reasoning_markers):
             return QueryType.REASONING_BASED
-        if len(keywords) <= 4:
-            return QueryType.FACT_BASED
-        return QueryType.REASONING_BASED
+        # Default: well-specified, single-topic requirement text — the common
+        # case for ASVS-style requirements — is exactly what HYBRID handles
+        # best, so it's the fallback rather than the RAPTOR-only path.
+        return QueryType.FACT_BASED
 
 
 __all__ = ["RetrievalStrategySelector"]

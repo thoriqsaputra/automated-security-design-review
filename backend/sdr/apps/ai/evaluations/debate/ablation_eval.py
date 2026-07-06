@@ -40,6 +40,13 @@ logger = logging.getLogger(__name__)
 
 VALID_VERDICTS = {"met", "not_met", "na"}
 
+# verdict_policy.source values that indicate the final verdict was forced to
+# "na" by a policy gate rather than by the debate itself concluding "na" — see
+# DebateService._apply_mediator_evidence_policy. Tracked separately so a
+# regression in these gates (silently discarding a real met/not_met finding)
+# shows up as its own number instead of being buried in overall recall/FPR.
+NA_OVERRIDE_SOURCES = {"contract_not_applicable", "not_assessable"}
+
 
 def _load_ground_truth(gt_path: str) -> dict[str, str]:
     """Load {requirement_id_str: label} from the manual ground-truth JSON."""
@@ -62,6 +69,17 @@ def _extract_hunter_verdict(finding: Finding) -> str | None:
     hunter = round0.get("hunter", {})
     verdict = hunter.get("verdict", "")
     return verdict.lower().strip() if verdict else None
+
+
+def _extract_verdict_policy_source(finding: Finding) -> str | None:
+    """Pull DebateService._apply_mediator_evidence_policy's verdict_policy.source
+    from analysis_trace, so a forced-"na" override can be distinguished from the
+    debate genuinely concluding "na" on its own."""
+    meta = finding.requirement_metadata or {}
+    trace = meta.get("analysis_trace", {})
+    policy = trace.get("verdict_policy", {}) or {}
+    source = policy.get("source")
+    return str(source).strip() if source else None
 
 
 def main():
@@ -109,6 +127,7 @@ def main():
         true_label = gt[req_ref]
         hunter_verdict = _extract_hunter_verdict(f)
         debate_verdict = (f.met_status or "").lower().strip()
+        verdict_policy_source = _extract_verdict_policy_source(f)
 
         if hunter_verdict is None:
             logger.warning(f"  [req {req_ref}] no hunter verdict in analysis_trace — skipping")
@@ -132,6 +151,7 @@ def main():
             "hunter_correct": hunter_correct,
             "debate_correct": debate_correct,
             "verdict_changed_by_debate": changed,
+            "verdict_policy_source": verdict_policy_source,
         }
         per_item.append(row)
 
@@ -153,6 +173,17 @@ def main():
     debate_cm = calculate_binary_confusion(debate_labels, debate_preds)
     delta_fpr = round(hunter_cm["fpr"] - debate_cm["fpr"], 4)
 
+    # False negatives specifically caused by a policy gate forcing "na" (as
+    # opposed to the debate genuinely reasoning its way to a wrong verdict) —
+    # tracked separately so a regression in the na-override gates is visible as
+    # its own number instead of being buried in overall recall.
+    false_negatives = [row for row in per_item if not row["debate_correct"] and row["true_label"] != "na"]
+    na_override_false_negatives = [
+        row for row in false_negatives
+        if row["debate_verdict"] == "na" and row["verdict_policy_source"] in NA_OVERRIDE_SOURCES
+    ]
+    other_false_negatives = [row for row in false_negatives if row not in na_override_false_negatives]
+
     summary = {
         "review_id": args.review_id,
         "ground_truth_items": len(gt),
@@ -162,6 +193,15 @@ def main():
         "debate_final": debate_cm,
         "delta_fpr": delta_fpr,
         "fpr_suppression_achieved": delta_fpr >= 0,
+        "false_negatives_total": len(false_negatives),
+        "na_override_false_negatives": {
+            "count": len(na_override_false_negatives),
+            "finding_ids": [row["finding_id"] for row in na_override_false_negatives],
+        },
+        "other_false_negatives": {
+            "count": len(other_false_negatives),
+            "finding_ids": [row["finding_id"] for row in other_false_negatives],
+        },
         "per_item_results": per_item,
         "disagreement_cases": disagreements,
     }
@@ -181,6 +221,11 @@ def main():
                 f"(TP={debate_cm['tp']} FP={debate_cm['fp']} FN={debate_cm['fn']} TN={debate_cm['tn']})")
     logger.info(f"\n  Delta FPR (hunter - debate): {delta_fpr:+.4f}  "
                 f"({'FPR not increased ✓' if delta_fpr >= 0 else 'FPR increased ✗'})")
+    logger.info(
+        f"\n  False negatives: {len(false_negatives)} total — "
+        f"{len(na_override_false_negatives)} caused by an na-override policy gate, "
+        f"{len(other_false_negatives)} other"
+    )
     logger.info(f"\nResults saved to {output_path}")
 
 

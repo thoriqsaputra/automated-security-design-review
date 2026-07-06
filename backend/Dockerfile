@@ -47,6 +47,8 @@ RUN apt-get update \
     libffi-dev \
     shared-mime-info \
     fonts-recommended \
+    tesseract-ocr \
+    tesseract-ocr-eng \
     && rm -rf /var/lib/apt/lists/*
 
 # Create user

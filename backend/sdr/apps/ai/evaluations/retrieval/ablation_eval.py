@@ -36,7 +36,7 @@ from sdr.apps.ai.retrieval.core.types import AdvancedRetrievalConfig, RetrievalS
 from sdr.apps.standards.models import StandardCategory, StandardIngestionJob
 from sdr.apps.ai.evaluations import runner as runner_mod
 
-from sdr.apps.ai.evaluations.shared import results_path
+from sdr.apps.ai.evaluations.shared import results_path, data_path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -104,7 +104,12 @@ def main():
     )
     args = parser.parse_args()
 
-    dataset_path = os.path.join(os.path.dirname(__file__), args.dataset)
+    if os.path.isabs(args.dataset):
+        dataset_path = args.dataset
+    elif os.path.exists(args.dataset):
+        dataset_path = args.dataset
+    else:
+        dataset_path = data_path(args.dataset)
     with open(dataset_path, "r") as f:
         dataset = json.load(f)
 

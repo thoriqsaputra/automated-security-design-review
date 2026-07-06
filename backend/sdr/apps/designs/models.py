@@ -18,6 +18,7 @@ class DesignPreparationStatus:
     READY = "ready"
     FAILED = "failed"
     STALE = "stale"
+    CANCELLED = "cancelled"
 
 
 class Design(Base):
@@ -91,11 +92,13 @@ class DesignPreparation(Base):
     STATUS_READY = DesignPreparationStatus.READY
     STATUS_FAILED = DesignPreparationStatus.FAILED
     STATUS_STALE = DesignPreparationStatus.STALE
+    STATUS_CANCELLED = DesignPreparationStatus.CANCELLED
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
     design_id: Mapped[int] = mapped_column(ForeignKey("designs_design.id", ondelete="CASCADE"), index=True)
     document_sha256: Mapped[str] = mapped_column(String(64), index=True)
     status: Mapped[str] = mapped_column(String(24), default=STATUS_QUEUED, server_default=STATUS_QUEUED)
+    celery_task_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True, index=True)
     error_message: Mapped[Optional[str]] = mapped_column(String, nullable=True)
     pipeline_schema_version: Mapped[int] = mapped_column(Integer, default=1)
     embedding_model_name: Mapped[str] = mapped_column(String(128), default="")

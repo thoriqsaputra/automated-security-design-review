@@ -159,6 +159,23 @@ Parent description: {parent_description}
 Child context: {child_context}
 Requirement: {parameter_text}
 Domain hint: {domain}
+
+Rules for in_scope and specific_enough (these gate whether the requirement gets
+evaluated at all — setting either to false skips evaluation entirely and marks the
+requirement "na", so default to true unless you have a concrete reason not to):
+- in_scope: default true. Set false ONLY when this requirement's own text names a
+  specific technology, platform, or component that the section/parent context
+  affirmatively rules out for this design (e.g. a requirement about mobile app
+  binary protections when the parent/section is explicitly scoped to a
+  server-only backend with no mobile client). A requirement being general,
+  baseline, or not yet discussed anywhere in the TSD is NOT a reason to set this
+  false — that is a normal "evaluate it and it may come back not_met" case, not
+  an out-of-scope case.
+- specific_enough: default true for any requirement with a concrete, checkable
+  claim (nearly every real requirement qualifies). Set false only for placeholder
+  or truncated text that has no checkable claim at all (e.g. a heading fragment
+  with no verb, or a single ambiguous word).
+
 Return JSON only."""
 
 

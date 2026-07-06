@@ -45,7 +45,16 @@ class StandardIngestionJob(Base, StandardsBigIntBase):
         detailed_progress = self.summary_json.get("detailed_progress", {})
         
         status_label = detailed_progress.get("label") or self.status.capitalize()
-        percentage = detailed_progress.get("percentage") or (100 if self.status in ["completed", "failed"] else 50)
+        stored_percentage = detailed_progress.get("percentage")
+        if stored_percentage is not None:
+            percentage = stored_percentage
+        else:
+            # No detailed_progress recorded yet (e.g. the job was just marked
+            # RUNNING but the extraction pipeline hasn't emitted its first
+            # progress update) — a job in this state is genuinely at 0%, not
+            # halfway. Using a nonzero placeholder here made the progress bar
+            # visibly jump backward once the first real percentage arrived.
+            percentage = 100 if self.status in ["completed", "failed"] else 0
         
         return {
             "phase": self.status,

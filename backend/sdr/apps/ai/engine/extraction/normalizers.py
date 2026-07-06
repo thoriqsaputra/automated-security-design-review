@@ -28,6 +28,40 @@ _OWASP_SUBSECTION_HEADING_RE = re.compile(
 )
 _CONTROL_ID_RE = re.compile(r"\b(?:[A-Z]{2,}(?:-[A-Z0-9]+)+|[Vv]?\d+\.\d+\.\d+(?:\.\d+)*)\b")
 
+_INFRA_OVERRIDE_RE = re.compile(
+    r"\bkey vault\b|\bsecrets? management\b|\bsecret store\b|"
+    r"\bfirewall\b|\bapi gateway\b|\breverse prox(?:y|ies)\b|"
+    r"\bsecurity group(?:s)?\b|\bnetwork segmentation\b",
+    re.IGNORECASE,
+)
+_CODE_OVERRIDE_RE = re.compile(
+    r"\btls certificat|\bcertificate chain\b|\bvalidat\w* .*certificat|"
+    r"\bfile size\b|\bupload\w* size\b|\bmaximum file size\b|"
+    r"\bskip(?:ping)? steps\b|\bworkflow step\b|\bsequential step order\b",
+    re.IGNORECASE,
+)
+_PROCESS_OVERRIDE_RE = re.compile(
+    r"\buser stor(?:y|ies)\b|\bbacklog\b",
+    re.IGNORECASE,
+)
+
+
+def _apply_category_safety_net(requirement_text: str, category: str) -> str:
+    """Deterministically corrects known LLM design-tag false positives.
+
+    Only ever moves a requirement AWAY from "design" — never into it — so
+    design_recall cannot regress; it only tightens design_precision.
+    """
+    if category != "design":
+        return category
+    if _INFRA_OVERRIDE_RE.search(requirement_text):
+        return "infrastructure"
+    if _CODE_OVERRIDE_RE.search(requirement_text):
+        return "code"
+    if _PROCESS_OVERRIDE_RE.search(requirement_text):
+        return "process"
+    return category
+
 
 _DELETED_RESERVED_RE = re.compile(r"\[\s*(?:deleted|reserved|blank)\b", re.IGNORECASE)
 
@@ -208,6 +242,7 @@ def canonicalize_requirement_items(items: List[Any]) -> List[Dict[str, Any]]:
         if isinstance(item, dict):
             req_text = str(item.get("requirement", "")).strip()
             raw_cat = str(item.get("requirement_category", "design")).lower().strip()
+            raw_cat = _apply_category_safety_net(req_text, raw_cat)
             normalized_item = {
                 "requirement": req_text,
                 "verbatim_quote": str(item.get("verbatim_quote", "")).strip(),
@@ -273,7 +308,9 @@ def clean_structured_requirements(parsed: Any) -> Dict[str, List[Any]]:
                         "requirement": req,
                         "verbatim_quote": str(item.get("verbatim_quote", "")).strip(),
                         "context_marker": context_marker,
-                        "requirement_category": str(item.get("requirement_category", "design")).lower().strip(),
+                        "requirement_category": _apply_category_safety_net(
+                            req, str(item.get("requirement_category", "design")).lower().strip()
+                        ),
                     }
                 )
                 continue

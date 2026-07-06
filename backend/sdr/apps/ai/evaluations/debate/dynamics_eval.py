@@ -198,8 +198,8 @@ def main():
         "avg_confidence_delta": avg_confidence_delta,
         "std_confidence_delta": std_confidence_delta,
         "thresholds": {
-            "critic_intervention_rate_gt_0.10": critic_intervention_rate > 0.10,
-            "verdict_revision_rate_gt_0.10": final_change_rate > 0.10,
+            "critic_intervention_rate_gt_0.30": critic_intervention_rate > 0.30,
+            "verdict_revision_rate_gt_0.10": verdict_revision_rate > 0.10,
             "escalation_rate_gt_0": escalation_rate > 0,
         },
         "critic_outcome_distribution": dict(outcome_counts),

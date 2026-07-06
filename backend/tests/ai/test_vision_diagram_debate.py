@@ -334,7 +334,7 @@ def test_pipeline_diagram_analysis_uses_diagram_input_and_debate_service(monkeyp
         def persist_diagram_debate_finding(self, review, category, diagram_debate_output, summary):
             persisted.append((review, category, diagram_debate_output))
             summary.diagram_findings_count += 1
-            return object()
+            return SimpleNamespace(id=1)
 
     pipeline = TSDAnalysisPipeline(
         ingestion_service=SimpleNamespace(),
@@ -343,7 +343,15 @@ def test_pipeline_diagram_analysis_uses_diagram_input_and_debate_service(monkeyp
         persistence_service=_FakePersistence(),
     )
 
-    def _fake_run_diagram_debate(*, diagram, requirements, tsd_context, cancel_check=None):
+    def _fake_run_diagram_debate(
+        *,
+        diagram,
+        requirements,
+        tsd_context,
+        cancel_check=None,
+        agent_started_handler=None,
+        agent_completed_handler=None,
+    ):
         captured["diagram_cls"] = diagram.__class__.__name__
         captured["diagram_module"] = diagram.__class__.__module__
         captured["requirements"] = requirements
@@ -431,7 +439,7 @@ def test_pipeline_diagram_analysis_persists_na_for_non_architecture_images(monke
             summary.diagram_findings_count += 1
             if diagram_debate_output.mediator_result["final_verdict"] == "na":
                 summary.na_count += 1
-            return object()
+            return SimpleNamespace(id=1)
 
     pipeline = TSDAnalysisPipeline(
         ingestion_service=SimpleNamespace(),
@@ -495,7 +503,7 @@ def test_pipeline_diagram_analysis_counts_total_parameters_for_errors_and_succes
             persisted.append(diagram_debate_output)
             summary.diagram_findings_count += 1
             summary.not_met_count += 1
-            return object()
+            return SimpleNamespace(id=1)
 
     pipeline = TSDAnalysisPipeline(
         ingestion_service=SimpleNamespace(),
@@ -504,7 +512,15 @@ def test_pipeline_diagram_analysis_counts_total_parameters_for_errors_and_succes
         persistence_service=_FakePersistence(),
     )
 
-    def _fake_run_diagram_debate(*, diagram, requirements, tsd_context, cancel_check=None):
+    def _fake_run_diagram_debate(
+        *,
+        diagram,
+        requirements,
+        tsd_context,
+        cancel_check=None,
+        agent_started_handler=None,
+        agent_completed_handler=None,
+    ):
         if diagram.diagram_id == "p3_d1":
             return SimpleNamespace(
                 diagram=diagram,

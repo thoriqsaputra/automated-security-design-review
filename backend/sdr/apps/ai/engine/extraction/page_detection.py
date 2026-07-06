@@ -13,12 +13,6 @@ logger = logging.getLogger(__name__)
 
 _TOP_LEVEL_V1_RE = re.compile(r"^V1(?:\s|$)")
 _APPENDIX_A_RE = re.compile(r"\bappendix\s+a\b", re.IGNORECASE)
-_DEFS_TITLE_RE = re.compile(r"application security verification levels", re.IGNORECASE)
-_LEVEL_EVAL_RE = re.compile(r"level evaluation", re.IGNORECASE)
-_LEVEL_LABEL_RE = re.compile(r"\blevel\s+[123]\b", re.IGNORECASE)
-_HOW_TO_USE_RE = re.compile(r"\bhow to use (?:this standard|the asvs)\b", re.IGNORECASE)
-_APPLYING_ASVS_RE = re.compile(r"\bapplying asvs in practice\b", re.IGNORECASE)
-_ASSESSMENT_RE = re.compile(r"\bassessment and certification\b", re.IGNORECASE)
 _CONTENTS_RE = re.compile(r"\b(?:contents|table of contents)\b", re.IGNORECASE)
 _REQ_TABLE_RE = re.compile(r"^\d+\.\d+\.\d+$")
 _OPTIONAL_MARK_RE = re.compile(r"^o$", re.IGNORECASE)
@@ -77,8 +71,6 @@ class RequirementTableSchema:
 class ASVSPageDetectionResult:
     start_page: Optional[int]
     end_page: Optional[int]
-    level_definition_start_page: Optional[int]
-    level_definition_end_page: Optional[int]
     source: str
     matched_anchors: Dict[str, Any]
 
@@ -86,8 +78,6 @@ class ASVSPageDetectionResult:
         return {
             "start_page": self.start_page,
             "end_page": self.end_page,
-            "level_definition_start_page": self.level_definition_start_page,
-            "level_definition_end_page": self.level_definition_end_page,
             "source": self.source,
             "matched_anchors": self.matched_anchors,
         }
@@ -124,10 +114,6 @@ class ASVSPageRangeDetectionService:
             finally:
                 doc.close()
 
-        defs_start, defs_end, defs_anchors, defs_source = self._detect_definition_range(
-            pages=pages,
-            toc_entries=toc_entries,
-        )
         req_start, req_end, req_anchors, req_source = self._detect_requirement_range(
             pages=pages,
             toc_entries=toc_entries,
@@ -138,15 +124,12 @@ class ASVSPageRangeDetectionService:
             req_anchors=req_anchors,
             req_source=req_source,
         )
-        source = "toc" if defs_source == "toc" or req_source == "toc" else "heuristic"
+        source = "toc" if req_source == "toc" else "heuristic"
         return ASVSPageDetectionResult(
             start_page=req_start,
             end_page=req_end,
-            level_definition_start_page=defs_start,
-            level_definition_end_page=defs_end,
             source=source,
             matched_anchors={
-                "definition_range": defs_anchors,
                 "requirement_range": req_anchors,
                 "toc_entries_used": [entry.title for entry in toc_entries[:20]],
             },
@@ -227,54 +210,6 @@ class ASVSPageRangeDetectionService:
                     heading_lines.append(normalized)
         return lines, heading_lines
 
-    def _detect_definition_range(
-        self,
-        *,
-        pages: Sequence[PageInfo],
-        toc_entries: Sequence[TOCEntry],
-    ) -> Tuple[Optional[int], Optional[int], Dict[str, Any], str]:
-        toc_entry = self._find_toc_entry(toc_entries, _DEFS_TITLE_RE)
-        if toc_entry:
-            start_page = toc_entry.page
-            if self._should_backtrack_definition_start(pages, start_page):
-                start_page -= 1
-            end_page = self._toc_section_end_page(toc_entries, toc_entry)
-            if end_page is None:
-                end_page = self._fallback_definition_end(pages, start_page)
-            return start_page, end_page, {
-                "method": "toc_section",
-                "definition_anchor": toc_entry.title,
-                "definition_anchor_page": toc_entry.page,
-                "backtracked_start": start_page != toc_entry.page,
-                "end_page": end_page,
-            }, "toc"
-
-        start_page = None
-        for page in pages:
-            if self._is_contents_page(page):
-                continue
-            if _DEFS_TITLE_RE.search(page.text):
-                start_page = page.page_number
-                break
-        if start_page is None:
-            for page in pages:
-                if self._is_contents_page(page):
-                    continue
-                if _LEVEL_EVAL_RE.search(page.text):
-                    start_page = page.page_number
-                    if self._should_backtrack_definition_start(pages, start_page):
-                        start_page -= 1
-                    break
-        if start_page is None:
-            return None, None, {"method": "not_found"}, "heuristic"
-
-        end_page = self._fallback_definition_end(pages, start_page)
-        return start_page, end_page, {
-            "method": "text_heuristic",
-            "definition_anchor_page": start_page,
-            "end_page": end_page,
-        }, "heuristic"
-
     def _detect_requirement_range(
         self,
         *,
@@ -320,43 +255,6 @@ class ASVSPageRangeDetectionService:
                 return entry
         return None
 
-    def _toc_section_end_page(self, toc_entries: Sequence[TOCEntry], entry: TOCEntry) -> Optional[int]:
-        for candidate in toc_entries:
-            if candidate.page <= entry.page:
-                continue
-            if candidate.level <= entry.level:
-                return candidate.page - 1
-        return None
-
-    def _should_backtrack_definition_start(
-        self,
-        pages: Sequence[PageInfo],
-        start_page: int,
-    ) -> bool:
-        if start_page <= 1:
-            return False
-        previous = pages[start_page - 2]
-        current = pages[start_page - 1]
-        if _DEFS_TITLE_RE.search(previous.text) or _LEVEL_EVAL_RE.search(previous.text):
-            return False
-        if _HOW_TO_USE_RE.search(previous.text) or _ASSESSMENT_RE.search(previous.text):
-            return False
-        if self._is_contents_page(previous):
-            return False
-        if not previous.lines:
-            return False
-        if not (_DEFS_TITLE_RE.search(current.text) or _LEVEL_EVAL_RE.search(current.text)):
-            return False
-        return True
-
-    def _fallback_definition_end(self, pages: Sequence[PageInfo], start_page: int) -> int:
-        for page in pages[start_page:]:
-            if _HOW_TO_USE_RE.search(page.text) and self._has_level_definition_content(page):
-                continue
-            if _HOW_TO_USE_RE.search(page.text) or _APPLYING_ASVS_RE.search(page.text) or _ASSESSMENT_RE.search(page.text):
-                return max(start_page, page.page_number - 1)
-        return start_page
-
     def _find_appendix_page(
         self,
         pages: Sequence[PageInfo],
@@ -391,9 +289,6 @@ class ASVSPageRangeDetectionService:
     def _is_contents_page(self, page: PageInfo) -> bool:
         leading_text = "\n".join(page.leading_lines).lower()
         return bool(_CONTENTS_RE.search(leading_text))
-
-    def _has_level_definition_content(self, page: PageInfo) -> bool:
-        return bool(_LEVEL_LABEL_RE.search(page.text))
 
 
 class ASVSRequirementLevelDetectionService:

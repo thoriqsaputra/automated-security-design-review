@@ -148,8 +148,6 @@ def test_detect_asvs_page_ranges_for_asvs_5_pdf():
 
     result = detect_asvs_page_ranges(source_doc)
 
-    assert result["level_definition_start_page"] == 12
-    assert result["level_definition_end_page"] == 14
     assert result["start_page"] == 23
     assert result["end_page"] == 95
 
@@ -161,7 +159,5 @@ def test_detect_asvs_page_ranges_for_asvs_4_pdf():
 
     result = detect_asvs_page_ranges(source_doc)
 
-    assert result["level_definition_start_page"] == 11
-    assert result["level_definition_end_page"] == 12
     assert result["start_page"] == 17
     assert result["end_page"] == 63

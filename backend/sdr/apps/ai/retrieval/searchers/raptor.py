@@ -48,6 +48,10 @@ class RAPTORSearchResult:
     cosine_similarity: float
     # Convenience copy of node.source_block_ids — avoids repeated attribute access
     source_block_ids: List[str] = field(default_factory=list)
+    # True when this result fell below _MIN_COSINE_SIMILARITY but was kept
+    # anyway because nothing at its level cleared the floor — a known-low-
+    # confidence match that should never outrank a genuine above-threshold hit.
+    threshold_relaxed: bool = False
 
     @property
     def level(self) -> int:
@@ -260,6 +264,8 @@ class RAPTORSearcher:
             threshold_relaxed = True
             scored_results.sort(key=lambda r: r.cosine_similarity, reverse=True)
             top_results = scored_results[:resolved_top_k]
+            for result in top_results:
+                result.threshold_relaxed = True
             self.logger.warning(
                 "RAPTORSearcher.search: no nodes met threshold "
                 "(min_cosine_similarity=%.2f) at level %d in tree '%s' for "
@@ -385,8 +391,13 @@ class RAPTORSearcher:
                 query_embedding=query_vector,
             )
 
-        # Sort merged results by similarity descending
-        all_results.sort(key=lambda r: r.cosine_similarity, reverse=True)
+        # Rank literal leaf text (level 0) ahead of LLM-synthesized summaries
+        # (level > 0) — a broad summary's embedding can score a deceptively
+        # high raw cosine similarity against many queries, which would
+        # otherwise let it outrank the actual specific answer. Within each
+        # tier, non-relaxed (above _MIN_COSINE_SIMILARITY) results rank ahead
+        # of relaxed (known-low-confidence) ones, then by similarity descending.
+        all_results.sort(key=lambda r: (r.level > 0, r.threshold_relaxed, -r.cosine_similarity))
 
         self.logger.info(
             "RAPTORSearcher.search_multi_level: merged %d result(s) "
@@ -437,7 +448,12 @@ class RAPTORSearcher:
             return RAPTORSearchResponse(error="No embeddable RAPTOR nodes found.", query_text=query_text)
 
         scored = self._score_nodes(query_vector=query_vector, nodes=nodes)
-        scored.sort(key=lambda r: r.cosine_similarity, reverse=True)
+        # Same literal-leaf-before-summary tiering as search_multi_level —
+        # this method is also called with mixed levels (see execute_hybrid's
+        # fut_rap branch), so it needs the same protection against a broad
+        # summary's deceptively high cosine similarity outranking a specific
+        # leaf match.
+        scored.sort(key=lambda r: (r.level > 0, -r.cosine_similarity))
 
         selected: List[RAPTORSearchResult] = []
         token_total = 0

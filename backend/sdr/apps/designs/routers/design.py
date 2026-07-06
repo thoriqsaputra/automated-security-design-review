@@ -69,7 +69,9 @@ def create_design(
     )
     db.commit()
     db.refresh(design)
-    dispatch_design_preparation(design.id, preparation.id)
+    dispatch_res = dispatch_design_preparation(design.id, preparation.id)
+    preparation.celery_task_id = dispatch_res.get("task_id")
+    db.commit()
     return design
 
 
@@ -136,7 +138,9 @@ def update_design(
     db.commit()
     db.refresh(design)
     if preparation is not None:
-        dispatch_design_preparation(design.id, preparation.id)
+        dispatch_res = dispatch_design_preparation(design.id, preparation.id)
+        preparation.celery_task_id = dispatch_res.get("task_id")
+        db.commit()
     return _build_design_detail_payload(design)
 
 
@@ -156,7 +160,9 @@ def prepare_design(design_id: int, db: Session = Depends(get_db)):
     )
     db.commit()
     db.refresh(design)
-    dispatch_design_preparation(design.id, preparation.id)
+    dispatch_res = dispatch_design_preparation(design.id, preparation.id)
+    preparation.celery_task_id = dispatch_res.get("task_id")
+    db.commit()
     return _build_design_detail_payload(design)
 
 
@@ -166,6 +172,8 @@ def delete_design(design_id: int, db: Session = Depends(get_db)):
     design = db.get(Design, design_id)
     if not design:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Design not found.")
+    
+
     
     design_name = design.name
     doc_path = design.document
@@ -180,6 +188,36 @@ def delete_design(design_id: int, db: Session = Depends(get_db)):
             logger.warning("Failed to delete document from storage: %s", e)
 
     return {"message": f'Design "{design_name}" has been successfully deleted.'}
+
+
+@router.post("/{design_id}/cancel-preparation", response_model=DesignDetailSchema)
+def cancel_design_preparation(design_id: int, db: Session = Depends(get_db)):
+    """Cancel a design preparation that is currently running or queued."""
+    from sdr.celery_app import celery_app
+    from ..models import DesignPreparationStatus
+
+    design = db.get(Design, design_id)
+    if not design:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Design not found.")
+        
+    preparation = preparation_store.get_active_preparation(db, design.id)
+    if not preparation:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="No active preparation found for this design.")
+        
+    if preparation.status not in [DesignPreparationStatus.QUEUED, DesignPreparationStatus.RUNNING]:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Cannot cancel a preparation that is not queued or running.")
+
+    if preparation.celery_task_id:
+        celery_app.control.revoke(preparation.celery_task_id, terminate=True, signal="SIGTERM")
+
+    preparation_store.mark_failed(design, preparation, "Preparation was cancelled by user.")
+    preparation.status = DesignPreparationStatus.CANCELLED
+    design.preparation_status = DesignPreparationStatus.CANCELLED
+    
+    db.commit()
+    db.refresh(design)
+
+    return _build_design_detail_payload(design)
 
 
 def _build_design_detail_payload(design: Design) -> dict:

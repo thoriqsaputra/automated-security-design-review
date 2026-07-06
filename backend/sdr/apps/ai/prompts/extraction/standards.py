@@ -28,20 +28,25 @@ CATEGORY — assign one of: "design", "code", "infrastructure", "process". Apply
 STEP 1 — DESIGN (documentation): TSD/design doc must DEFINE, STATE, or SPECIFY a security control or policy.
   design: "documentation defines permitted file types", "algorithm allowlist is documented", "session timeout is documented"
   Exception → process if it describes an ongoing org activity even when "documented" appears:
-    "documented change management process", "secure SDLC is followed and documented", "developer security training is documented"
+    "documented change management process", "secure SDLC is followed and documented", "developer security training is documented",
+    "security requirements/constraints captured in user stories or backlog items"
 
 STEP 2 — INFRASTRUCTURE: Server/OS/network/CI configuration not visible in a design doc.
   infra: OS service accounts, HTTP security headers (HSTS, CSP, Content-Type), TLS cipher suites on server,
-         debug mode disabled in production, dependency checker in CI/CD
+         debug mode disabled in production, dependency checker in CI/CD, secrets management service / key vault storage,
+         network segmentation or trust-boundary enforcement via firewall rules, API gateways, reverse proxies,
+         or cloud security groups (naming these mechanisms means infra even when "trust boundary" is mentioned)
 
 STEP 3 — CODE: Verifiable only by reading source code — exact algorithm parameters, exact parsing order,
   specific placement in a request.
   code: bcrypt work factor value, cookie attribute flags (Secure/HttpOnly/SameSite), session token regeneration,
-        output encoding as final step, per-object IDOR checks, log entry encoding
+        output encoding as final step, per-object IDOR checks, log entry encoding, TLS certificate/chain validation logic,
+        file/upload size limits enforced by the application, business-logic workflow step-order enforcement (no skipping steps)
 
 STEP 4 — DESIGN (architecture): Architectural property, policy, or protocol choice visible in a TSD.
   Key question: "WHAT/WHETHER the system does it" → design; "HOW the code implements it precisely" → code.
-  design: mTLS between services, key vault usage, PII encrypted at rest, trust boundaries defined,
+  design: mTLS between services, PII encrypted at rest,
+          trust boundaries defined at the architectural/policy level (not the specific network mechanism enforcing them — see STEP 2),
           rate limiting policy, centralized access control, authentication flow architecture, data sensitivity policy
 
 STEP 5 — PROCESS (fallback): Organizational activity — people, procedures, governance.
@@ -154,7 +159,7 @@ _DIAGRAM_TYPE_DESCRIPTIONS = {
     ),
 }
 
-_DEFAULT_DIAGRAM_TYPES = ["data_flow", "sequence", "architecture"]
+VALID_DIAGRAM_TYPES = ["data_flow", "sequence", "architecture"]
 
 DIAGRAM_REQ_EXTRACTION_SYSTEM_PROMPT = """\
 You are a security standards expert. Your task is to convert text-based \
@@ -171,12 +176,8 @@ Output strict JSON only. Do not output analysis, reasoning, or markdown fences.
 
 def build_diagram_req_extraction_prompt(
     requirements_text: str,
-    diagram_types: list[str] | None = None,
 ) -> str:
-    types = diagram_types or _DEFAULT_DIAGRAM_TYPES
-    valid_types = [t for t in types if t in _DIAGRAM_TYPE_DESCRIPTIONS]
-    if not valid_types:
-        valid_types = _DEFAULT_DIAGRAM_TYPES
+    valid_types = VALID_DIAGRAM_TYPES
 
     diagram_type_block = "\n".join(
         f"- **{_DIAGRAM_TYPE_DESCRIPTIONS[t][0]}** (`{t}`): {_DIAGRAM_TYPE_DESCRIPTIONS[t][1]}"

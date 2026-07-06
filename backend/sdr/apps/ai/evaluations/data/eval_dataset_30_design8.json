@@ -1,0 +1,611 @@
+[
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p26_b0",
+            "p26_b1",
+            "p26_b2"
+        ],
+        "original_text": "system enforces a session timeout limit of an absolute maximum of 30 minutes of idle time .\nDuring an active session, tokens or session data are securely stored using encrypted browser\ncookies that are explicitly mandated to include strict HTTP Only and Secure flags to",
+        "question": "Verify that the application enforces a session timeout limit of an absolute maximum of 30 minutes of idle time.",
+        "ground_truth_context": "system enforces a session timeout limit of an absolute maximum of 30 minutes of idle time ."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p18_b0",
+            "p18_b1",
+            "p18_b2",
+            "p18_b3",
+            "p18_b4",
+            "p18_b5",
+            "p18_b6",
+            "p18_b7",
+            "p18_b8",
+            "p18_b9"
+        ],
+        "original_text": "identifier to the receiver identifier, persisting the conversational record directly within the\nrelational database.\n\u2022\nInternal Endpoint: POST /api/communication/user/block : This privacy control\nendpoint allows a user to explicitly block another user, instructing the system to\nautomatically reject any future disturbing or unwanted messages originating from the\nblocked entity.\n\u2022\nInternal Endpoint: POST /api/feedback/rate : This feedback engine endpoint captures\nthe granular rating parameters submitted by users following a chronologically completed\ntransit, permanently recording assessment metrics such as punctuality, companionship,\nsafe driving, comfort, and hygiene.",
+        "question": "Verify that the system provides a privacy control mechanism allowing a user to explicitly block another user, and that the system automatically rejects future messages from the blocked entity.",
+        "ground_truth_context": "Internal Endpoint: POST /api/communication/user/block : This privacy control endpoint allows a user to explicitly block another user, instructing the system to automatically reject any future disturbing or unwanted messages originating from the blocked entity."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p38_b14",
+            "p38_b15",
+            "p38_b16",
+            "p38_b17",
+            "p38_b18",
+            "p38_b19",
+            "p38_b20",
+            "p38_b21",
+            "p38_b22",
+            "p38_b23",
+            "p38_b24",
+            "p38_b25"
+        ],
+        "original_text": "The Carpool System actively manages highly sensitive personal profile metrics, precise physical\nlocation coordinates, and private community text messages. Consequently, the enterprise\nabsolutely requires rigorous Data Lifecycle Management policies to protect user privacy, optimize\nhardware storage capacity on the 80 GB system drive, and comply with all applicable legal\nconstraints. The system dictates that data is actively utilized only as long as it is strictly necessary\nto fulfill the operational business logic. Once a user terminates their account, or once a\ntransportation request becomes historically irrelevant, the application aggressively sweeps the\nMySQL database to transition this data from the active ledger into secured archival states, or\npermanently destroys it. To guarantee total eradication of sensitive personal information and\nprevent forensic recovery by malicious actors, the infrastructure explicitly requires stringent\ncryptographic erasure for all final data disposal events.\nData processed by the system is subject to strict lifecycle management policies to ensure",
+        "question": "Verify that the application implements stringent cryptographic erasure for all final data disposal events to guarantee total eradication of sensitive personal information and prevent forensic recovery.",
+        "ground_truth_context": "To guarantee total eradication of sensitive personal information and prevent forensic recovery by malicious actors, the infrastructure explicitly requires stringent cryptographic erasure for all final data disposal events."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p7_b11",
+            "p7_b12",
+            "p7_b13",
+            "p7_b14",
+            "p7_b15",
+            "p7_b16",
+            "p7_b17",
+            "p7_b18",
+            "p7_b19",
+            "p7_b20",
+            "p7_b21",
+            "p7_b22",
+            "p7_b23"
+        ],
+        "original_text": "The functional requirements of the Carpool System are deeply integrated into its Model-View-\nController web portal architecture, ensuring a seamless communication environment for both\ndrivers and hitchhikers. The user experience begins on the main landing page, which features an\ninstructional video and standard navigation links, guiding unregistered visitors to create a secure\naccount while allowing existing users to authenticate. Following a successful login, the application\nutilizes strict state transition mechanisms to securely navigate users to their personalized profile\ndashboards, which act as the central operational hub. From this dashboard, users can invoke\ncomplex functional workflows such as plotting exact geographical routes using the Google Map\nApplication Programming Interface, searching for available transits, and reviewing historical\ntransportation records.\nFurthermore, the system behaviour dictates that all users must interact through carefully\nstructured graphical user interfaces built dynamically with HTML and the Bootstrap library. The\napplication directly facilitates user-to-user coordination, meaning a hitchhiker can search for a",
+        "question": "Verify that the application uses strict state transition mechanisms to securely navigate users to their personalized profile dashboards after a successful login.",
+        "ground_truth_context": "Following a successful login, the application utilizes strict state transition mechanisms to securely navigate users to their personalized profile dashboards, which act as the central operational hub."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p2_b17",
+            "p2_b18",
+            "p2_b19",
+            "p2_b20",
+            "p2_b21",
+            "p2_b22",
+            "p2_b23",
+            "p2_b24"
+        ],
+        "original_text": "system relies on a sophisticated technology stack, utilizing the Google Map API for retrieving\nprecise geographical location data and visualizing transportation routes, a MySQL Database\nManagement System (DBMS) to permanently store and seamlessly manipulate user data, and\nPHP for highly secure server-side management. Furthermore, the platform integrates HTML and\nthe Bootstrap library to deliver an attractive and fully responsive Graphical User Interface (GUI)\nthat processes HTTP requests seamlessly via JavaScript. By providing a structured, verifiable,\nand secure portal for ride-sharing, the system aims to drastically reduce individual transportation\ncosts, mitigate heavy traffic jams, and significantly lower environmental air pollution.",
+        "question": "Verify that the application uses PHP for highly secure server-side management.",
+        "ground_truth_context": "PHP for highly secure server-side management"
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p12_b15",
+            "p12_b16",
+            "p12_b17",
+            "p12_b18",
+            "p12_b19"
+        ],
+        "original_text": "\u2022\nNFR-010: The graphical user interface must be fully cross compatible and execute\nflawlessly across major web browsers including Google Chrome, Apple Safari, and Mozilla\n\u2022\nNFR-011: The web portal must operate completely independent of the client machine\narchitecture, ensuring perfect functionality on operating systems including Windows,\nLinux, and Mac Mavericks.",
+        "question": "Verify that the graphical user interface is fully cross-compatible and executes flawlessly across major web browsers including Google Chrome, Apple Safari, and Mozilla.",
+        "ground_truth_context": "NFR-010: The graphical user interface must be fully cross compatible and execute flawlessly across major web browsers including Google Chrome, Apple Safari, and Mozilla"
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p11_b4",
+            "p11_b5",
+            "p11_b6",
+            "p11_b7",
+            "p11_b8",
+            "p11_b9",
+            "p11_b10",
+            "p11_b11",
+            "p11_b12",
+            "p11_b13",
+            "p11_b14",
+            "p11_b15",
+            "p11_b16"
+        ],
+        "original_text": "The non-functional requirements establish the strict performance thresholds, security protocols,\nand design constraints necessary to support a highly robust, enterprise-grade application. To\ndeliver an optimal user experience, the system is architected to be highly responsive,\nguaranteeing that any user equipped with an 8Mbits internet connection can load any application\npage in strictly less than one second. The database and server infrastructure must also be\nimmensely scalable, explicitly designed to permanently store profile information for more than one\nhundred thousand distinct users while simultaneously processing live requests from more than\none thousand concurrent users without any performance degradation.\nIn addition to pure performance, the platform mandates rigorous security and disaster recovery\nconstraints. To defend against unauthorized access and malicious automated robotic\ninterference, the system must encrypt all user passwords within the Database Management\nSystem and enforce a Completely Automated Public Turing test to tell Computers and Humans\nApart (CAPTCHA) module during public interactions. As previously mandated for enterprise data",
+        "question": "Verify that the system encrypts all user passwords within the Database Management System and enforces a CAPTCHA module during public interactions to defend against unauthorized access and malicious automated robotic interference.",
+        "ground_truth_context": "To defend against unauthorized access and malicious automated robotic interference, the system must encrypt all user passwords within the Database Management System and enforce a Completely Automated Public Turing test to tell Computers and Humans Apart (CAPTCHA) module during public interactions."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p3_b0",
+            "p3_b1",
+            "p3_b2",
+            "p3_b3",
+            "p3_b4",
+            "p3_b5",
+            "p3_b6",
+            "p3_b7",
+            "p3_b8",
+            "p3_b9",
+            "p3_b10",
+            "p3_b11",
+            "p3_b12",
+            "p3_b13",
+            "p3_b14",
+            "p3_b15"
+        ],
+        "original_text": "\u2022\nBusiness-to-Business and Transactional Objectives:\no\nFacilitate and securely manage significant business-to-business transactions by\nallowing corporate partners, fleet operators, and enterprise mobility managers to\nintegrate their transportation logistics seamlessly into the platform.\no\nProvide an auditable and highly reliable transactional ledger for all route requests,\nacceptances, and completions to ensure business stakeholders can verify\ntransportation metrics.\no\nEnable users to spend significantly less money on daily and intercity travel by\nmatching empty vehicle seats with commuting demand.\no\nProvide a dedicated communication environment that allows drivers and\nhitchhikers to mutually agree on travel paths and logistics prior to finalizing any\n\u2022\nData Integrity and Security Objectives:\no\nEnforce strict data integrity across all relational database models, ensuring that all\nuser profile data, route coordinates, and messaging histories are mathematically\nconsistent and absolutely protected against unauthorized corruption or data loss.\no\nMaintain strict data integrity during the transit lifecycle by perfectly synchronizing",
+        "question": "Verify that the application enforces strict data integrity across all relational database models to ensure that user profile data, route coordinates, and messaging histories are mathematically consistent and protected against unauthorized corruption or data loss.",
+        "ground_truth_context": "Enforce strict data integrity across all relational database models, ensuring that all user profile data, route coordinates, and messaging histories are mathematically consistent and absolutely protected against unauthorized corruption or data loss."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p3_b16",
+            "p3_b17",
+            "p3_b18",
+            "p3_b19",
+            "p3_b20",
+            "p3_b21",
+            "p3_b22",
+            "p3_b23",
+            "p3_b24",
+            "p4_b0",
+            "p4_b1",
+            "p4_b2",
+            "p4_b3",
+            "p4_b4",
+            "p4_b5",
+            "p4_b6"
+        ],
+        "original_text": "the Google Map API coordinates with the MySQL backend records.\no\nSecure all user authentication processes by strictly encrypting all user passwords\nwithin the DBMS.\no\nPrevent automated spam and robotic interference to protect data purity by\nmandating a Completely Automated Public Turing test to tell Computers and\nHumans Apart (CAPTCHA) module.\no\nEnsure total data reliability by enforcing a maximum one-hour data rollback\nrecovery window in the event of an unexpected server crash.\n\u2022\nOperational and Environmental Objectives:\no\nDrastically decrease urban traffic congestion and minimize the environmental\ncarbon footprint and air pollution caused by single-occupancy vehicles.\no\nSupport massive concurrent usability by ensuring the architecture can respond to\nmore than one thousand users simultaneously without performance degradation.\no\nProvide a highly responsive user experience by ensuring that any user with an\n8Mbits internet connection can load any system page in less than exactly one\no\nGuarantee cross-platform availability by ensuring the system runs flawlessly on all",
+        "question": "Verify that all user passwords are encrypted within the DBMS to secure authentication processes.",
+        "ground_truth_context": "Secure all user authentication processes by strictly encrypting all user passwords within the DBMS."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p40_b0",
+            "p40_b1",
+            "p40_b2",
+            "p40_b3",
+            "p40_b4",
+            "p40_b5",
+            "p40_b6",
+            "p40_b7",
+            "p40_b8",
+            "p40_b9",
+            "p40_b10",
+            "p40_b11",
+            "p40_b12",
+            "p40_b13",
+            "p40_b14",
+            "p40_b15"
+        ],
+        "original_text": "Map Application Programming Interface utilized for geographical matrix plotting, alongside\nthe remote notification gateways utilized for email and mobile alerts, will maintain near\nperfect enterprise uptime. The platform assumes these third-party providers will not\nunexpectedly deprecate critical communication endpoints without extensive prior\nnotification.\n\u2022\nAdequate Client-Side Hardware and Connectivity: It is assumed that all end users,\nwhether operating as drivers or hitchhikers, will possess adequate client-side processing\nhardware and a minimum internet connection speed of exactly eight Megabits per second.\nThis assumption is strictly required to fulfil the mandatory performance threshold\nguaranteeing that all application pages render seamlessly in strictly less than one second.\n\u2022\nUnyielding Infrastructure Provisioning: The project team assumes that the chosen\nenterprise cloud hosting provider will flawlessly maintain the physical sixty-four-bit\narchitecture, the four cores processor, and the eight gigabytes of Random Access Memory\nwithout experiencing unmitigated physical hardware degradation or unplanned facility\npower losses.\nConstraints:",
+        "question": "Verify that the application assumes third-party providers will not unexpectedly deprecate critical communication endpoints without extensive prior notification.",
+        "ground_truth_context": "The platform assumes these third-party providers will not unexpectedly deprecate critical communication endpoints without extensive prior notification."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p29_b0",
+            "p29_b1",
+            "p29_b2",
+            "p29_b3",
+            "p29_b4",
+            "p29_b5",
+            "p29_b6",
+            "p29_b7",
+            "p29_b8",
+            "p29_b9",
+            "p29_b10",
+            "p29_b11"
+        ],
+        "original_text": "will execute the following handling strategy: The system will trigger the Fail-Closed\nprotocol to immediately reject the login attempt. The application will strictly avoid revealing\nwhether the failure was due to an incorrect username or an incorrect password to prevent\nuser enumeration attacks. Instead, it will display a highly generic \"Wrong username and\npassword information\" message on the interface, increment the failed login counter for the\nspecific IP address, and securely log the anomalous attempt in the background server\n\u2022\nUpon encountering the Access Control Violation (HTTP 403) error, the system will\nexecute the following handling strategy: If a registered user attempts to manipulate a\ntransportation route they do not own, or tries to access another user's private message\nbox, the system will trigger a Fail-Closed response. The backend logic will immediately\nhalt the unauthorized transaction, redirect the offending user back to their personal\ndashboard, and flag the session for potential malicious activity within the administrator",
+        "question": "Verify that the system does not reveal whether a login failure was due to an incorrect username or an incorrect password, but instead displays a generic 'Wrong username and password information' message to prevent user enumeration attacks.",
+        "ground_truth_context": "The application will strictly avoid revealing whether the failure was due to an incorrect username or an incorrect password to prevent user enumeration attacks. Instead, it will display a highly generic \"Wrong username and password information\" message on the interface"
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p27_b1",
+            "p27_b2",
+            "p27_b3",
+            "p27_b4",
+            "p27_b5",
+            "p27_b6",
+            "p27_b7",
+            "p27_b8",
+            "p27_b9",
+            "p27_b10",
+            "p27_b11",
+            "p27_b12",
+            "p27_b13"
+        ],
+        "original_text": "The Data Flow and Boundaries architecture establishes the highly secure communication\nchannels through which all information traverses the Carpool System. Data flows seamlessly from\nthe client-side browser interface, which is built with HTML and the Bootstrap library, to the server-\nside Hypertext Preprocessor (PHP) Controller, and ultimately into the MySQL Database\nManagement System or external subsystems. The architecture is strictly segregated to ensure\nthat the Controller layer handles all logical routing between the View and the Model. To guarantee\nenterprise grade security and maintain absolute data confidentiality, all in-transit communication\nacross these boundaries strictly uses TLS 1.2 or TLS 1.3 cryptographic protocols. Furthermore,\nall permanent data at rest stored within the MySQL database is meticulously secured using AES-\n256 or equivalent advanced cryptographic standards.\nData Flow Definitions:\n\u2022\nWhen data is transmitted from the User Browser (Client GUI) to the PHP Web Server\n(Controller) , the communication utilizes the HTTPS protocol. The expected payload type",
+        "question": "Verify that all in-transit communication across system boundaries uses TLS 1.2 or TLS 1.3 cryptographic protocols.",
+        "ground_truth_context": "To guarantee enterprise grade security and maintain absolute data confidentiality, all in-transit communication across these boundaries strictly uses TLS 1.2 or TLS 1.3 cryptographic protocols."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p32_b27",
+            "p32_b28",
+            "p32_b29",
+            "p32_b30"
+        ],
+        "original_text": "primary purpose of this dependency is to provide: A highly attractive, structurally robust, and fully\nresponsive Graphical User Interface that executes flawlessly across diverse web browsers and\noperating systems. The strategy for updating and maintaining this library is defined as: Quarterly\nmanual security audits combined with automated minor version bumps explicitly controlled within",
+        "question": "Verify that a strategy for updating and maintaining user interface libraries includes quarterly manual security audits combined with automated minor version bumps explicitly controlled within the dependency management process.",
+        "ground_truth_context": "Quarterly manual security audits combined with automated minor version bumps explicitly controlled within"
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p31_b0",
+            "p31_b1",
+            "p31_b2",
+            "p31_b3",
+            "p31_b4",
+            "p31_b5",
+            "p31_b6",
+            "p31_b7",
+            "p31_b8",
+            "p31_b9",
+            "p31_b10",
+            "p31_b11",
+            "p31_b12"
+        ],
+        "original_text": "Category: Privilege Changes and Access Control Decisions : This encompasses: The\nexhaustive tracking of every instance where a user attempts to access a restricted resource. This\nexplicitly includes the exact enforcement outcomes of all Role Based Access Control evaluations,\nsuccessfully authorized route deletions, denied attempts to manipulate transportations owned by\nother users, and all Fail Closed security triggers.\nCategory: Data Integrity and Route Ledger Modifications : This encompasses: The\nchronological recording of all fundamental changes applied to the MySQL database. This includes\nthe successful creation of new user profiles, the precise timestamps when drivers add new\ntransportation routes utilizing the Google Map API, and the permanent deletion of existing transit\nCategory: System Exceptions and External Subsystem Failures : This encompasses: All\ncritical errors generated by the application environment. This includes database connection drops,\nsyntax errors safely suppressed from the graphical user interface, and timeouts occurring when\nattempting to fetch geographical matrices from the Google Maps Application Programming",
+        "question": "Verify that the application logs all access control decisions, including successful and denied attempts, and the enforcement outcomes of Role Based Access Control evaluations.",
+        "ground_truth_context": "Category: Privilege Changes and Access Control Decisions : This encompasses: The exhaustive tracking of every instance where a user attempts to access a restricted resource. This explicitly includes the exact enforcement outcomes of all Role Based Access Control evaluations, successfully authorized route deletions, denied attempts to manipulate transportations owned by other users, and all Fail Closed security triggers."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p39_b9",
+            "p39_b10",
+            "p39_b11",
+            "p39_b12",
+            "p39_b13",
+            "p39_b14",
+            "p39_b15",
+            "p39_b16",
+            "p39_b17",
+            "p39_b18"
+        ],
+        "original_text": "analysis . Once the data is no longer required for archival purposes, it is securely\ndestroyed using the following disposal method: Rigorous and permanent cryptographic\n\u2022\nData categorized as Internal Community Direct Messages is subject to a retention\nperiod of exactly six months following the date the message was successfully\ntransmitted and read by the receiver . Upon reaching the end of this period, the archival\nstrategy employed is strict non archival, meaning the system explicitly forbids long\nterm storage of private community communications . Once the data is no longer\nrequired for archival purposes, it is securely destroyed using the following disposal\nmethod: Immediate, rigorous, and permanent cryptographic erasure directly from\nthe active relational tables .",
+        "question": "Verify that the system explicitly forbids long-term storage of private community communications and that data categorized as Internal Community Direct Messages is securely destroyed using immediate, rigorous, and permanent cryptographic erasure directly from active relational tables after a retention period of exactly six months.",
+        "ground_truth_context": "Data categorized as Internal Community Direct Messages is subject to a retention period of exactly six months following the date the message was successfully transmitted and read by the receiver . Upon reaching the end of this period, the archival strategy employed is strict non archival, meaning the system explicitly forbids long term storage of private community communications . Once the data is no longer required for archival purposes, it is securely destroyed using the following disposal method: Immediate, rigorous, and permanent cryptographic erasure directly from the active relational tables ."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p34_b24",
+            "p34_b25",
+            "p34_b26",
+            "p34_b27",
+            "p34_b28"
+        ],
+        "original_text": "configuration files strictly located on the developer's physical workstation . To\nprevent accidental leakage of even development-level credentials, these specific local files\nare explicitly mandated to be excluded from the source code repository via rigorous\n.gitignore rules. Developers utilize local host databases and mock services to write code\nwithout interacting with the staging or production architectures.",
+        "question": "Verify that the application's configuration files, which may contain credentials, are excluded from the source code repository using .gitignore rules.",
+        "ground_truth_context": "these specific local files are explicitly mandated to be excluded from the source code repository via rigorous .gitignore rules."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p9_b12",
+            "p9_b13",
+            "p9_b14",
+            "p9_b15",
+            "p9_b16",
+            "p9_b17",
+            "p9_b18",
+            "p9_b19",
+            "p9_b20",
+            "p9_b21",
+            "p9_b22",
+            "p9_b23",
+            "p9_b24",
+            "p9_b25"
+        ],
+        "original_text": "\u2022\nFR-019: The system shall allow drivers to select a specific active route and permanently\ndelete it from the system ledger.\n\u2022\nFR-020: The system shall automatically generate and transmit a notification informing all\nassociated hitchhikers when their requested route is deleted by the driver.\n\u2022\nFR-021: The system shall enable hitchhikers to formally submit a transit request by\nclicking a \"Request the Route\" button on a specific transportation page.\n\u2022\nFR-022: The system shall trigger an automated email and Short Message Service (SMS)\nnotification to the driver immediately upon receiving a hitchhiker request.\n\u2022\nFR-023: The system shall provide \"from\" and \"to\" input fields for hitchhikers to search for\nmatching transportation routes.\n\u2022\nFR-024: The system shall halt the search process and display a warning message if the\nsearch input fields are left blank.\n\u2022\nFR-025: The system shall generate a visual list containing the avatars, route details,\ndates, and driver names of all available transportations matching the search parameters.",
+        "question": "Verify that the system automatically generates and transmits a notification informing all associated hitchhikers when their requested route is deleted by the driver.",
+        "ground_truth_context": "FR-020: The system shall automatically generate and transmit a notification informing all associated hitchhikers when their requested route is deleted by the driver."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p34_b14",
+            "p34_b15",
+            "p34_b16",
+            "p34_b17",
+            "p34_b18",
+            "p34_b19",
+            "p34_b20",
+            "p34_b21",
+            "p34_b22"
+        ],
+        "original_text": "\u2022\nFor the Staging and User Acceptance Testing (UAT) environment, variables are\ndesignated with the prefix STG_CARPOOL_ . These configuration values are stored\nwithin: Encrypted Environment Variables managed by the Continuous Integration\npipeline . This environment acts as an exact architectural mirror of the production system\nto facilitate rigorous pre-deployment testing. However, it connects strictly to a sanitized\ndatabase ledger populated with dummy profiles and utilizes sandbox API keys for Google\nMaps and SMS gateways to prevent accidental notifications being dispatched to actual\nusers during testing phases.\n\u2022\nFor the Local Development environment, variables are designated with the prefix",
+        "question": "Verify that the application uses encrypted environment variables managed by the Continuous Integration pipeline for storing configuration values in the Staging and UAT environment.",
+        "ground_truth_context": "These configuration values are stored within: Encrypted Environment Variables managed by the Continuous Integration pipeline."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p11_b0",
+            "p11_b1",
+            "p11_b2"
+        ],
+        "original_text": "Turkish when the user clicks the \"T\u00fcrk\u00e7e\" navigation element.\n\u2022\nFR-039: The system shall seamlessly translate the entire graphical user interface into\nEnglish when the user clicks the \"English\" navigation element.",
+        "question": "Verify that the system translates the user interface to Turkish when the user clicks the 'T\u00fcrk\u00e7e' navigation element, and to English when the user clicks the 'English' navigation element.",
+        "ground_truth_context": "Turkish when the user clicks the \"T\u00fcrk\u00e7e\" navigation element.\n\u2022\nFR-039: The system shall seamlessly translate the entire graphical user interface into English when the user clicks the \"English\" navigation element."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p42_b25",
+            "p42_b26",
+            "p42_b27",
+            "p42_b28",
+            "p42_b29",
+            "p42_b30",
+            "p42_b31",
+            "p42_b32",
+            "p42_b33",
+            "p42_b34",
+            "p43_b0",
+            "p43_b1",
+            "p43_b2",
+            "p43_b3",
+            "p43_b4",
+            "p43_b5",
+            "p43_b6",
+            "p43_b7"
+        ],
+        "original_text": "Demilitarized Zone\nA highly secure, isolated subnetwork topology that intentionally\nexposes the public facing web server nodes to the internet\nwhile strictly shielding the internal relational databases from\nunauthorized direct inbound routing.\nDriver\nThe fully authenticated user entity who physically owns the\ntransportation vehicle and explicitly defines the available route\ncoordinates and departure times within the platform.\nFail Closed\nA mandatory enterprise security principle ensuring that\nwhenever an authorization check fails or a critical system error\noccurs, the application absolutely defaults to denying access\nand locking down all secure resources.\nGraphical User Interface\nThe highly attractive visual presentation layer constructed with\nHTML and the Bootstrap library, allowing users to seamlessly\ninteract with the underlying complex business logic.\nHitchhiker\nThe fully authenticated user entity who officially accompanies\nthe driver during the transit and submits formal transportation\nrequests via the community matchmaking portal.\nHypertext Preprocessor\nThe robust server-side scripting engine powering the Controller",
+        "question": "Verify that the application implements a 'Fail Closed' principle, ensuring that upon authentication failure or system error, access is denied and resources are locked down by default.",
+        "ground_truth_context": "Fail Closed\nA mandatory enterprise security principle ensuring that\nwhenever an authorization check fails or a critical system error\noccurs, the application absolutely defaults to denying access\nand locking down all secure resources."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p41_b0",
+            "p41_b1",
+            "p41_b2",
+            "p41_b3",
+            "p41_b4",
+            "p41_b5",
+            "p41_b6",
+            "p41_b7",
+            "p41_b8",
+            "p41_b9",
+            "p41_b10",
+            "p41_b11",
+            "p41_b12",
+            "p41_b13"
+        ],
+        "original_text": "the physical relationship, mutual liability, or physical safety between these participating\nparties. The system is strictly constrained to acting solely as a communication and\nmatchmaking portal, and cannot enforce physical or legal liability.\n\u2022\nAbsolute Remote Server Dependency: The entire Model View Controller framework,\nthe application functionality, and all persistent data storage capabilities fundamentally\nrequire continuous access to a centralized remote server. The system is severely\nconstrained by this dependency; if the server experiences a critical crash, a network\npartition, or a denial-of-service event, the application will become entirely unavailable to\nall users until full disaster recovery protocols are successfully executed.\n\u2022\nHacker Vulnerability and Information Security: Because the central MySQL Database\nManagement System permanently stores highly sensitive user profile metrics, encrypted\nauthentication credentials, precise geographic travel paths, and private community\nmessages, it is a highly valuable target for malicious actors. The system is constrained by\nthe absolute necessity to perfectly secure this data against unauthorized extraction,",
+        "question": "Verify that the application remains available to users during server crashes, network partitions, or denial-of-service events.",
+        "ground_truth_context": "The system is severely constrained by this dependency; if the server experiences a critical crash, a network partition, or a denial-of-service event, the application will become entirely unavailable to all users until full disaster recovery protocols are successfully executed."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p42_b0",
+            "p42_b1",
+            "p42_b2",
+            "p42_b3",
+            "p42_b4",
+            "p42_b5",
+            "p42_b6",
+            "p42_b7",
+            "p42_b8",
+            "p42_b9",
+            "p42_b10",
+            "p42_b13",
+            "p42_b11",
+            "p42_b14",
+            "p42_b12",
+            "p42_b15",
+            "p42_b16",
+            "p42_b17",
+            "p42_b18",
+            "p42_b19",
+            "p42_b20",
+            "p42_b21",
+            "p42_b22",
+            "p42_b23",
+            "p42_b24"
+        ],
+        "original_text": "Application\nProgramming\nA meticulously defined set of methods and communication\nprotocols utilized by the central web server to seamlessly\ninterface with external subsystems, such as the geographic\nmapping service.\nAttribute\nBased\nAccess\nAn advanced enterprise authorization paradigm that evaluates\nspecific granular user profile attributes, such as route\nownership identifiers, to grant or permanently deny access to\nsecure data modification endpoints.\nCompletely\nAutomated\nA rigorous security challenge module explicitly deployed during\nPublic Turing test to tell\nthe public registration and authentication workflows to\nComputers\nand\nHumans\nsuccessfully block malicious robotic scripts and automated\nspamming vectors.\nCross Site Scripting\nA critical enterprise security vulnerability where malicious\nclient-side scripts are injected into web pages. This threat is\nneutralized within this architecture by strictly enforcing HTTP\nOnly flags on all session tokens.\nDatabase\nManagement\nThe core infrastructural data component, specifically utilizing\nMySQL, engineered to securely store, rigidly relate, and\npermanently manipulate all user profiles and transit ledgers.",
+        "question": "Verify that the application enforces attribute-based access control (ABAC) to grant or permanently deny access to secure data modification endpoints based on specific granular user profile attributes, such as route ownership identifiers.",
+        "ground_truth_context": "An advanced enterprise authorization paradigm that evaluates specific granular user profile attributes, such as route ownership identifiers, to grant or permanently deny access to secure data modification endpoints."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p22_b0",
+            "p22_b1",
+            "p22_b2",
+            "p22_b3",
+            "p22_b4",
+            "p22_b5",
+            "p22_b6",
+            "p22_b7",
+            "p22_b8",
+            "p22_b9",
+            "p22_b10",
+            "p22_b11",
+            "p22_b12",
+            "p22_b13",
+            "p22_b14",
+            "p22_b15",
+            "p22_b16",
+            "p22_b17",
+            "p22_b18",
+            "p22_b19",
+            "p22_b20",
+            "p22_b21",
+            "p22_b22",
+            "p22_b23",
+            "p22_b24",
+            "p22_b25",
+            "p22_b26",
+            "p23_b0",
+            "p23_b1",
+            "p23_b2",
+            "p23_b3",
+            "p23_b4"
+        ],
+        "original_text": "HARDWARE_RAM_ALLOCATION_GB\n8\nThe precise amount of Random\nAccess Memory strictly allocated to\nthe primary server node to facilitate\nrobust\nHypertext\nPreprocessor\nexecution.\nHARDWARE_STORAGE_CAPACITY_GB\n80\nThe exact physical capacity of the\nsystem drive allocated for the\nsecure continuous operation of the\ndatabase\nledger\nand\ncore\napplication files.\nPROCESSOR_CORE_COUNT\n4\nThe mandatory number of central\nprocessing cores required by the 64\nbit server architecture to rapidly\nhandle high volume concurrent\nnetwork traffic.\nMAXIMUM_DATA_ROLLBACK_MINUTES 60\nThe\nmaximum\nallowable\nchronological window for disaster\nrecovery, explicitly guaranteeing the\nsystem rolls back at most one hour\nin maintainability purposes following\nSESSION_IDLE_TIMEOUT_MINUTES\n30\nThe strictly enforced maximum\nallowed duration of user inactivity\nbefore the web server completely\ninvalidates the authenticated token\nand forces a new login.\nRATE_LIMIT_AUTHENTICATION\n5\nThe\nstrict\nlimit\nplaced\non\nauthentication endpoint requests\nper minute per Internet Protocol\naddress\nto\ndefinitively\nprevent\nrobotic\nbrute\nforce\npassword\nguessing attacks.\nRATE_LIMIT_STANDARD_API\n120\nThe maximum number of standard",
+        "question": "Verify that the application limits authentication requests to a maximum of 5 per minute per IP address to prevent brute force attacks.",
+        "ground_truth_context": "RATE_LIMIT_AUTHENTICATION 5 The strict limit placed on authentication endpoint requests per minute per Internet Protocol address to definitively prevent robotic brute force password guessing attacks."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p30_b20",
+            "p30_b21",
+            "p30_b22",
+            "p30_b23",
+            "p30_b24",
+            "p30_b25",
+            "p30_b26",
+            "p30_b27",
+            "p30_b28"
+        ],
+        "original_text": "logging mechanisms, system administrators gain the continuous real time visibility required to\nswiftly identify anomalous behaviours, neutralize brute force login attempts, and diagnose\nexternal subsystem timeouts without ever exposing sensitive community messaging or\nunencrypted personal profile metrics.\nThe following core events are captured by the logging system:\nCategory: Authentication Successes and Failures : This encompasses: All attempts by users\nto verify their credentials against the Database Management System. This explicitly records\nsuccessful logins, failed password attempts, account lockouts, and mandatory Multi Factor\nAuthentication challenge results, strictly ensuring that no actual passwords are ever written to the",
+        "question": "Verify that the logging system captures authentication successes and failures, including successful logins, failed password attempts, account lockouts, and MFA challenge results, without recording actual passwords.",
+        "ground_truth_context": "All attempts by users to verify their credentials against the Database Management System. This explicitly records successful logins, failed password attempts, account lockouts, and mandatory Multi Factor Authentication challenge results, strictly ensuring that no actual passwords are ever written to the"
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p21_b10",
+            "p21_b11",
+            "p21_b12",
+            "p21_b13",
+            "p21_b14",
+            "p21_b15",
+            "p21_b16",
+            "p21_b17",
+            "p21_b18",
+            "p21_b19",
+            "p21_b20",
+            "p21_b21",
+            "p21_b22",
+            "p21_b23",
+            "p21_b24",
+            "p21_b25",
+            "p21_b26",
+            "p21_b27"
+        ],
+        "original_text": "MAXIMUM_CONCURRENT_USERS\n1000\nThe absolute maximum threshold of\nusers\nwho\ncan\nsimultaneously\ninteract with the system without\nexperiencing\nany\narchitectural\nperformance degradation.\nMAXIMUM_USER_CAPACITY\n100000\nThe required permanent storage\ncapacity for distinct registered user\nprofiles securely maintained within\nthe MySQL Database Management\nPAGE_LOAD_TIMEOUT_MS\n1000\nThe maximum allowable millisecond\nduration for rendering any system\npage for users equipped with a\nstandard\n8Mbits\ninternet\nconnection.\nMAXIMUM_ROUTE_WAYPOINTS\n8\nThe absolute upper limit of specific\ngeographical waypoints a driver is\npermitted to dynamically plot along\ntheir travel path utilizing the Google",
+        "question": "Verify that the application can securely store up to 100,000 distinct registered user profiles within the MySQL database.",
+        "ground_truth_context": "MAXIMUM_USER_CAPACITY\n100000\nThe required permanent storage capacity for distinct registered user profiles securely maintained within the MySQL Database Management"
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p33_b13",
+            "p33_b14",
+            "p33_b15",
+            "p33_b16",
+            "p33_b17",
+            "p33_b18",
+            "p33_b19",
+            "p33_b20"
+        ],
+        "original_text": "the upgrade cycle.\nThe application utilizes Completely Automated Public Turing test to tell Computers and\nHumans Apart (Version: Google reCAPTCHA Enterprise ). The primary purpose of this\ndependency is to provide: Strict security enforcement against malicious robotic interactions and\nautomated spamming scripts during the public registration and authentication workflows. The\nstrategy for updating and maintaining this library is defined as: Seamless and continuous updates\nmanaged entirely by the external vendor service provider, requiring no manual intervention from\nthe internal development team.",
+        "question": "Verify that the application uses a CAPTCHA mechanism, such as Google reCAPTCHA Enterprise, to protect public registration and authentication workflows from automated robotic interactions and spam scripts.",
+        "ground_truth_context": "The application utilizes Completely Automated Public Turing test to tell Computers and Humans Apart (Version: Google reCAPTCHA Enterprise ). The primary purpose of this dependency is to provide: Strict security enforcement against malicious robotic interactions and automated spamming scripts during the public registration and authentication workflows."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p36_b0",
+            "p36_b1",
+            "p36_b2",
+            "p36_b3",
+            "p36_b4",
+            "p36_b5",
+            "p36_b6",
+            "p36_b7",
+            "p36_b8",
+            "p36_b9",
+            "p36_b10",
+            "p36_b11",
+            "p36_b12",
+            "p36_b13"
+        ],
+        "original_text": "Bootstrap, and JavaScript, utilized by the driver or hitchhiker to visually interact with the\n\u2022\nNode: Enterprise Load Balancer and Web Application Firewall : The absolute first point\nof contact for all incoming traffic, responsible for terminating encrypted connections,\nfiltering malicious payloads, and routing legitimate requests to the application layer.\n\u2022\nNode: Hypertext Preprocessor Web Server Cluster : The active controller nodes\ndeployed within the public subnet, equipped with a 64-bit architecture and a 4 cores\nprocessor, responsible for executing complex business logic and securely managing\nactive user session states.\n\u2022\nNode: MySQL Database Management System Node : The central repository locked\nentirely inside the private subnet, equipped with 8 GB of RAM and an 80 GB system drive,\nexclusively responsible for securely persisting all user profiles, encrypted passwords, and\ntransportation ledger records.\n\u2022\nNode: Google Map Subsystem Gateway : The verified external routing node accessed\nstrictly via outbound HTTPS to retrieve exact geographic matrices and complex multi",
+        "question": "Verify that the system terminates encrypted connections and filters malicious payloads at the first point of contact for all incoming traffic.",
+        "ground_truth_context": "Node: Enterprise Load Balancer and Web Application Firewall : The absolute first point of contact for all incoming traffic, responsible for terminating encrypted connections, filtering malicious payloads, and routing legitimate requests to the application layer."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p16_b24",
+            "p17_b0",
+            "p17_b1",
+            "p17_b2",
+            "p17_b3",
+            "p17_b4",
+            "p17_b5",
+            "p17_b6",
+            "p17_b7",
+            "p17_b8",
+            "p17_b9",
+            "p17_b10",
+            "p17_b11",
+            "p17_b12"
+        ],
+        "original_text": "\u2022\nExternal Subsystem: SMS Notification Gateway : This external communication\ninterface securely dispatches Short Message Service text alerts directly to remote mobile\ndevices, notifying users of critical transportation requests and active transit alerts.\n\u2022\nExternal Subsystem: Email Dispatch Service : This external integration securely\ntransmits automated verification emails required to authenticate identities during the initial\nuser sign up process and dispatches routing notifications directly to driver inboxes.\n\u2022\nInternal Endpoint: POST /api/auth/signup : This endpoint securely receives the highly\ngranular user registration payload including username, encrypted password, first name,\nsurname, email address, age, job title, phone number, and gender to create a new profile.\n\u2022\nInternal Endpoint: POST /api/auth/login : This authentication endpoint processes the\nincoming username and password combination, securely verifying the credentials against\nthe MySQL Database Management System to establish a cryptographically signed active\n\u2022\nInternal Endpoint: POST /api/transportation/add : This endpoint allows an\nauthenticated driver to mathematically record a new transportation route to the system",
+        "question": "Verify that the application securely transmits automated verification emails to authenticate identities during the initial user sign-up process.",
+        "ground_truth_context": "External Subsystem: Email Dispatch Service : This external integration securely transmits automated verification emails required to authenticate identities during the initial user sign up process and dispatches routing notifications directly to driver inboxes."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p21_b1",
+            "p21_b2",
+            "p21_b3",
+            "p21_b4",
+            "p21_b5",
+            "p21_b6",
+            "p21_b7",
+            "p21_b8"
+        ],
+        "original_text": "The application environment relies upon a meticulously defined set of configuration parameters,\nsystem limits, application timeouts, and explicitly injected environment variables to maintain\nabsolute stability across the 64-bit hardware infrastructure. To satisfy the rigorous technical depth\nrequired by the enterprise architecture, the following table exhaustively defines the physical\nhardware boundaries, database connection thresholds, network communication limits, and the\nlocalized system variables that actively govern the application state. To guarantee absolute\ncryptographic security, these parameters are explicitly managed through infrastructure as code\ndeployment pipelines and strictly prohibit any hardcoded credentials within the source code logic.",
+        "question": "Verify that the application prohibits hardcoded credentials within the source code logic.",
+        "ground_truth_context": "these parameters are explicitly managed through infrastructure as code deployment pipelines and strictly prohibit any hardcoded credentials within the source code logic."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p16_b10",
+            "p16_b11",
+            "p16_b12",
+            "p16_b13",
+            "p16_b14",
+            "p16_b15",
+            "p16_b16",
+            "p16_b17",
+            "p16_b18",
+            "p16_b19",
+            "p16_b20",
+            "p16_b21",
+            "p16_b22",
+            "p16_b23"
+        ],
+        "original_text": "The Carpool System architecture relies on a highly interconnected network of internal Hypertext\nPreprocessor Application Programming Interface endpoints and critical external system\nintegrations. To guarantee absolute security and maintain the enterprise grade integrity of the\nModel View Controller framework, the system enforces rigid communication protocols across all\ncomputational boundaries. It is explicitly mandated that every single internal and external\nApplication Programming Interface endpoint requires fully authenticated, cryptographically signed\nsession tokens prior to processing any incoming payload. Furthermore, the web server\ninfrastructure utilizes strict rate limiting algorithms on every single endpoint to definitively prevent\ndenial of service attacks, neutralize brute force authentication attempts, and block malicious\nrobotic spamming, perfectly complementing the Completely Automated Public Turing test to tell\nComputers and Humans Apart module.\n\u2022\nExternal Subsystem: Google Map API : This critical external interface is utilized to\nretrieve precise geographical location information, visually render map matrices, and allow\ndrivers to plot highly specific transportation routes and geographic waypoints.",
+        "question": "Verify that the application requires fully authenticated, cryptographically signed session tokens for all internal and external API endpoints before processing any incoming payload.",
+        "ground_truth_context": "It is explicitly mandated that every single internal and external Application Programming Interface endpoint requires fully authenticated, cryptographically signed session tokens prior to processing any incoming payload."
+    }
+]

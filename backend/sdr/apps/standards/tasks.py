@@ -4,7 +4,7 @@ import json
 import threading
 import time
 from typing import Any, Dict, List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from celery import shared_task
 from sqlalchemy import delete, select, update
@@ -19,9 +19,10 @@ from sdr.apps.standards.utils import (
     normalize_requirement_text,
 )
 # Note: assuming extraction and embedding services are refactored to use SQLAlchemy or don't rely on ORM models
-from sdr.apps.ai.client import chat_completion
+from sdr.apps.ai.client import chat_completion, usage_tracker
 from sdr.apps.ai.client.session import (
     build_standard_ingestion_session_id,
+    capture_current_context,
     job_session_context,
 )
 
@@ -159,6 +160,17 @@ def _natural_keys(text: str):
 _BARE_SECTION_ID_RE = re.compile(r"^\s*[A-Za-z\-]*\d+(\.\d+){1,4}\s*$")
 
 
+def _strip_null_bytes(value: str) -> str:
+    if "\x00" not in value:
+        return value
+    logger.warning("tasks._strip_null_bytes: removed null byte(s) from extracted text")
+    return value.replace("\x00", "")
+
+
+def _to_naive_utc(value: datetime) -> datetime:
+    return value.replace(tzinfo=None) if value.tzinfo is not None else value
+
+
 def _coerce_requirement_text(requirement_item: Any) -> str:
     """
     Backward-compatible requirement text extraction.
@@ -184,8 +196,6 @@ def _resolve_detected_page_ranges(
     for field_name in (
         "start_page",
         "end_page",
-        "level_definition_start_page",
-        "level_definition_end_page",
     ):
         override_value = requested.get(field_name)
         if override_value is not None:
@@ -205,8 +215,6 @@ def _resolve_detected_page_ranges(
                 for key in (
                     "start_page",
                     "end_page",
-                    "level_definition_start_page",
-                    "level_definition_end_page",
                 )
             },
             "requested_overrides": requested,
@@ -255,8 +263,6 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
         requested_ranges = {
             "start_page": old_summary.get("start_page"),
             "end_page": old_summary.get("end_page"),
-            "level_definition_start_page": old_summary.get("level_definition_start_page"),
-            "level_definition_end_page": old_summary.get("level_definition_end_page"),
         }
 
         summary: Dict[str, Any] = {
@@ -275,8 +281,6 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
             'version_no': getattr(job, 'version_no', 1),
             'start_page': requested_ranges["start_page"],
             'end_page': requested_ranges["end_page"],
-            'level_definition_start_page': requested_ranges["level_definition_start_page"],
-            'level_definition_end_page': requested_ranges["level_definition_end_page"],
             'page_detection': {
                 'source': 'pending',
                 'matched_anchors': {},
@@ -296,7 +300,7 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
 
         logger.info("run_standard_ingestion_job_sync: [STEP 1-INIT] marking job as RUNNING.")
         job.status = StandardIngestionJob.STATUS_RUNNING
-        job.started_at = datetime.utcnow()
+        job.started_at = datetime.now(timezone.utc)
         job.completed_at = None
         job.error_message = ''
         job.summary_json = summary
@@ -384,8 +388,6 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                                 "matched_anchors": {},
                                 "start_page": None,
                                 "end_page": None,
-                                "level_definition_start_page": None,
-                                "level_definition_end_page": None,
                             },
                             requested_ranges,
                         )
@@ -436,7 +438,7 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                         requirements = canonicalize_requirement_items(
                             requirements_by_section[section_title]
                         )
-                        section_name = (section_title or 'General').strip() or 'General'
+                        section_name = _strip_null_bytes((section_title or 'General').strip()) or 'General'
                         parent = parents_by_section.get(section_name)
                         
                         if parent is None:
@@ -473,8 +475,8 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                         )
 
                         for req in sorted_requirements:
-                            raw_text = _coerce_requirement_text(req)
-                            
+                            raw_text = _strip_null_bytes(_coerce_requirement_text(req))
+
                             normalized = normalize_requirement_text(raw_text)
                             
                             if not normalized:
@@ -583,12 +585,12 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                 embed_future = None
                 if items_to_embed:
                     embed_future = phase_executor.submit(
-                        generate_and_store_embeddings, items_to_embed, job.id, summary
+                        capture_current_context(generate_and_store_embeddings), items_to_embed, job.id, summary
                     )
                 diagram_future = None
                 if diagram_req_params:
                     diagram_future = phase_executor.submit(
-                        extract_diagram_requirements,
+                        capture_current_context(extract_diagram_requirements),
                         parameters=diagram_req_params,
                         category_id=job.category_id,
                         ingestion_job_id=job.id,
@@ -707,8 +709,13 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
         )
         job.status = job_status_new
         summary['detailed_progress'] = {'label': 'Completed' if job_status_new == StandardIngestionJob.STATUS_COMPLETED else 'Failed', 'percentage': 100}
+        summary['llm_usage'] = usage_tracker.snapshot(session_id)
+        job.completed_at = datetime.now(timezone.utc)
+        if job.started_at:
+            summary['job_duration_seconds'] = (
+                _to_naive_utc(job.completed_at) - _to_naive_utc(job.started_at)
+            ).total_seconds()
         job.summary_json = summary
-        job.completed_at = datetime.utcnow()
 
         if job_status_new == StandardIngestionJob.STATUS_FAILED:
             job.error_message = (
@@ -726,7 +733,7 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
                 .values(is_active=False)
             )
             job.is_active = True
-            job.activated_at = datetime.utcnow()
+            job.activated_at = datetime.now(timezone.utc)
 
         try:
             job.summary_json = summary
@@ -735,6 +742,8 @@ def run_standard_ingestion_job_sync(job_id: str, celery_task_id: Optional[str] =
             db.commit()
         except Exception as exc:
             logger.warning('Could not persist embedding counters for job=%s: %s', job.id, exc)
+        finally:
+            usage_tracker.clear(session_id)
 
         # Step 4 - Clean up temporal documents
         from sdr.apps.workspace.services.storage import storage_service

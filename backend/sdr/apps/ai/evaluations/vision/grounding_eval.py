@@ -1,23 +1,33 @@
 """
-Visual Grounding & Marker Utilization Eval.
+Visual Grounding & Marker Utilization Eval (real diagrams).
 
 Measures whether the Vision Agent actually uses Set-of-Mark marker references
-when citing visual evidence, how reliably the Critic catches bad citations, and
-how well-calibrated the final confidence scores are.
+when citing visual evidence, how reliably the Critic catches bad citations,
+and how well-calibrated the final confidence scores are — run against REAL
+diagrams from a design's parsed TSD document, using the same labeled
+`diagram_ground_truth_review_<id>.json` file consumed by
+retrieval/diagram_retrieval_eval.py and debate/diagram_ablation_eval.py (see
+evaluations/data/build_diagram_ground_truth_template.py). design_id is read
+directly from the ground-truth file.
 
 Metrics:
-  1. marker_utilization_rate  — fraction of Hunter assessments that cite [N]
-  2. scope_accuracy           — diagram scope classification accuracy
-  3. critic_overturn_rate     — how often Critic overturns Hunter
-  4. invalid_marker_citation_rate — fraction of Hunter's cited markers that
-                                    Critic flagged as invalid
-  5. confidence_calibration   — per-bucket accuracy vs. confidence score
+  1. marker_utilization_rate       — fraction of Hunter assessments that cite [N]
+  2. scope_accuracy                — diagram scope classification accuracy
+  3. critic_overturn_rate          — how often Critic overturns Hunter
+  4. invalid_marker_citation_rate  — fraction of Hunter's cited markers that
+                                      Critic flagged as invalid
+  5. confidence_calibration        — per-bucket accuracy vs. confidence score
 
-Run against the synthetic scenarios in blindness_eval.py by default (no DB
-needed) or supply a JSON results file from a previous blindness_eval run.
+Scope-accuracy needs both an "architecture_relevant" and a "non_architecture"
+class. The former comes from any labeled diagram with >=1 relevant=true
+requirement; the latter from any labeled diagram where EVERY candidate
+requirement is relevant=false (a real non-architectural diagram, e.g. a
+screenshot). If the labeled ground truth set has no such diagram, one
+synthetic blank-image scenario is used as a documented fallback so the
+metric remains computable.
 
 Usage:
-    python grounding_eval.py [--output grounding_results.json]
+    python grounding_eval.py --ground-truth /app/sdr/apps/ai/evaluations/data/diagram_ground_truth_review_48.json [--output grounding_results.json]
     python grounding_eval.py --from-blindness-results eval_vision_blindness.json
 """
 from __future__ import annotations
@@ -34,11 +44,19 @@ from types import SimpleNamespace
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
 
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image
 
 from sdr.apps.ai.agents.vision import DiagramInput
 from sdr.apps.ai.engine.debate.diagram_debate_service import DiagramDebateService
 from sdr.apps.ai.evaluations.shared import results_path
+from sdr.apps.ai.evaluations.vision.real_diagram_source import (
+    build_diagram_input,
+    diagrams_with_no_relevant_requirements,
+    load_ground_truth,
+    load_labeled_samples,
+    load_tsd_document,
+    save_image_b64,
+)
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -46,82 +64,16 @@ logger = logging.getLogger(__name__)
 # Regex that matches [N] marker references in free-text fields
 _MARKER_RE = re.compile(r"\[\d+\]")
 
-CANVAS_SIZE = (900, 300)
-BOX_W, BOX_H = 150, 80
-GAP = 40
-START_X, Y = 30, 110
-
-# Labeled scope dataset — these supplement the architecture scenarios with
-# non-architecture examples to test scope classification accuracy.
-SCOPE_SCENARIOS = [
-    # Architecture-relevant diagrams (synthetic network/component diagrams)
-    {
-        "label": "architecture_relevant",
-        "stages": ["Client", "API Gateway", "Auth Service", "Database"],
-        "caption": "System architecture overview",
-    },
-    {
-        "label": "architecture_relevant",
-        "stages": ["Internet", "WAF", "Load Balancer", "App Server"],
-        "caption": "Network ingress flow",
-    },
-    {
-        "label": "architecture_relevant",
-        "stages": ["User", "MFA Gateway", "Auth Service", "App Server"],
-        "caption": "Authentication sequence",
-    },
-    # Non-architecture diagrams: blank white images (simulating screenshots/photos)
-    # A fully white image with no structural boxes represents a "screenshot" or blank page.
-    {
-        "label": "non_architecture",
-        "stages": [],
-        "caption": "Screenshot of login form",
-    },
-]
-
-
-def _font():
-    for path in [
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf",
-    ]:
-        try:
-            return ImageFont.truetype(path, 14)
-        except Exception:
-            continue
-    return ImageFont.load_default()
-
-
-def _draw_box(draw, x, y, label, font):
-    draw.rectangle([x, y, x + BOX_W, y + BOX_H], outline="black", width=2, fill="white")
-    bbox = draw.textbbox((0, 0), label, font=font)
-    tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
-    draw.text((x + (BOX_W - tw) / 2, y + (BOX_H - th) / 2), label, fill="black", font=font)
-
-
-def _draw_arrow(draw, x1, x2, y):
-    mid = y + BOX_H / 2
-    draw.line([x1, mid, x2, mid], fill="black", width=2)
-    draw.polygon([(x2, mid - 6), (x2, mid + 6), (x2 + 10, mid)], fill="black")
-
-
-def _generate_diagram_b64(stages: list[str]) -> str:
-    img = Image.new("RGB", CANVAS_SIZE, "white")
-    draw = ImageDraw.Draw(img)
-    font = _font()
-
-    x = START_X
-    positions = []
-    for label in stages:
-        positions.append(x)
-        _draw_box(draw, x, Y, label, font)
-        x += BOX_W + GAP
-    for i in range(len(positions) - 1):
-        _draw_arrow(draw, positions[i] + BOX_W, positions[i + 1], Y)
-
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    return base64.b64encode(buf.getvalue()).decode("ascii")
+# Kept ONLY as a fallback for the non-architecture scope-negative class, used
+# if the labeled ground truth set has no real diagram with zero relevant
+# requirements (see run_grounding_eval).
+_FALLBACK_NON_ARCH_CAPTION = "Screenshot of login form"
+_FALLBACK_REQUIREMENT = SimpleNamespace(
+    ordinal=1,
+    stable_key="D-SCOPE-1",
+    requirement_text="Verify that authentication mechanisms are explicitly depicted in the architecture diagram.",
+    verification_hint="Look for any authentication or auth service component.",
+)
 
 
 def _count_marker_refs(text: str) -> int:
@@ -144,7 +96,6 @@ def _compute_marker_utilization(debate_output) -> dict:
         for a in assessments
         if _has_any_marker_ref(a.get("visual_evidence"), a.get("reasoning"))
     )
-    # Also check top-level fields
     top_level_cited = hunter.get("marker_ids_cited") or []
     return {
         "total_assessments": len(assessments),
@@ -154,110 +105,105 @@ def _compute_marker_utilization(debate_output) -> dict:
     }
 
 
-def _save_image_b64(b64: str, path: str) -> None:
-    import base64 as _b64
-    with open(path, "wb") as f:
-        f.write(_b64.b64decode(b64))
+def _blank_white_image_b64() -> str:
+    img = Image.new("RGB", (900, 300), "white")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return base64.b64encode(buf.getvalue()).decode("ascii")
 
 
-def run_grounding_eval(service: DiagramDebateService, images_dir: str | None = None) -> list[dict]:
-    """Runs debates on architecture scenarios and records grounding metrics."""
-    from sdr.apps.ai.evaluations.vision.blindness_eval import CONTROL_SCENARIOS
+def _run_debate_and_record(service, diagram, requirement, scope_label, images_dir=None, control_tag=None):
+    if images_dir:
+        save_image_b64(diagram.image_b64, os.path.join(images_dir, f"{diagram.diagram_id}_input.png"))
 
+    output = service.run_diagram_debate(diagram=diagram, requirements=[requirement], tsd_context="")
+
+    if images_dir:
+        save_image_b64(diagram.image_b64, os.path.join(images_dir, f"{diagram.diagram_id}_marked.png"))
+
+    marker_stats = _compute_marker_utilization(output)
+    critic = output.critic_result or {}
+    mediator = output.mediator_result or {}
+
+    return {
+        "diagram_id": diagram.diagram_id,
+        "control": control_tag or "requirement_check",
+        "scope_verdict": mediator.get("diagram_scope_verdict"),
+        "scope_label": scope_label,
+        "scope_correct": mediator.get("diagram_scope_verdict") == scope_label,
+        "final_verdict": mediator.get("final_verdict"),
+        "confidence": mediator.get("confidence"),
+        "critic_outcome": critic.get("outcome"),
+        "invalid_marker_citations": critic.get("invalid_marker_citations") or [],
+        **marker_stats,
+        "error": output.error,
+    }
+
+
+def run_grounding_eval(service: DiagramDebateService, tsd_doc, gt_data: dict, images_dir: str | None = None) -> list[dict]:
+    """Runs debates on real, labeled diagrams and records grounding metrics."""
     results = []
 
-    # Run on architecture scenarios (all stages present = "met" expected)
-    for scenario in CONTROL_SCENARIOS:
-        image_b64 = _generate_diagram_b64(scenario["stages"])
-        diagram_id = f"grounding_{scenario['control'].replace(' ', '_')}"
+    for sample in load_labeled_samples(gt_data, labels=("met", "not_met")):
+        diagram_id_tag = f"grounding_{sample.diagram_id}_{sample.requirement_id}"
+        diagram = build_diagram_input(tsd_doc, sample.diagram_id, diagram_id_tag, blank_text=False)
+        if diagram is None:
+            logger.warning(f"  {diagram_id_tag}: diagram not found or invalid — skipping")
+            continue
+        requirement = SimpleNamespace(
+            ordinal=1,
+            stable_key=sample.requirement_id,
+            requirement_text=sample.requirement_text,
+            verification_hint=sample.verification_hint,
+        )
+        logger.info("Grounding eval: %s", diagram_id_tag)
+        results.append(
+            _run_debate_and_record(
+                service, diagram, requirement, scope_label="architecture_relevant", images_dir=images_dir
+            )
+        )
+
+    non_arch = diagrams_with_no_relevant_requirements(gt_data)
+    if non_arch:
+        for diagram_id, req_row in non_arch:
+            diagram_id_tag = f"scope_test_{diagram_id}"
+            diagram = build_diagram_input(tsd_doc, diagram_id, diagram_id_tag, blank_text=False)
+            if diagram is None:
+                logger.warning(f"  {diagram_id_tag}: diagram not found or invalid — skipping")
+                continue
+            requirement = SimpleNamespace(
+                ordinal=1,
+                stable_key=str(req_row.get("requirement_id", "")),
+                requirement_text=req_row.get("requirement_text") or "",
+                verification_hint=req_row.get("verification_hint") or "",
+            )
+            logger.info("Scope eval (real non-architecture diagram): %s", diagram_id_tag)
+            results.append(
+                _run_debate_and_record(
+                    service, diagram, requirement, scope_label="non_architecture",
+                    images_dir=images_dir, control_tag="scope_test",
+                )
+            )
+    else:
+        logger.warning(
+            "No real diagram in the ground truth is labeled fully non-architecture "
+            "(all candidate_requirements relevant:false) — falling back to one "
+            "synthetic blank-image scope-negative scenario."
+        )
         diagram = DiagramInput(
-            diagram_id=diagram_id,
-            image_b64=image_b64,
+            diagram_id="scope_test_synthetic_blank",
+            image_b64=_blank_white_image_b64(),
             page_number=1,
-            caption=f"System architecture: {scenario['control']} present",
+            caption=_FALLBACK_NON_ARCH_CAPTION,
             surrounding_text="",
         )
-        req = SimpleNamespace(
-            ordinal=1,
-            stable_key=f"D-{scenario['control'].upper().replace(' ', '-')}-1",
-            requirement_text=scenario["requirement_text"],
-            verification_hint=scenario["verification_hint"],
+        logger.info("Scope eval (synthetic fallback): %s", diagram.diagram_id)
+        row = _run_debate_and_record(
+            service, diagram, _FALLBACK_REQUIREMENT, scope_label="non_architecture",
+            images_dir=images_dir, control_tag="scope_test",
         )
-
-        if images_dir:
-            _save_image_b64(image_b64, os.path.join(images_dir, f"{diagram_id}_input.png"))
-
-        logger.info("Grounding eval: %s", diagram_id)
-        output = service.run_diagram_debate(diagram=diagram, requirements=[req], tsd_context="")
-
-        if images_dir:
-            _save_image_b64(diagram.image_b64, os.path.join(images_dir, f"{diagram_id}_marked.png"))
-            logger.info("Saved marked image → %s/%s_marked.png", images_dir, diagram_id)
-
-        marker_stats = _compute_marker_utilization(output)
-        critic = output.critic_result or {}
-        mediator = output.mediator_result or {}
-
-        results.append({
-            "diagram_id": diagram_id,
-            "control": scenario["control"],
-            "scope_verdict": mediator.get("diagram_scope_verdict"),
-            "scope_label": "architecture_relevant",
-            "scope_correct": mediator.get("diagram_scope_verdict") == "architecture_relevant",
-            "final_verdict": mediator.get("final_verdict"),
-            "confidence": mediator.get("confidence"),
-            "critic_outcome": critic.get("outcome"),
-            "invalid_marker_citations": critic.get("invalid_marker_citations") or [],
-            **marker_stats,
-            "error": output.error,
-        })
-
-    # Run on scope scenarios (for scope classification accuracy only)
-    for i, scope_s in enumerate(SCOPE_SCENARIOS):
-        image_b64 = _generate_diagram_b64(scope_s["stages"])
-        diagram_id = f"scope_test_{i}"
-        diagram = DiagramInput(
-            diagram_id=diagram_id,
-            image_b64=image_b64,
-            page_number=1,
-            caption=scope_s["caption"],
-            surrounding_text="",
-        )
-        # Use a generic requirement to force the scope classification step
-        req = SimpleNamespace(
-            ordinal=1,
-            stable_key="D-SCOPE-1",
-            requirement_text="Verify that authentication mechanisms are explicitly depicted in the architecture diagram.",
-            verification_hint="Look for any authentication or auth service component.",
-        )
-
-        if images_dir:
-            _save_image_b64(image_b64, os.path.join(images_dir, f"{diagram_id}_input.png"))
-
-        logger.info("Scope eval: %s (expected=%s)", diagram_id, scope_s["label"])
-        output = service.run_diagram_debate(diagram=diagram, requirements=[req], tsd_context="")
-
-        if images_dir:
-            _save_image_b64(diagram.image_b64, os.path.join(images_dir, f"{diagram_id}_marked.png"))
-            logger.info("Saved marked image → %s/%s_marked.png", images_dir, diagram_id)
-
-        marker_stats = _compute_marker_utilization(output)
-        critic = output.critic_result or {}
-        mediator = output.mediator_result or {}
-
-        results.append({
-            "diagram_id": diagram_id,
-            "control": "scope_test",
-            "scope_verdict": mediator.get("diagram_scope_verdict"),
-            "scope_label": scope_s["label"],
-            "scope_correct": mediator.get("diagram_scope_verdict") == scope_s["label"],
-            "final_verdict": mediator.get("final_verdict"),
-            "confidence": mediator.get("confidence"),
-            "critic_outcome": critic.get("outcome"),
-            "invalid_marker_citations": critic.get("invalid_marker_citations") or [],
-            **marker_stats,
-            "error": output.error,
-        })
+        row["synthetic_fallback"] = True
+        results.append(row)
 
     return results
 
@@ -267,29 +213,23 @@ def compute_summary(results: list[dict]) -> dict:
     if not valid:
         return {"error": "No valid results"}
 
-    # Marker utilization
     total_assessments = sum(r.get("total_assessments", 0) for r in valid)
     assessments_with_marker = sum(r.get("assessments_with_marker", 0) for r in valid)
     marker_utilization = assessments_with_marker / total_assessments if total_assessments else 0.0
 
-    # Structured cited marker rate (explicit marker_ids_cited field populated)
     runs_with_cited = sum(1 for r in valid if r.get("marker_ids_cited"))
     structured_utilization = runs_with_cited / len(valid) if valid else 0.0
 
-    # Scope classification
     scope_results = [r for r in valid if "scope_label" in r]
     scope_accuracy = sum(1 for r in scope_results if r.get("scope_correct")) / len(scope_results) if scope_results else 0.0
 
-    # Critic overturn rate
     critic_results = [r for r in valid if r.get("critic_outcome")]
     overturn_rate = sum(1 for r in critic_results if r.get("critic_outcome") == "overturn") / len(critic_results) if critic_results else 0.0
 
-    # Invalid marker citation rate
     total_invalid = sum(len(r.get("invalid_marker_citations") or []) for r in valid)
     total_cited_markers = sum(len(r.get("marker_ids_cited") or []) for r in valid)
     invalid_citation_rate = total_invalid / total_cited_markers if total_cited_markers else 0.0
 
-    # Confidence calibration (bucket accuracy)
     calibration_buckets: dict[str, dict] = {}
     for r in valid:
         conf = r.get("confidence")
@@ -328,7 +268,11 @@ def compute_summary(results: list[dict]) -> dict:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Vision grounding and marker utilization eval.")
+    parser = argparse.ArgumentParser(description="Vision grounding and marker utilization eval (real diagrams).")
+    parser.add_argument(
+        "--ground-truth", type=str, default=None,
+        help="Path to a labeled diagram ground-truth JSON (see build_diagram_ground_truth_template.py)"
+    )
     parser.add_argument("--output", type=str, default="grounding_results.json")
     parser.add_argument(
         "--from-blindness-results",
@@ -344,7 +288,6 @@ def main():
     if args.from_blindness_results:
         with open(args.from_blindness_results) as f:
             blindness_data = json.load(f)
-        # blindness_eval results don't include marker stats — report what we can
         results = blindness_data.get("results", [])
         logger.info("Loaded %d results from %s (marker stats not available in this mode)", len(results), args.from_blindness_results)
         summary = {
@@ -356,9 +299,24 @@ def main():
             "f1": blindness_data.get("f1"),
         }
     else:
+        if not args.ground_truth:
+            logger.error("--ground-truth is required unless --from-blindness-results is used.")
+            return
+        if not os.path.exists(args.ground_truth):
+            logger.error(f"Ground truth file not found: {args.ground_truth}")
+            return
+
+        gt_data = load_ground_truth(args.ground_truth)
+        design_id = gt_data.get("design_id")
+        if design_id is None:
+            logger.error("Ground truth file is missing 'design_id' — regenerate it with build_diagram_ground_truth_template.py.")
+            return
+
+        tsd_doc = load_tsd_document(design_id)
         service = DiagramDebateService()
-        results = run_grounding_eval(service, images_dir=images_dir)
+        results = run_grounding_eval(service, tsd_doc, gt_data, images_dir=images_dir)
         summary = compute_summary(results)
+        summary["design_id"] = design_id
         summary["results"] = results
 
     output_path = results_path(args.output, subdir="vision")

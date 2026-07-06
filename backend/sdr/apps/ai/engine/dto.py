@@ -110,6 +110,7 @@ class AnalysisSummary:
     critical_findings: List[str] = None
     high_findings: List[str] = None
     category_stats: Dict[str, Any] = None
+    llm_usage: Dict[str, Any] = None
     # Guards concurrent mutation when text debate and diagram debate run as
     # parallel driver threads sharing this same summary instance. Reentrant
     # so nested helper calls (e.g. progress recorders calling persist) don't
@@ -123,6 +124,8 @@ class AnalysisSummary:
             self.high_findings = []
         if self.category_stats is None:
             self.category_stats = {}
+        if self.llm_usage is None:
+            self.llm_usage = {}
 
     def to_dict(self) -> Dict[str, Any]:
         return {
@@ -149,4 +152,5 @@ class AnalysisSummary:
             "critical_findings_count": len(self.critical_findings),
             "high_findings_count": len(self.high_findings),
             "category_stats": self.category_stats,
+            "llm_usage": self.llm_usage,
         }

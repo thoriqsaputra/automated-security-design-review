@@ -287,8 +287,12 @@ def main():
         deficit_v = round(edge_v - mid_v, 4)
         deficit_h = round(edge_h - mid_h, 4)
         recovery = round(mid_h - mid_v, 4)
+
+        # Only report "deficit reduction" when the vector-only baseline actually
+        # exhibits a positive middle-zone deficit. If the baseline deficit is
+        # zero or negative, the percentage is not interpretable.
         reduction_pct = (
-            round((deficit_v - deficit_h) / deficit_v * 100, 1) if deficit_v != 0 else None
+            round((deficit_v - deficit_h) / deficit_v * 100, 1) if deficit_v > 0 else None
         )
 
         thesis_metrics = {
@@ -296,6 +300,7 @@ def main():
             "middle_deficit_hybrid": deficit_h,
             "raptor_middle_recovery": recovery,
             "middle_deficit_reduction_pct": reduction_pct,
+            "middle_deficit_reduction_applicable": deficit_v > 0,
         }
 
         summary = {
@@ -330,7 +335,16 @@ def main():
     logger.info(f"    middle_deficit_vector:         {deficit_v:+.4f}  (how much worse middle is vs edges, vector-only)")
     logger.info(f"    middle_deficit_hybrid:         {deficit_h:+.4f}  (how much worse middle is vs edges, hybrid)")
     logger.info(f"    raptor_middle_recovery:        {recovery:+.4f}  (RAPTOR's recall gain specifically for middle zone)")
-    logger.info(f"    middle_deficit_reduction_pct:  {reduction_pct}%  (how much RAPTOR closed the middle gap)")
+    if reduction_pct is None:
+        logger.info(
+            "    middle_deficit_reduction_pct:  n/a  "
+            "(baseline vector-only deficit was <= 0, so percentage reduction is not interpretable)"
+        )
+    else:
+        logger.info(
+            f"    middle_deficit_reduction_pct:  {reduction_pct}%  "
+            "(how much RAPTOR closed the middle gap)"
+        )
     logger.info(f"\nResults saved to {output_path}")
 
 

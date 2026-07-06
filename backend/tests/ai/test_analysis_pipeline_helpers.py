@@ -759,6 +759,58 @@ def test_mediator_evidence_policy_downgrade_na_requires_explicit_opt_in(settings
     assert ungrounded_not_met.final_verdict == "na"
 
 
+def test_mediator_evidence_policy_lets_confident_not_met_survive_contract_out_of_scope_guess():
+    # Regression for a real production bug: a pre-debate contract synthesis
+    # guess of "out of scope" was unconditionally discarding the debate's own
+    # confident "not_met" conclusion (e.g. finding 1278 in review 46 — Hunter and
+    # Mediator both explicitly reasoned "not met", but the persisted verdict was
+    # silently forced to "na" because the contract's in_scope flag was False).
+    # A definitive "not_met" the debate actually reached must survive a contract
+    # scope guess that was made before any evidence was reviewed.
+    debate = DebateService()
+    not_met_survives = debate._apply_mediator_evidence_policy(
+        MediatorResult(final_verdict="not_met", confidence=0.7, final_citations=[]),
+        CriticResult(revised_verdict="not_met", valid_citations=[]),
+        {"in_scope": False, "specific_enough": True},
+    )
+    assert not_met_survives.final_verdict == "not_met"
+    assert not_met_survives.verdict_policy_source != "contract_not_applicable"
+
+    # A "met" verdict under the same wrong-scope guess is still forced to "na" —
+    # unlike a missing control, a coincidental citation pairing with a bad scope
+    # guess is a real false-"met" risk, so the asymmetry is intentional.
+    met_still_gated = debate._apply_mediator_evidence_policy(
+        MediatorResult(final_verdict="met", confidence=0.7, final_citations=[]),
+        CriticResult(
+            revised_verdict="met",
+            valid_citations=[Citation(block_id="p1_b1", page_number=1)],
+        ),
+        {"in_scope": False, "specific_enough": True},
+    )
+    assert met_still_gated.final_verdict == "na"
+
+
+def test_mediator_evidence_policy_reasoning_sniffer_never_overrides_explicit_not_met():
+    # Regression: the free-text "not assessable" keyword sniffer must not
+    # override an explicit, structured "not_met" final_verdict just because the
+    # mediator's prose happens to contain a phrase like "not applicable" (e.g.
+    # while explaining why partial evidence doesn't fully address the control).
+    debate = DebateService()
+    result = debate._apply_mediator_evidence_policy(
+        MediatorResult(
+            final_verdict="not_met",
+            confidence=0.7,
+            final_citations=[],
+            reasoning="No evidence of business logic limits was found; the control is not applicable in its current unimplemented state, so the requirement is not met.",
+        ),
+        CriticResult(revised_verdict="not_met", valid_citations=[]),
+        {"in_scope": True, "specific_enough": True},
+    )
+
+    assert result.final_verdict == "not_met"
+    assert result.verdict_policy_source != "not_assessable"
+
+
 def test_is_cancelled_detects_cancelled_status(monkeypatch):
     review = SimpleNamespace(id=77)
     latest = SimpleNamespace(status="cancelled", error_message="Analysis was cancelled by user.")

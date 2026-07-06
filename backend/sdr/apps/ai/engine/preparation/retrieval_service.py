@@ -10,6 +10,7 @@ from typing import List, Optional, Dict, Any, Tuple, Iterable
 
 from sdr.core.config import settings
 
+from sdr.apps.ai.client.session import capture_current_context
 from sdr.apps.ai.tsd_processing.document_models import TSDDocument
 from sdr.apps.ai.tsd_processing.content_filter import (
     content_filter_enabled,
@@ -212,7 +213,7 @@ class RetrievalService:
             for parameter in parameters:
                 parameter_id = str(parameter.id)
                 future = executor.submit(
-                    self.retrieve_for_parameter,
+                    capture_current_context(self.retrieve_for_parameter),
                     parameter=parameter,
                     category=category,
                     ingestion_job=ingestion_job,

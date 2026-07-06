@@ -1,0 +1,564 @@
+[
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p36_b27",
+            "p36_b28",
+            "p36_b29",
+            "p36_b30"
+        ],
+        "original_text": "execution enclaves, the Natural Language Processing parsers, or external monitoring\ndashboards, the redaction proxies actively scrub all Personally Identifiable Information. This\nmeans personal names, mobile numbers, email addresses, and exact physical locations are\ncompletely masked. This strict isolation guarantees that when user resumes are processed for",
+        "question": "Verify that the system ensures strict isolation and masking of Personally Identifiable Information, including personal names, mobile numbers, email addresses, and exact physical locations, when processing user resumes.",
+        "ground_truth_context": "the redaction proxies actively scrub all Personally Identifiable Information. This means personal names, mobile numbers, email addresses, and exact physical locations are completely masked."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p35_b14",
+            "p35_b15",
+            "p35_b16",
+            "p35_b17",
+            "p35_b18",
+            "p35_b19",
+            "p35_b20",
+            "p35_b21",
+            "p35_b22",
+            "p35_b23",
+            "p35_b24",
+            "p35_b25"
+        ],
+        "original_text": "the username, the password, or the Multi Factor Authentication component was incorrect. The\nsystem will log the anomalous access attempt, increment the automated lockout counter, and\ndisplay a standardized, generic access denied message to the user while keeping the core\ndatabase completely isolated.\nUpon encountering the External Integration and Government Database Timeout (HTTP 502\nand HTTP 504) error, the system will execute the following handling strategy: If an external\nsystem, such as the Ministry of Labor registration database or a third-party job portal like jobs dot\nps, fails to respond within the acceptable latency threshold, the application will implement a strict\ncircuit breaker pattern to completely prevent cascading operational failures. The platform will\nsafely queue the pending synchronization transaction for a future automated retry, suppress all\nexternal routing logs, and present a localized notification informing the employer or job seeker\nthat the external verification service is temporarily experiencing high latency.",
+        "question": "Verify that the system displays a standardized, generic access denied message upon an incorrect authentication attempt, while keeping the core database completely isolated.",
+        "ground_truth_context": "the username, the password, or the Multi Factor Authentication component was incorrect. The system will log the anomalous access attempt, increment the automated lockout counter, and display a standardized, generic access denied message to the user while keeping the core database completely isolated."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p31_b21",
+            "p31_b22",
+            "p31_b23",
+            "p31_b24",
+            "p31_b25",
+            "p31_b26",
+            "p31_b27",
+            "p31_b28",
+            "p31_b29",
+            "p31_b30"
+        ],
+        "original_text": "client side cookie token validation .\nBuilding upon this foundation, the platform executes continuous authentication anomaly detection\nalgorithms operating in absolute real time. These sophisticated security algorithms rigorously\nevaluate user behaviour, network origins, and request velocities during every single navigation\nevent. If the anomaly detection engine identifies an unexpected geographical shift, a suspiciously\nrapid sequence of data extraction requests, or concurrent login attempts originating from\ndisparate Internet Protocol addresses, the system executes an immediate Fail Closed protocol.\nThis protocol instantly invalidates the session token, completely terminates the active connection,\nand permanently locks the account pending formal administrative review, guaranteeing that\nhijacked sessions are completely neutralized before any sensitive matching matrices or applicant",
+        "question": "Verify that the application implements continuous real-time anomaly detection for authentication events, evaluating user behavior, network origins, and request velocities during every navigation, and that upon detecting anomalies such as unexpected geographical shifts, rapid data extraction requests, or concurrent logins from disparate IP addresses, it executes a Fail Closed protocol that instantly invalidates the session token, terminates the active connection, and permanently locks the account.",
+        "ground_truth_context": "If the anomaly detection engine identifies an unexpected geographical shift, a suspiciously rapid sequence of data extraction requests, or concurrent login attempts originating from disparate Internet Protocol addresses, the system executes an immediate Fail Closed protocol. This protocol instantly invalidates the session token, completely terminates the active connection, and permanently locks the account pending formal administrative review, guaranteeing that hijacked sessions are completely neutralized before any sensitive matching matrices or"
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p19_b0",
+            "p19_b1",
+            "p19_b2",
+            "p19_b3",
+            "p19_b4",
+            "p19_b5",
+            "p19_b6",
+            "p19_b7",
+            "p19_b8",
+            "p19_b9",
+            "p19_b10",
+            "p19_b11",
+            "p19_b12",
+            "p19_b13",
+            "p19_b14"
+        ],
+        "original_text": "securely routes uploaded portable document format or Word document resumes directly\ninto the isolated Artificial Intelligence execution enclave, initiating the Natural Language\nProcessing pipeline to accurately extract highly structured educational and skill metrics.\n\u2022\nInternal Endpoint GET /api/v1/matching/candidates/score: This vector calculation\nendpoint receives a specific job posting identifier and aggressively queries the Artificial\nIntelligence matching engine to mathematically calculate and return a ranked shortlist of\nup to exactly one hundred top matching job seekers based on complex skill overlap and\nsemantic matrices.\n\u2022\nInternal Endpoint POST /api/v1/jobs/search/semantic: This advanced internal search\ninterface processes unstructured queries submitted by job seekers, utilizing deep\nsemantic understanding rather than legacy keyword matching to return highly relevant\nemployment opportunities rendered in strictly less than two seconds.\n\u2022\nExternal Integration External Job Portals Push API: This secure RESTful integration\nallows approved external third-party platforms, such as jobs dot ps, to submit and\ncontinuously synchronize job opportunities directly into the central matching system,",
+        "question": "Verify that the application securely routes uploaded portable document format or Word document resumes directly into the isolated Artificial Intelligence execution enclave.",
+        "ground_truth_context": "securely routes uploaded portable document format or Word document resumes directly into the isolated Artificial Intelligence execution enclave"
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p10_b5",
+            "p10_b6",
+            "p10_b7",
+            "p10_b8",
+            "p10_b9",
+            "p10_b10",
+            "p10_b11",
+            "p10_b12",
+            "p10_b13",
+            "p10_b14",
+            "p10_b15",
+            "p10_b16",
+            "p10_b17",
+            "p10_b18"
+        ],
+        "original_text": "attributes like required skills, experience levels, and specific job categories.\n\u2022\nFR-007: The platform shall provide authorized administrators with a configuration interface\nto manually define and adjust a minimum match threshold percentage, such as sixty\npercent, which strictly dictates which job matches are visibly displayed to end users.\n\u2022\nFR-008: The platform shall dynamically rank and visually order all displayed job postings\nfor each individual job seeker strictly based on their calculated individual match\npercentage, ensuring the absolute most relevant opportunities appear first.\n\u2022\nFR-009: The Artificial Intelligence engine shall perform bi directional matching, ensuring\njob seekers receive ranked job opportunities while verified employers simultaneously\nreceive reverse matches containing ranked lists of highly suitable job seekers.\n\u2022\nFR-010: The platform shall expose a configuration panel allowing system administrators\nto manually adjust the mathematical importance and weighted parameters of different\nmatching factors.\n\u2022\nFR-011: The system shall execute Artificial Intelligence powered resume parsing to",
+        "question": "Verify that authorized administrators can manually define and adjust a minimum match threshold percentage (e.g., 60%) via a configuration interface and that this threshold strictly controls which job matches are displayed to end users.",
+        "ground_truth_context": "FR-007: The platform shall provide authorized administrators with a configuration interface to manually define and adjust a minimum match threshold percentage, such as sixty percent, which strictly dictates which job matches are visibly displayed to end users."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p8_b20",
+            "p8_b21",
+            "p8_b22",
+            "p8_b23",
+            "p8_b24",
+            "p8_b25"
+        ],
+        "original_text": "\u2022\nEnd-User Training and Long-Term Maintenance:\no\nThe execution of massive training programs for general public end-users, as well\nas multi-year technical support, help desk operations, and long-term maintenance\ncontracts, which will be addressed in separate future agreements.\n\u2022\nNative Mobile Application Engineering:\no\nThe coding, deployment, or publishing of dedicated native applications for iOS or",
+        "question": "Verify that the application includes the coding, deployment, or publishing of dedicated native applications for iOS.",
+        "ground_truth_context": "The coding, deployment, or publishing of dedicated native applications for iOS or"
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p18_b4",
+            "p18_b5",
+            "p18_b6",
+            "p18_b7",
+            "p18_b8",
+            "p18_b9",
+            "p18_b10",
+            "p18_b11"
+        ],
+        "original_text": "The Application Programming Interface architecture for the Artificial Intelligence Driven Job\nMatching Platform is meticulously engineered to establish an impenetrable digital perimeter\ncapable of sustaining critical national socioeconomic logistics. Because the system directly\nintegrates with highly sensitive Palestinian Ministry of Labor databases and processes the\nPersonally Identifiable Information of vulnerable youth populations, absolute high assurance\nsecurity is mandatory across every single computational boundary. To strictly comply with these\nrigorous security mandates, the architecture explicitly dictates that absolutely every internal and\nexternal Application Programming Interface endpoint requires mutual Transport Layer Security",
+        "question": "Verify that all internal and external API endpoints require mutual Transport Layer Security (TLS) for authentication and encryption.",
+        "ground_truth_context": "the architecture explicitly dictates that absolutely every internal and external Application Programming Interface endpoint requires mutual Transport Layer Security"
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p42_b20",
+            "p42_b21",
+            "p42_b22",
+            "p42_b23",
+            "p42_b24",
+            "p42_b25"
+        ],
+        "original_text": "\u2022\nCore Database Management System Node : The central relational data repository locked\nentirely inside the air gapped private subnet, exclusively responsible for securely\npersisting all encrypted user profiles, job postings, and immutable audit logs.\n\u2022\nExternal Subsystem Gateway : The highly restricted outbound routing node utilized\nexclusively to securely fetch employer verification data from the Ministry of Labor and the\nPalestinian Employment Fund databases.",
+        "question": "Verify that the core database management system node is locked entirely inside an air gapped private subnet and is exclusively responsible for securely persisting all encrypted user profiles, job postings, and immutable audit logs.",
+        "ground_truth_context": "Core Database Management System Node : The central relational data repository locked entirely inside the air gapped private subnet, exclusively responsible for securely persisting all encrypted user profiles, job postings, and immutable audit logs."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p49_b0",
+            "p49_b1",
+            "p49_b2",
+            "p49_b3",
+            "p49_b4",
+            "p49_b5",
+            "p49_b6",
+            "p49_b7",
+            "p49_b8",
+            "p49_b9",
+            "p49_b10",
+            "p49_b11",
+            "p49_b12",
+            "p49_b13",
+            "p49_b14",
+            "p49_b15"
+        ],
+        "original_text": "secure RESTful Push Application Programming Interface specifications and align their\ndata structures with the required Schema dot org JobPosting standards to guarantee\nflawless semantic synchronization.\n\u2022\nEnd User Technological Literacy and Device Availability: The deployment strategy\nassumes that the targeted demographic of Palestinian youth, specifically those aged\nfifteen to twenty-nine, possess adequate digital literacy and access to standard client\ndevices such as smartphones or laptops equipped with modern, updated web browsers\ncapable of executing complex responsive graphical user interfaces and secure hardware\ntoken authentication.\nConstraints:\n\u2022\nAbsolute High Assurance Security and Digital Survivability: Because this platform\nserves as the premier socioeconomic infrastructure for vulnerable youth populations, it is\nexplicitly constrained by stringent Open Worldwide Application Security Project\ncompliance mandates. The system is fundamentally restricted from implicitly trusting any\ninternal or external network request. It must operate within a strict Zero Trust Network\nArchitecture, utilizing completely isolated, air gapped private subnets for all core database",
+        "question": "Verify that the application operates within a strict Zero Trust Network Architecture, does not implicitly trust any internal or external network request, and utilizes completely isolated, air gapped private subnets for all critical data transactions.",
+        "ground_truth_context": "The system is fundamentally restricted from implicitly trusting any internal or external network request. It must operate within a strict Zero Trust Network Architecture, utilizing completely isolated, air gapped private subnets for all critical data transactions."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p32_b25",
+            "p32_b26",
+            "p32_b27",
+            "p32_b28",
+            "p32_b29",
+            "p33_b0",
+            "p33_b1",
+            "p33_b2",
+            "p33_b3",
+            "p33_b4",
+            "p33_b5",
+            "p33_b6",
+            "p33_b7"
+        ],
+        "original_text": "terminate at the secure Identity and Application Programming Interface Gateway. Once perfectly\nauthenticated via cryptographic tokens, data is precisely routed to the appropriate internal subnet.\nTo complete the high assurance compliance cycle, all permanent data residing within the private\ndatabase enclave is explicitly secured using AES-256-GCM managed via HSM. This absolute\nmandate ensures that all data at rest, specifically including vulnerable Personally Identifiable\nInformation and spatial location coordinates, is constantly guarded by hardware level master keys\nthat cannot be extracted by malicious software vectors.\nData Flow Definitions:\n\u2022\nWhen data is transmitted from the Job Seeker or Employer Client Device to the Public\nWeb Application Firewall , the communication utilizes the HTTPS protocol. The expected\npayload type for this exchange is JSON formatted profile submissions, resume\ndocument uploads, or job search queries . To ensure security in transit, all data\ncrossing this boundary is encrypted using strictly enforced mutual TLS (mTLS) 1.3 .",
+        "question": "Verify that the application encrypts data at rest using AES-256-GCM managed via HSM, specifically protecting Personally Identifiable Information and spatial location coordinates with hardware-level master keys.",
+        "ground_truth_context": "all permanent data residing within the private database enclave is explicitly secured using AES-256-GCM managed via HSM. This absolute mandate ensures that all data at rest, specifically including vulnerable Personally Identifiable Information and spatial location coordinates, is constantly guarded by hardware level master keys that cannot be extracted by malicious software vectors."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p10_b19",
+            "p10_b20",
+            "p10_b21",
+            "p10_b22",
+            "p10_b23",
+            "p10_b24",
+            "p10_b25",
+            "p10_b26",
+            "p10_b27",
+            "p11_b0",
+            "p11_b1",
+            "p11_b2",
+            "p11_b3",
+            "p11_b4",
+            "p11_b5",
+            "p11_b6"
+        ],
+        "original_text": "intelligently extract highly structured information from raw uploaded document files such\nas PDF and DOCX formats.\n\u2022\nFR-012: The resume parsing engine shall accurately identify and extract discrete data\npoints including personal details, contact information, education history, work experience,\nskills, certifications, and professional achievements.\n\u2022\nFR-013: The natural language parsing engine must maintain comprehensive multilingual\nsupport, possessing the explicit capability to seamlessly parse resumes written in both the\nArabic and English languages.\n\u2022\nFR-014: The parsing module shall intelligently identify unstructured skills mentioned within\na resume and automatically standardize them against the centralized platform skill\ntaxonomy to facilitate accurate vector matching.\n\u2022\nFR-015: The Artificial Intelligence engine shall calculate and explicitly append statistical\nconfidence scores to every single piece of extracted information during the automated\nresume parsing workflow.\n\u2022\nFR-016: The graphical user interface shall visibly highlight any parsed data fields\npossessing low confidence scores to explicitly prompt the job seeker for mandatory",
+        "question": "Verify that the system appends statistical confidence scores to every piece of extracted information during automated resume parsing.",
+        "ground_truth_context": "FR-015: The Artificial Intelligence engine shall calculate and explicitly append statistical confidence scores to every single piece of extracted information during the automated resume parsing workflow."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p45_b0",
+            "p45_b1",
+            "p45_b2",
+            "p45_b3",
+            "p45_b4",
+            "p45_b5",
+            "p45_b6",
+            "p45_b7",
+            "p45_b8",
+            "p45_b9",
+            "p45_b10",
+            "p45_b11",
+            "p45_b12"
+        ],
+        "original_text": "experiences absolutely no more than one hour of potential data loss during a catastrophic\ndisaster scenario .\nThe backup strategy mandates that backups are performed at a frequency of complete relational\nfull backups executed at least weekly, coupled with precise incremental backups executed daily.\nAll backup data is securely stored at geographically separate locations that are completely\nisolated from the primary hosting infrastructure. To align with the stringent high assurance security\ncompliance required for this critical platform, these backups utilize Write Once Read Many\nimmutable storage arrays and are explicitly protected using Advanced Encryption Standard 256-\nbit cryptographic protocols to ensure the data cannot be tampered with or extracted by malicious\nFinally, maintaining a theoretical recovery posture is completely insufficient for critical national\ninfrastructure. The system mandates that a highly comprehensive disaster recovery plan is\npermanently documented, continuously updated, and rigorously tested against emerging threat\nvectors. To guarantee continuous operational readiness and verify the efficacy of the automated",
+        "question": "Verify that during a catastrophic disaster scenario, the potential data loss does not exceed one hour.",
+        "ground_truth_context": "experiences absolutely no more than one hour of potential data loss during a catastrophic disaster scenario ."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p42_b6",
+            "p42_b7",
+            "p42_b8",
+            "p42_b9",
+            "p42_b10",
+            "p42_b11",
+            "p42_b12",
+            "p42_b13",
+            "p42_b14",
+            "p42_b15",
+            "p42_b16",
+            "p42_b17",
+            "p42_b18",
+            "p42_b19"
+        ],
+        "original_text": "explicitly approved government endpoints via mutual Transport Layer Security 1.3 .\nThe deployment architecture consists of the following key nodes:\n\u2022\nPublic Load Balancer and Web Application Firewall : The absolute first point of contact\nfor all incoming network traffic, responsible for terminating encrypted connections, filtering\nmalicious payloads, mitigating distributed denial of service attacks, and intelligently routing\nlegitimate requests to the application layer.\n\u2022\nSecure API Gateway and Identity Manager : The central authentication node operating\nwithin a restricted subnet, explicitly responsible for validating OAuth 2.0 cryptographic\ntokens, enforcing Role Based Access Control, and orchestrating all authorized data flows\nbetween the client interfaces and the isolated backend enclaves.\n\u2022\nArtificial Intelligence Execution Enclave : A highly secure, isolated computing cluster\nequipped with advanced processing units dedicated exclusively to executing the Natural\nLanguage Processing algorithms, parsing unstructured resumes, and generating high\ndimensional vector embeddings without exposing the models to the broader network.",
+        "question": "Verify that the application communicates with explicitly approved government endpoints using mutual Transport Layer Security 1.3.",
+        "ground_truth_context": "explicitly approved government endpoints via mutual Transport Layer Security 1.3 ."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p36_b13",
+            "p36_b14",
+            "p36_b15",
+            "p36_b16",
+            "p36_b17",
+            "p36_b18",
+            "p36_b19",
+            "p36_b20",
+            "p36_b21",
+            "p36_b22",
+            "p36_b23",
+            "p36_b24",
+            "p36_b25",
+            "p36_b26"
+        ],
+        "original_text": "Interfaces .\nThe logging strategy for the Artificial Intelligence Driven Job Matching Platform is architected to\nexceed standard compliance and guarantee absolute high assurance security for the Palestinian\nlabor market. Because the platform processes extremely sensitive demographic data and\nexecutes complex vector based matching algorithms, the system telemetry must be impenetrable.\nTo definitively prevent tampering by malicious actors or compromised internal accounts, every\nsingle log entry generated by the system is cryptographically signed the exact millisecond it is\ncreated. These signed logs are immediately routed into strictly isolated Write Once Read Many\nstorage environments. This physical and logical hardware constraint guarantees that once an\nevent is recorded, it mathematically cannot be altered, deleted, or manipulated by any system\nadministrator, government official, or advanced persistent threat, ensuring an absolutely perfect\nforensic audit trail.\nFurthermore, the telemetry architecture explicitly integrates advanced data redaction proxies at\nthe network edge. Before any data payload is allowed to interact with the Artificial Intelligence",
+        "question": "Verify that every log entry generated by the system is cryptographically signed at the exact millisecond of creation to prevent tampering and ensure a perfect forensic audit trail.",
+        "ground_truth_context": "every single log entry generated by the system is cryptographically signed the exact millisecond it is created."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p35_b1",
+            "p35_b2",
+            "p35_b3",
+            "p35_b4",
+            "p35_b5",
+            "p35_b6",
+            "p35_b7",
+            "p35_b8",
+            "p35_b9",
+            "p35_b10",
+            "p35_b11",
+            "p35_b12",
+            "p35_b13"
+        ],
+        "original_text": "Furthermore, the system implements standardized responses for common exceptions:\nUpon encountering the Input Validation and Malicious Payload (HTTP 400) error, the system\nwill execute the following handling strategy: The system will trigger an immediate Fail Closed\nprotocol to reject the incoming data payload completely. This strategy explicitly addresses\nattempted prompt injections against the Artificial Intelligence matching engine and malicious script\ninsertions. The application will log the detailed intrusion attempt securely within the administrative\naudit trail, alert the security operations center, and return a highly generic, sanitized validation\nmessage to the user interface without revealing the underlying parsing logic or the exact security\nrule triggered.\nUpon encountering the Authentication and Cryptographic Token Violation (HTTP 401 and\nHTTP 403) error, the system will execute the following handling strategy: The backend security\nframework will instantly sever the active connection and invalidate the user session token. To\nneutralize brute force enumeration attacks, the system will absolutely avoid specifying whether",
+        "question": "Verify that the application, upon encountering an input validation error (HTTP 400), returns a generic error message that does not reveal internal parsing logic or security rules.",
+        "ground_truth_context": "The application will log the detailed intrusion attempt securely within the administrative audit trail, alert the security operations center, and return a highly generic, sanitized validation message to the user interface without revealing the underlying parsing logic or the exact security rule triggered."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p40_b6",
+            "p40_b7",
+            "p40_b8",
+            "p40_b9",
+            "p40_b10",
+            "p40_b11",
+            "p40_b12",
+            "p40_b13",
+            "p40_b14",
+            "p40_b15"
+        ],
+        "original_text": "Ansible and Kubernetes ConfigMaps . Sensitive values, such as API keys and database\ncredentials, are securely injected into the runtime environment using isolated, heavily restricted\nEnterprise Secrets Vaults featuring automated secret rotation policies . To guarantee\nabsolute cryptographic security and prevent devastating data breaches, the project strictly\nprohibits any hardcoded credentials within the application source code or configuration files. This\nensures that cryptographic keys are continuously refreshed without human intervention, rendering\nstolen credentials obsolete almost immediately.\nSpecific environment configurations are handled as follows:\nFor the Production (Live National Infrastructure) environment, variables are designated with\nthe prefix PROD_AIJMP_ . These configuration values are stored within: The strictly isolated",
+        "question": "Verify that the application does not contain any hardcoded credentials in source code or configuration files.",
+        "ground_truth_context": "the project strictly prohibits any hardcoded credentials within the application source code or configuration files."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p28_b14",
+            "p28_b15",
+            "p28_b16",
+            "p28_b17",
+            "p28_b18",
+            "p28_b19",
+            "p28_b20",
+            "p28_b21",
+            "p28_b22",
+            "p28_b23",
+            "p28_b24",
+            "p28_b25",
+            "p28_b26"
+        ],
+        "original_text": "system explicitly dictates that all system access requires mandatory, phishing resistant Multi\nFactor Authentication prior to being granted any internal access. While legacy platforms may rely\non standard text messages, this high assurance environment strictly mandates the utilization of\nFIDO2 or WebAuthn cryptographic protocols for elevated roles, supported by secure One Time\nPasswords for standard users. This rigorous security posture means that submitting a valid\nusername and encrypted password combination is merely the initial step. Users must\nsubsequently verify their physical identity through advanced hardware security keys, biometric\nauthenticators, or secure mobile channels, ensuring that compromised primary credentials never\nlead to unauthorized account breaches or data exfiltration.\nThe system handles user access by defining specific roles and their associated permissions.\nThe System Administrator (Ministry of Labor Admin and Management) role is granted an\naccess level of Elevated Administrative Privileges . Users assigned to this role must\nauthenticate via Username, Password, and Mandatory Phishing Resistant Multi Factor",
+        "question": "Verify that the system enforces mandatory phishing-resistant Multi-Factor Authentication (MFA) using FIDO2 or WebAuthn cryptographic protocols for elevated roles, and secure One-Time Passwords for standard users, before granting any internal access.",
+        "ground_truth_context": "system explicitly dictates that all system access requires mandatory, phishing resistant Multi Factor Authentication prior to being granted any internal access. While legacy platforms may rely on standard text messages, this high assurance environment strictly mandates the utilization of FIDO2 or WebAuthn cryptographic protocols for elevated roles, supported by secure One Time Passwords for standard users."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p6_b3",
+            "p6_b4",
+            "p6_b5",
+            "p6_b6",
+            "p6_b7",
+            "p6_b8",
+            "p6_b9",
+            "p6_b10",
+            "p6_b11",
+            "p6_b12",
+            "p6_b13",
+            "p6_b14",
+            "p6_b15",
+            "p6_b16",
+            "p6_b17",
+            "p6_b18",
+            "p6_b19",
+            "p6_b20"
+        ],
+        "original_text": "core database ledger.\no\nGenerate comprehensive, real time employment statistics, geographic distribution\nreports, and critical skill demand analytics to constantly empower the Ministry of\nLabor and the Palestinian Employment Fund with highly actionable labour market\nintelligence.\no\nDeploy a centralized, high performance notification engine capable of securely\ndispatching customizable email templates, internal application alerts, and critical\nShort Message Service updates through approved telecommunication gateways\nto keep all users continuously informed regarding their employment journey.\nIn Scope: The following modules, architectural components, and functionalities are strictly within\nthe scope of the AI-Driven Job Matching Platform project:\n\u2022\nUser Management and Verification:\no\nComplete user registration and profile management workflows for job seekers,\nallowing multi-level onboarding to capture education, work experience, skills, and\npersonal bios.\no\nEmployer registration workflows requiring official company identification numbers,\ncombined with mandatory authentication via One-Time Passwords (OTP) and\nofficial government database verification to issue \"Verified Employer\" badges.",
+        "question": "Verify that the notification engine is capable of securely dispatching customizable email templates, internal application alerts, and critical Short Message Service updates through approved telecommunication gateways.",
+        "ground_truth_context": "Deploy a centralized, high performance notification engine capable of securely dispatching customizable email templates, internal application alerts, and critical Short Message Service updates through approved telecommunication gateways to keep all users informed regarding their employment journey."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p51_b2",
+            "p51_b3",
+            "p51_b4",
+            "p51_b5",
+            "p51_b6",
+            "p51_b7",
+            "p51_b8"
+        ],
+        "original_text": "Advanced Encryption\nStandard 256\nA mathematically provable, government grade cryptographic algorithm\nutilizing a two hundred- and fifty-six-bit key length, strictly mandated\nacross this architecture to completely secure all permanent data at rest,\nincluding user profiles and vector matrices, against unauthorized\nphysical or digital extraction.\nApplication\nProgramming\nInterface\nA meticulously defined set of secure communication protocols and\nrouting endpoints utilized by the central web server to seamlessly\ninterface with external subsystems, explicitly requiring OAuth 2.0\ncryptographic tokens and mutual Transport Layer Security 1.3\ntunneling for all data exchanges.\nArtificial Intelligence\nAdvanced computational frameworks and execution enclaves utilized\nwithin the platform to perform highly complex automated resume\nparsing, semantic intent understanding, and personalized job\nrecommendations without requiring manual human keyword analysis.\nAttribute\nBased\nAccess Control\nAn advanced enterprise authorization paradigm that dynamically\nevaluates specific granular user attributes, geographic locations, and\ngovernment verification statuses to grant or permanently deny access\nto secure data modification endpoints.",
+        "question": "Verify that the application requires OAuth 2.0 cryptographic tokens and mutual Transport Layer Security (TLS) 1.3 tunneling for all API data exchanges.",
+        "ground_truth_context": "explicitly requiring OAuth 2.0 cryptographic tokens and mutual Transport Layer Security 1.3 tunneling for all data exchanges."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p20_b18",
+            "p20_b19",
+            "p20_b20",
+            "p20_b21",
+            "p20_b22",
+            "p20_b23",
+            "p20_b24",
+            "p20_b25"
+        ],
+        "original_text": "utilizing specialized spatial data types. This sophisticated geographic structuring allows the\nArtificial Intelligence engine to accurately calculate commute distances and regional match\npercentages while strictly preserving job seeker anonymity prior to any mutual employer\nagreement. Furthermore, all unstructured data extracted during the automated resume parsing\nworkflows is immediately structured into strictly typed relational tables, ensuring the natural\nlanguage algorithms evaluate highly sanitized data vectors rather than raw, potentially toxic input\ndocuments.\nEntities and Key Fields:",
+        "question": "Verify that the system ensures job seeker anonymity is preserved before any mutual employer agreement when calculating commute distances and regional match percentages.",
+        "ground_truth_context": "This sophisticated geographic structuring allows the Artificial Intelligence engine to accurately calculate commute distances and regional match percentages while strictly preserving job seeker anonymity prior to any mutual employer agreement."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p2_b1",
+            "p2_b2",
+            "p2_b3",
+            "p2_b4",
+            "p2_b5",
+            "p2_b6",
+            "p2_b7",
+            "p2_b8",
+            "p2_b9",
+            "p2_b10",
+            "p2_b11",
+            "p2_b12",
+            "p2_b13",
+            "p2_b14",
+            "p2_b15",
+            "p2_b16"
+        ],
+        "original_text": "System Name: Artificial Intelligence Driven Job Matching Platform for Palestine\nVersion: 1.0\nAuthor: Ministry of Labor, Palestinian Employment Fund, and Enabel\nDate: May 19th 2025\nDescription: The Artificial Intelligence Driven Job Matching Platform is a highly sophisticated\nstandalone internet accessible system engineered to fundamentally address the structural\nchallenges of labour market efficiency in Palestine. Designed as a core component of the Youth\nEconomic Empowerment in Palestine program, the software aims to drastically enhance the\nemployability and economic empowerment of Palestinian youth. This platform specifically targets\nindividuals between fifteen to twenty-nine years old, including vulnerable populations, people with\ndisabilities, and young women. In its future operational state, this software will serve as the central\nnucleus of a much broader Labor Market Information System, seamlessly integrating multiple\nexternal job sources and highly secure government databases to optimize employment matching,\ngenerate actionable analytics, and support evidence-based decision making for regional\npolicymakers.\nCrucially, due to its status as critical national socioeconomic infrastructure and its direct, real-time",
+        "question": "Verify that the platform enforces role-based access control to limit data exposure to authorized users only, preventing unauthorized access or data breaches.",
+        "ground_truth_context": "due to its status as critical national socioeconomic infrastructure and its direct, real-time"
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p25_b8",
+            "p26_b0",
+            "p26_b1",
+            "p26_b2",
+            "p26_b3",
+            "p26_b4",
+            "p26_b5",
+            "p26_b6",
+            "p26_b7",
+            "p26_b8"
+        ],
+        "original_text": "DAILY_NEW_REGISTRATION_CAP\n1000\nThe baseline volume of new youth job\nseeker and employer profiles the\nplatform is mathematically engineered\nto authenticate and provision daily.\nCPU_UTILIZATION_THRESHOLD\n80\nPercent\nThe\nabsolute\nmaximum\ncentral\nprocessing unit usage allowed before\nthe high availability load balancers\nautomatically trigger horizontal scaling\nprotocols.\nMEMORY_UTILIZATION_THRESHOLD\n80\nPercent\nThe strict ceiling for random access\nmemory consumption enforced across\nall\nactive\napplication\nservers\nto\nprevent catastrophic memory overflow\nerrors.\nINITIAL_STORAGE_ALLOCATION_TB\n5\nThe massive physical disk space\nspecifically provisioned to securely\nhouse encrypted user profiles, parsed\nresume files, and immutable audit logs\nfor the first year.\nMINIMUM_SEEKER_CAPACITY\n100000\nThe\nmandatory\nbaseline\nstorage\nvolume\nguaranteeing\nflawless\nperformance for at least one hundred\nthousand highly detailed registered\nyouth profiles.\nMINIMUM_EMPLOYER_CAPACITY\n10000\nThe\nmandatory\nbaseline\nstorage\nvolume explicitly ensuring the secure\npersistence of at least ten thousand\nregistered corporate entities and their\nverification documents.\nACTIVE_JOB_POSTING_CAPACITY\n50000\nThe mandatory baseline database\ncapacity\nexplicitly\nengineered\nto\nmanage and index fifty thousand\nsimultaneous, searchable job listings\nwithout search degradation.",
+        "question": "Verify that the platform is engineered to manage and index at least fifty thousand simultaneous, searchable job listings without search degradation.",
+        "ground_truth_context": "ACTIVE_JOB_POSTING_CAPACITY\n50000\nThe mandatory baseline database capacity explicitly engineered to manage and index fifty thousand simultaneous, searchable job listings without search degradation."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p3_b0",
+            "p3_b1",
+            "p3_b2",
+            "p3_b3",
+            "p3_b4",
+            "p3_b5",
+            "p3_b6",
+            "p3_b7",
+            "p3_b8",
+            "p3_b9",
+            "p3_b10",
+            "p3_b11",
+            "p3_b12",
+            "p3_b13"
+        ],
+        "original_text": "At its operational core, the platform facilitates a dynamic, high security communication and\nmatchmaking environment for job seekers, private sector employers, and approved external job\nportals. The system relies on a robust technology stack featuring advanced Artificial Intelligence\nand Machine Learning frameworks to execute complex vector-based scoring algorithms and\nNatural Language Processing. By parsing complex data matrices including technical skills,\neducational backgrounds, user behaviours, and explicit employer requirements, the Artificial\nIntelligence engine dynamically ranks candidates and recommends opportunities. To maintain\nthis rigorous security posture, all Artificial Intelligence components are strictly compartmentalized\nwithin secure execution enclaves, completely preventing any potential data poisoning or\nalgorithmic bias injection while ensuring the Artificial Intelligence operates strictly as a decision\nsupport tool rather than an autonomous hiring authority.\nFurthermore, the platform integrates an exceptionally secure Application Programming Interface\nframework to securely ingest job data from third party sites and verify employer identities against\nofficial government records via cryptographically signed OAuth tokens. Operating under the",
+        "question": "Verify that all Artificial Intelligence components are strictly compartmentalized within secure execution enclaves to prevent data poisoning or algorithmic bias injection.",
+        "ground_truth_context": "all Artificial Intelligence components are strictly compartmentalized within secure execution enclaves, completely preventing any potential data poisoning or algorithmic bias injection while ensuring the Artificial Intelligence operates strictly as a decision support tool rather than an autonomous hiring authority."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p41_b22",
+            "p41_b23",
+            "p41_b24",
+            "p41_b25",
+            "p41_b26",
+            "p41_b27",
+            "p41_b28",
+            "p41_b29",
+            "p41_b30"
+        ],
+        "original_text": "only via cryptographically authenticated mutual Transport Layer Security 1.3 connections\noriginating exclusively from the approved internal Application Programming Interface gateways.\nBy implementing this extreme segmentation, combined with automated containerization\ntechnologies for flawless horizontal scaling, the platform guarantees that malicious actors cannot\nreach the underlying vector matrices or Personally Identifiable Information even if the public facing\nweb servers are compromised.\nThe system is deployed on infrastructure provided by a Scalable High Availability Enterprise\nCloud or Hybrid Infrastructure Provider . The overall network topology and segmentation\nstrategy is described as: Strict Zero Trust multi-tier network segmentation establishing a",
+        "question": "Verify that the application enforces cryptographically authenticated mutual Transport Layer Security 1.3 connections originating exclusively from approved internal Application Programming Interface gateways.",
+        "ground_truth_context": "only via cryptographically authenticated mutual Transport Layer Security 1.3 connections originating exclusively from the approved internal Application Programming Interface gateways."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p48_b20",
+            "p48_b21",
+            "p48_b22",
+            "p48_b23",
+            "p48_b24",
+            "p48_b25",
+            "p48_b26",
+            "p48_b27",
+            "p48_b28",
+            "p48_b29"
+        ],
+        "original_text": "\u2022\nPhased Implementation and Scalability Trajectory: It is assumed that the software\ndevelopment lifecycle will follow a strictly phased implementation approach, prioritizing the\ndeployment of the core matchmaking engine and secure user onboarding functionalities\nprior to expanding the system into a comprehensive, overarching Labor Market\nInformation System. The architecture assumes a baseline capacity scaling capable of\nsupporting a one hundred percent annual growth in the user base for at least the first three\nyears of active national operation.\n\u2022\nExternal Integration Cooperation: The project explicitly assumes that highly utilized third\nparty regional job portals, specifically platforms such as jobs dot ps, will actively cooperate\nwith the integration mandates. It is assumed these external entities will adopt the provided",
+        "question": "Verify that the application prioritizes the implementation of secure user onboarding functionalities in the phased deployment approach.",
+        "ground_truth_context": "prioritizing the deployment of the core matchmaking engine and secure user onboarding functionalities prior to expanding the system into a comprehensive, overarching Labor Market Information System."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p33_b20",
+            "p33_b21",
+            "p33_b22",
+            "p33_b23",
+            "p33_b24",
+            "p33_b25",
+            "p33_b26",
+            "p33_b27",
+            "p33_b28"
+        ],
+        "original_text": "to the Integration API Gateway , the communication utilizes the HTTPS protocol. The\nexpected payload type for this exchange is Schema dot org standard job posting\nsynchronization payloads formatted in JSON . To ensure security in transit, all data\ncrossing this boundary is encrypted using mutual TLS (mTLS) 1.3 and explicitly requires\nOAuth 2.0 token validation.\n\u2022\nWhen data is transmitted from the Secure API Gateway to the External Ministry of\nLabor Government Databases , the communication utilizes the HTTPS protocol. The\nexpected payload type for this exchange is Validation requests containing company\nregistration numbers for real time employer verification . To ensure security in transit,",
+        "question": "Verify that the application requires mutual TLS (mTLS) 1.3 and OAuth 2.0 token validation for all data transmitted to the Integration API Gateway.",
+        "ground_truth_context": "To ensure security in transit, all data crossing this boundary is encrypted using mutual TLS (mTLS) 1.3 and explicitly requires OAuth 2.0 token validation."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p19_b15",
+            "p19_b16",
+            "p19_b17",
+            "p19_b18",
+            "p19_b19",
+            "p19_b20",
+            "p19_b21",
+            "p19_b22",
+            "p19_b23",
+            "p19_b24",
+            "p19_b25",
+            "p19_b26",
+            "p19_b27",
+            "p19_b28",
+            "p19_b29"
+        ],
+        "original_text": "requiring explicit Application Programming Interface keys, IP whitelisting, and strict\npayload validation.\n\u2022\nExternal Integration Ministry of Labor Verification Gateway: This critical government\ninterface establishes a highly restricted outbound connection to official Palestinian\ndatabases to automatically cross reference and rigorously verify employer registration\nnumbers and corporate identification metrics before granting the Verified Employer badge.\n\u2022\nExternal Integration Educational Credentials Validation API: This external data\nenrichment interface allows the platform to securely connect with recognized Palestinian\neducational institution databases to mathematically verify the authenticity of degrees and\ntraining certificates claimed by youth job seekers.\n\u2022\nExternal Integration Short Message Service Dispatch Gateway: This external\ncommunication interface connects strictly to approved telecommunication providers via\nsecure protocols to rapidly dispatch critical time sensitive alerts, one-time passwords, and\naccount activation codes directly to user mobile devices.\n\u2022\nExternal Integration Secure SMTP Email Dispatcher: This external notification",
+        "question": "Verify that the application requires explicit API keys, IP whitelisting, and strict payload validation for all external integrations.",
+        "ground_truth_context": "requiring explicit Application Programming Interface keys, IP whitelisting, and strict payload validation."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p29_b22",
+            "p29_b23",
+            "p29_b24",
+            "p29_b25",
+            "p29_b26",
+            "p29_b27",
+            "p29_b28",
+            "p29_b29",
+            "p29_b30",
+            "p29_b31"
+        ],
+        "original_text": "registration workflow. Level one captures the company name, email, mobile number, company\nID, and registration number. Level two captures the website, industry, company size, physical\naddress, company description, and uploaded supplementary registration documents. Following\nsuccessful automatic or manual verification, this role can structurally define and publish new job\nopportunities, configure application deadlines, manually search the job seeker database using\nadvanced filtering, and review highly customized candidate shortlists generated directly by the\nArtificial Intelligence matching algorithm.\nThe Registered Job Seeker role is granted an access level of Standard Authenticated\nCandidate . Users assigned to this role must authenticate via Username, Password, and\nMandatory Multi Factor Authentication utilizing One Time Passwords . This role is primarily",
+        "question": "Verify that the authentication mechanism for the 'Registered Job Seeker' role requires a username, password, and mandatory multi-factor authentication using one-time passwords.",
+        "ground_truth_context": "Users assigned to this role must authenticate via Username, Password, and Mandatory Multi Factor Authentication utilizing One Time Passwords."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p13_b22",
+            "p13_b23",
+            "p13_b24",
+            "p13_b25",
+            "p13_b26",
+            "p13_b27",
+            "p13_b28"
+        ],
+        "original_text": "recommendations.\n\u2022\nNFR-005: The application must deploy advanced runtime application self-protection tools\nto provide continuous integrity monitoring across all Artificial Intelligence execution\nenclaves and core algorithmic files, immediately flagging any anomalous code\nmodifications.\n\u2022\nNFR-006: All permanent data at rest, explicitly including the high dimensional vector\nembeddings utilized by the Artificial Intelligence engine for matching calculations, must be",
+        "question": "Verify that the application deploys advanced runtime application self-protection tools to provide continuous integrity monitoring across all AI execution enclaves and core algorithmic files, immediately flagging any anomalous code modifications.",
+        "ground_truth_context": "NFR-005: The application must deploy advanced runtime application self-protection tools to provide continuous integrity monitoring across all Artificial Intelligence execution enclaves and core algorithmic files, immediately flagging any anomalous code modifications."
+    }
+]

@@ -241,49 +241,96 @@ Output: `results/debate_dynamics.json`
 These require a prepared TSD design and a full evaluation dataset. They are more expensive
 (LLM judge calls) and are run on-demand, not after every ingestion.
 
-### Vector-only vs Hybrid ablation
+The repository currently contains these retrieval eval scripts:
+
+- `retrieval/ablation_eval.py` — 4-way ablation: `vector_only`, `raptor_low`,
+  `raptor_only`, `hybrid`
+- `retrieval/lost_in_middle_eval.py` — balanced front/middle/back evaluation
+  for middle-zone recovery
+- `retrieval/diagram_retrieval_eval.py` — diagram requirement retrieval:
+  production vector selector vs naive fallback
+
+The previously documented `retrieval/cross_boundary_eval.py` is not present in
+this repository and should not be referenced as a runnable evaluation.
+
+### Ablation: vector-only vs RAPTOR vs hybrid
 
 ```bash
 docker exec automated-security-design-review-backend-1 \
   python /app/sdr/apps/ai/evaluations/retrieval/ablation_eval.py \
-  --design-id 1 --category-code web_application --job-id 27
+  --design-id 8 --dataset eval_dataset_30_design8.json \
+  --output eval_ablation_retrieval_design8.json
 ```
 
-### Cross-boundary (V1 Architecture + V9 Communications)
+Run once per prepared TSD design with its matching dataset:
 
 ```bash
 docker exec automated-security-design-review-backend-1 \
-  python /app/sdr/apps/ai/evaluations/retrieval/cross_boundary_eval.py \
-  --design-id 1 --job-id 27
+  python /app/sdr/apps/ai/evaluations/retrieval/ablation_eval.py \
+  --design-id 9 --dataset eval_dataset_30_design9.json \
+  --output eval_ablation_retrieval_design9.json
+
+docker exec automated-security-design-review-backend-1 \
+  python /app/sdr/apps/ai/evaluations/retrieval/ablation_eval.py \
+  --design-id 10 --dataset eval_dataset_30_design10.json \
+  --output eval_ablation_retrieval_design10.json
 ```
 
----
+The ablation datasets now live under `evaluations/data/`. Passing the bare
+filename is sufficient because the script resolves it from that shared data
+directory automatically.
 
-## Vision evaluations
+Canonical retained outputs:
 
-### Blindness mitigation
+- `results/retrieval/eval_ablation_retrieval_design8.json`
+- `results/retrieval/eval_ablation_retrieval_design9.json`
+- `results/retrieval/eval_ablation_retrieval_design10.json`
 
-Tests whether the vision debate detects a control's absence from synthetic diagrams
-(no text context at all — pure visual detection).
+### Lost-in-the-middle
 
 ```bash
 docker exec automated-security-design-review-backend-1 \
-  python /app/sdr/apps/ai/evaluations/vision/blindness_eval.py
+  python /app/sdr/apps/ai/evaluations/retrieval/lost_in_middle_eval.py \
+  --design-id 8 --samples-per-zone 10 \
+  --output eval_lost_in_middle_design8.json
+
+docker exec automated-security-design-review-backend-1 \
+  python /app/sdr/apps/ai/evaluations/retrieval/lost_in_middle_eval.py \
+  --design-id 9 --samples-per-zone 10 \
+  --output eval_lost_in_middle_design9.json
+
+docker exec automated-security-design-review-backend-1 \
+  python /app/sdr/apps/ai/evaluations/retrieval/lost_in_middle_eval.py \
+  --design-id 10 --samples-per-zone 10 \
+  --output eval_lost_in_middle_design10.json
 ```
+
+Canonical retained outputs:
+
+- `results/retrieval/eval_lost_in_middle_design8.json`
+- `results/retrieval/eval_lost_in_middle_design9.json`
+- `results/retrieval/eval_lost_in_middle_design10.json`
+
+Note on thesis metrics:
+
+- `raptor_middle_recovery` is always interpretable
+- `middle_deficit_reduction_pct` is only reported when the vector-only baseline
+  actually has a positive middle-zone deficit. If the baseline deficit is `<= 0`,
+  the script reports `n/a` instead of a misleading negative or undefined percentage.
 
 ---
 
-## Diagram evaluations (real diagrams, ground-truth-backed)
+## Vision evaluations (real diagrams, ground-truth-backed)
 
-The blindness/grounding evals above only run on synthetic diagrams. These three scripts
-evaluate the diagram requirement selector and the diagram debate (Hunter → Critic →
-Mediator) against **real diagrams** pulled from a completed, vision-enabled review, using
-human-labeled ground truth.
+All vision evaluations below run against **real diagrams** pulled from a
+design's parsed TSD document (no synthetic/PIL-drawn diagrams), using the
+same human-labeled ground truth file described in Step 1. Each script reads
+`design_id` directly from that file, so only `--ground-truth` is required.
 
 ### Step 1 — Build the ground-truth template
 
-Requires at least one completed review with diagram findings (`analysis_mode` other than
-`text_only`).
+Requires at least one completed, vision-enabled review with diagram findings
+(`analysis_mode` other than `text_only`).
 
 ```bash
 docker exec automated-security-design-review-backend-1 \
@@ -301,7 +348,77 @@ entry set:
 - `"relevant": true/false` — is this requirement genuinely checkable from this diagram?
 - `"label": "met"|"not_met"|"na"` — only for `relevant: true` rows.
 
-This one labeled file feeds both evals below.
+This one labeled file feeds every eval below (blindness, grounding, SoM
+ablation, diagram retrieval, and diagram debate ablation).
+
+### Blindness mitigation
+
+Tests whether the vision debate detects a control's presence/absence purely
+from a real diagram image, using `"met"`/`"not_met"`-labeled rows from the
+ground truth as the two classes. Caption/surrounding_text are blanked out
+before re-running the debate to isolate the vision channel — a real
+diagram's caption might otherwise describe the very control under test.
+
+```bash
+docker exec automated-security-design-review-backend-1 \
+  python /app/sdr/apps/ai/evaluations/vision/blindness_eval.py \
+  --ground-truth /app/sdr/apps/ai/evaluations/data/diagram_ground_truth_review_1.json
+```
+
+Output: `results/vision/eval_vision_blindness.json`
+
+### Grounding & marker utilization
+
+Measures marker-utilization rate, scope-classification accuracy, critic
+overturn rate, invalid-marker-citation rate, and confidence calibration on
+the same labeled real diagrams (caption/surrounding_text left intact this
+time). The "non-architecture" scope-negative class is derived from any real
+diagram in the ground truth where every candidate requirement is labeled
+`relevant: false`; if none exists, a single synthetic blank-image scenario
+is used as a documented fallback so the metric stays computable.
+
+```bash
+docker exec automated-security-design-review-backend-1 \
+  python /app/sdr/apps/ai/evaluations/vision/grounding_eval.py \
+  --ground-truth /app/sdr/apps/ai/evaluations/data/diagram_ground_truth_review_1.json
+```
+
+Output: `results/vision/grounding_results.json`
+
+### Set-of-Mark (SoM) ablation
+
+Tests whether Set-of-Mark marker annotation (numbered boxes burned into the
+diagram image before it reaches the LLM) actually improves the diagram debate,
+as opposed to Grounding above, which only measures how often a marker is
+*cited* once one exists. Runs each labeled real diagram twice through
+`DiagramDebateService.run_diagram_debate` — once with markers applied, once
+with the raw unmarked image — and compares outcome quality between the two
+conditions.
+
+```bash
+docker exec automated-security-design-review-backend-1 \
+  python /app/sdr/apps/ai/evaluations/vision/som_ablation_eval.py \
+  --ground-truth /app/sdr/apps/ai/evaluations/data/diagram_ground_truth_review_1.json
+```
+
+| Metric | Target | Meaning |
+|--------|--------|---------|
+| `som_final.fpr` | lower | FPR with SoM markers applied |
+| `raw_final.fpr` | higher | FPR on the raw, unmarked image |
+| `delta_fpr` | > 0 | FPR suppression attributable to SoM markers |
+| `delta_accuracy` | > 0 | verdict-accuracy gain attributable to SoM markers |
+| `marker_utilization_rate` | higher | fraction of SoM-condition runs where the Hunter cited a marker |
+
+Output: `results/vision/som_ablation_results.json`
+
+---
+
+## Diagram evaluations (real diagrams, ground-truth-backed)
+
+These two scripts also consume the Step 1 ground-truth file above, evaluating
+the diagram requirement selector and the diagram debate (Hunter → Critic →
+Mediator) against real diagrams pulled from a completed, vision-enabled
+review.
 
 ### Step 2a — Diagram requirement retrieval eval
 

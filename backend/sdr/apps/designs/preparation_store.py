@@ -12,6 +12,8 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
+from sdr.apps.ai.client import usage_tracker
+from sdr.apps.ai.client.session import build_tsd_ingestion_session_id, job_session_context
 from sdr.apps.ai.engine.dto import IngestionOutput, RetrievalIndexes
 from sdr.apps.ai.engine.preparation.ingestion_service import IngestionService
 from sdr.apps.ai.engine.preparation.retrieval_service import RetrievalService
@@ -377,56 +379,60 @@ class DesignPreparationStore:
         )
         progress_tracker.start()
         output: Optional[IngestionOutput] = None
+        session_id = build_tsd_ingestion_session_id(preparation.id)
         try:
-            output = self.ingestion_service.ingest_design(design)
-            if output is None:
-                raise PreparationArtifactError("Failed to ingest the uploaded TSD document.")
-            progress_tracker.mark_ingestion_complete()
-            if not output.is_valid_tsd:
-                progress_tracker.mark_failed(
-                    output.screening_message
-                    or "Document failed TSD screening and is not eligible for analysis."
-                )
-                raise PreparationArtifactError(
-                    output.screening_message
-                    or "Document failed TSD screening and is not eligible for analysis."
-                )
-            progress_tracker.mark_screening_complete()
+            with job_session_context(session_id=session_id, job_type="tsd_ingestion", job_id=preparation.id):
+                output = self.ingestion_service.ingest_design(design)
+                if output is None:
+                    raise PreparationArtifactError("Failed to ingest the uploaded TSD document.")
+                progress_tracker.mark_ingestion_complete()
+                if not output.is_valid_tsd:
+                    progress_tracker.mark_failed(
+                        output.screening_message
+                        or "Document failed TSD screening and is not eligible for analysis."
+                    )
+                    raise PreparationArtifactError(
+                        output.screening_message
+                        or "Document failed TSD screening and is not eligible for analysis."
+                    )
+                progress_tracker.mark_screening_complete()
 
-            indexes = self.retrieval_service.build_indexes(
-                output.tsd_document,
-                progress_callbacks={
-                    "raptor": progress_tracker.update_raptor,
-                },
-            )
-            snapshot = self.snapshot_builder.build_snapshot(indexes)
-            progress_tracker.mark_persisting()
-            artifact_keys = self._persist_artifacts(preparation, output, indexes, snapshot)
-            self._replace_vector_rows(db, preparation, indexes)
+                indexes = self.retrieval_service.build_indexes(
+                    output.tsd_document,
+                    progress_callbacks={
+                        "raptor": progress_tracker.update_raptor,
+                    },
+                )
+                snapshot = self.snapshot_builder.build_snapshot(indexes)
+                progress_tracker.mark_persisting()
+                artifact_keys = self._persist_artifacts(preparation, output, indexes, snapshot)
+                self._replace_vector_rows(db, preparation, indexes)
 
-            stats_json = {
-                "document_name": output.tsd_document.document_name,
-                "total_pages": output.tsd_document.total_pages,
-                "total_text_blocks": output.tsd_document.total_text_blocks,
-                "total_diagrams": output.tsd_document.total_diagrams,
-                "raptor_total_nodes": int(getattr(indexes.raptor_tree, "total_nodes", 0) or 0),
-            }
-            self.mark_ready(
-                design,
-                preparation,
-                snapshot=snapshot,
-                artifact_keys=artifact_keys,
-                stats_json=stats_json,
-            )
-            progress_tracker.mark_persisting_complete()
-            preparation.progress_json = progress_tracker.snapshot()
-            design.preparation_progress_json = preparation.progress_json
-            db.commit()
-            return {"snapshot": snapshot, "stats_json": stats_json}
+                stats_json = {
+                    "document_name": output.tsd_document.document_name,
+                    "total_pages": output.tsd_document.total_pages,
+                    "total_text_blocks": output.tsd_document.total_text_blocks,
+                    "total_diagrams": output.tsd_document.total_diagrams,
+                    "raptor_total_nodes": int(getattr(indexes.raptor_tree, "total_nodes", 0) or 0),
+                    "llm_usage": usage_tracker.snapshot(session_id),
+                }
+                self.mark_ready(
+                    design,
+                    preparation,
+                    snapshot=snapshot,
+                    artifact_keys=artifact_keys,
+                    stats_json=stats_json,
+                )
+                progress_tracker.mark_persisting_complete()
+                preparation.progress_json = progress_tracker.snapshot()
+                design.preparation_progress_json = preparation.progress_json
+                db.commit()
+                return {"snapshot": snapshot, "stats_json": stats_json}
         except Exception as exc:
             progress_tracker.mark_failed(str(exc))
             raise
         finally:
+            usage_tracker.clear(session_id)
             if output is not None and getattr(output, "tsd_document", None) is not None:
                 output.tsd_document.cleanup_temporary_artifacts()
 

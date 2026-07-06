@@ -3,6 +3,8 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timezone
 
+from sdr.apps.ai.client import usage_tracker
+from sdr.apps.ai.client.session import build_tsd_analysis_session_id
 from sdr.apps.ai.engine.dto import AnalysisSummary
 from sdr.apps.reviews.models import Review
 from sdr.apps.reviews.models.choices import ReviewStatus
@@ -17,6 +19,11 @@ class ReviewRunStateService:
     def __init__(self, *, workflow_repository) -> None:
         self.workflow_repository = workflow_repository
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+
+    def _sync_llm_usage(self, review: Review, summary: AnalysisSummary) -> None:
+        session_id = build_tsd_analysis_session_id(review.id)
+        with summary.lock:
+            summary.llm_usage = usage_tracker.snapshot(session_id)
 
     def mark_running(self, review: Review) -> None:
         new_status = ReviewStatus.RUNNING.value
@@ -37,6 +44,7 @@ class ReviewRunStateService:
 
     def persist_summary_snapshot(self, review: Review, summary: AnalysisSummary) -> None:
         try:
+            self._sync_llm_usage(review, summary)
             with summary.lock:
                 summary_dict = summary.to_dict()
             self.workflow_repository.save_summary_snapshot(review.id, summary=summary_dict)
@@ -66,6 +74,7 @@ class ReviewRunStateService:
             else:
                 new_status = ReviewStatus.COMPLETED_CLEAN.value
             now = datetime.now(timezone.utc)
+            self._sync_llm_usage(review, summary)
             summary_dict = summary.to_dict()
             self.workflow_repository.mark_review_completed(
                 review.id,
@@ -77,6 +86,7 @@ class ReviewRunStateService:
             review.completed_at = now
             review.summary_json = summary_dict
             review_debate_event_store.publish_review_status(review.id, review_status=new_status)
+            usage_tracker.clear(build_tsd_analysis_session_id(review.id))
         except Exception as exc:
             self.logger.exception(
                 "ReviewRunStateService.complete_review: failed for review_id=%s: %s",
@@ -108,6 +118,13 @@ class ReviewRunStateService:
                 review_status=new_status,
                 error_message=error_message,
             )
+            # No AnalysisSummary is available at this call site to sync a final
+            # llm_usage snapshot (fail_review is reached both after a summary
+            # exists and, for early preparation failures, before one is ever
+            # created) — the periodic persist_summary_snapshot calls during the
+            # run already captured usage up to the last completed stage. Just
+            # free the tracker's memory for this session.
+            usage_tracker.clear(build_tsd_analysis_session_id(review.id))
         except Exception as exc:
             self.logger.exception(
                 "ReviewRunStateService.fail_review: could not mark review failed id=%s: %s",

@@ -58,7 +58,6 @@ class Settings(BaseSettings):
     AI_STANDARD_EXTRACTION_CHUNK_TOKEN_TARGET: int = Field(default=4500)
     AI_STANDARD_EXTRACTION_CACHE_TTL_SECONDS: int = Field(default=86400)
     AI_DIAGRAM_REQUIREMENT_EXTRACTION_MAX_CONCURRENCY: int = Field(default=3)
-    AI_DIAGRAM_TYPES: str = Field(default="data_flow,sequence,architecture")
     AI_MODEL_TSD_INGESTION: str = Field(default="meta/llama-3.1-8b-instruct")
     AI_MODEL_CONTRACT_SYNTHESIZER: str = Field(default="meta/llama-3.1-70b-instruct")
     AI_MODEL_HUNTER: str = Field(default="meta/llama-3.1-70b-instruct")
@@ -86,7 +85,7 @@ class Settings(BaseSettings):
 
     AI_DEBATE_MAX_HUNTER_CALLS_PER_PARAMETER: int = Field(default=8)
     AI_DEBATE_MAX_DEBATE_ROUNDS: int = Field(default=1)
-    AI_DEBATE_CRITIC_AUTO_UPHOLD_STRONG_NOT_MET: bool = Field(default=True)
+    AI_DEBATE_CRITIC_AUTO_UPHOLD_STRONG_NOT_MET: bool = Field(default=False)
 
     AI_BATCH_DEBATE_MAX_CONCURRENCY: int = Field(default=3)
     AI_BATCH_DEBATE_UNGROUNDED_NOT_MET_POLICY: str = Field(default="preserve_not_met")
@@ -112,7 +111,7 @@ class Settings(BaseSettings):
     AI_RAPTOR_SUMMARY_MAX_CONCURRENCY: int = Field(default=3)
     AI_RAPTOR_EMBED_MAX_CONCURRENCY: int = Field(default=4)
     AI_RAPTOR_LEAF_TOKEN_BUDGET: int = Field(default=800)
-    AI_RAPTOR_LEAF_MAX_PAGES: int = Field(default=3)
+    AI_RAPTOR_LEAF_MAX_PAGES: int = Field(default=1)
     AI_RAPTOR_CONTEXTUAL_ENRICHMENT_ENABLED: bool = Field(default=True)
     AI_RAPTOR_CONTEXT_CONCURRENCY: int = Field(default=8)
     AI_RETRIEVAL_HYBRID_MAX_WORKERS: int = Field(default=3)
