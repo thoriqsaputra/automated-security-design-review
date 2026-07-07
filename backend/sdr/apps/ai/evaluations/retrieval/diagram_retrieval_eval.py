@@ -28,6 +28,8 @@ import argparse
 import json
 import logging
 import os
+import random
+import re
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
@@ -53,22 +55,37 @@ from sdr.apps.ai.evaluations.shared.metrics import (
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+_COMPOSITE_REQ_RE = re.compile(r"(job\d+-D-composite-[A-Za-z0-9-]+)")
+
 
 def _load_ground_truth(gt_path: str) -> dict:
     with open(gt_path) as f:
         return json.load(f)
 
 
+def _normalize_requirement_id(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    match = _COMPOSITE_REQ_RE.search(raw)
+    if match:
+        return match.group(1)
+    if raw.startswith("job") and "-D-composite-" in raw:
+        return raw
+    return raw
+
+
 def _expected_ids_for_diagram(item: dict) -> set[str]:
     return {
-        str(req["requirement_id"]).strip()
+        normalized_id
         for req in item.get("candidate_requirements", [])
-        if req.get("relevant") is True and str(req.get("requirement_id", "")).strip()
+        for normalized_id in [_normalize_requirement_id(req.get("requirement_id", ""))]
+        if req.get("relevant") is True and normalized_id
     }
 
 
 def _diagram_metrics(expected_ids: set[str], ranked: list) -> dict:
-    retrieved_ids = [r.stable_key for r in ranked]
+    retrieved_ids = [_normalize_requirement_id(r.stable_key) for r in ranked]
     precision, recall = calculate_set_retrieval_precision_recall(expected_ids, retrieved_ids)
     mrr = calculate_context_precision(expected_ids, [[rid] for rid in retrieved_ids])
     hit = 1.0 if (expected_ids & set(retrieved_ids)) else 0.0
@@ -105,6 +122,7 @@ def main():
         help="Path to a labeled diagram ground-truth JSON (see build_diagram_ground_truth_template.py)"
     )
     parser.add_argument("--top-k", type=int, default=15)
+    parser.add_argument("--sample-seed", type=int, default=42, help="Seed for the random-baseline draw.")
     parser.add_argument("--output", type=str, default="eval_diagram_retrieval.json")
     args = parser.parse_args()
 
@@ -141,7 +159,7 @@ def main():
     workflow_repository = SqlAlchemyReviewWorkflowRepository()
     selector = DiagramRequirementSelector(config=config, workflow_repository=workflow_repository)
 
-    vector_rows, naive_rows = [], []
+    vector_rows, naive_rows, random_rows = [], [], []
     per_diagram_results = []
     skipped = 0
 
@@ -165,29 +183,44 @@ def main():
             category=category,
             ingestion_job=ingestion_job,
         )
-        naive_ranked = list(
+        full_pool = list(
             workflow_repository.list_diagram_requirements(
                 category_id=category.id,
                 ingestion_job_id=ingestion_job.id,
             )
-        )[: args.top_k]
+        )
+        naive_ranked = full_pool[: args.top_k]
+
+        # Random-baseline condition: a "no signal" floor. The naive ordinal
+        # fallback can look accidentally strong when the requirement pool is
+        # small and broadly relevant across diagrams (see threats-to-validity
+        # note in README) — random sampling from the same pool answers the
+        # more defensible question "does retrieval beat having no signal at
+        # all?" Re-seeded per diagram so results are reproducible regardless
+        # of iteration order.
+        rng = random.Random(args.sample_seed)
+        random_ranked = rng.sample(full_pool, min(args.top_k, len(full_pool)))
 
         vector_metrics = _diagram_metrics(expected_ids, vector_ranked)
         naive_metrics = _diagram_metrics(expected_ids, naive_ranked)
+        random_metrics = _diagram_metrics(expected_ids, random_ranked)
         vector_rows.append(vector_metrics)
         naive_rows.append(naive_metrics)
+        random_rows.append(random_metrics)
 
         per_diagram_results.append({
             "diagram_id": diagram_id,
             "expected_ids": sorted(expected_ids),
             "vector": vector_metrics,
             "naive_fallback": naive_metrics,
+            "random_baseline": random_metrics,
         })
 
         logger.info(
             f"  diagram_id={diagram_id} expected={len(expected_ids)} "
             f"vector(P={vector_metrics['precision']:.2f} R={vector_metrics['recall']:.2f}) "
-            f"naive(P={naive_metrics['precision']:.2f} R={naive_metrics['recall']:.2f})"
+            f"naive(P={naive_metrics['precision']:.2f} R={naive_metrics['recall']:.2f}) "
+            f"random(P={random_metrics['precision']:.2f} R={random_metrics['recall']:.2f})"
         )
 
     if not per_diagram_results:
@@ -196,19 +229,27 @@ def main():
 
     vector_summary = _aggregate(vector_rows)
     naive_summary = _aggregate(naive_rows)
-    delta = {
+    random_summary = _aggregate(random_rows)
+    delta_vs_naive = {
         key: round(vector_summary[key] - naive_summary[key], 4)
+        for key in ("precision", "recall", "hit_rate", "mrr")
+    }
+    delta_vs_random = {
+        key: round(vector_summary[key] - random_summary[key], 4)
         for key in ("precision", "recall", "hit_rate", "mrr")
     }
 
     summary = {
         "design_id": args.design_id,
         "top_k": args.top_k,
+        "sample_seed": args.sample_seed,
         "diagrams_evaluated": len(per_diagram_results),
         "diagrams_skipped": skipped,
         "vector": vector_summary,
         "naive_fallback": naive_summary,
-        "delta_vector_minus_naive": delta,
+        "random_baseline": random_summary,
+        "delta_vector_minus_naive": delta_vs_naive,
+        "delta_vector_minus_random": delta_vs_random,
         "per_diagram_results": per_diagram_results,
     }
 
@@ -226,7 +267,12 @@ def main():
         f"  Naive:   P={naive_summary['precision']:.3f} R={naive_summary['recall']:.3f} "
         f"HitRate={naive_summary['hit_rate']:.3f} MRR={naive_summary['mrr']:.3f}"
     )
-    logger.info(f"  Delta (vector - naive): {delta}")
+    logger.info(
+        f"  Random:  P={random_summary['precision']:.3f} R={random_summary['recall']:.3f} "
+        f"HitRate={random_summary['hit_rate']:.3f} MRR={random_summary['mrr']:.3f}"
+    )
+    logger.info(f"  Delta (vector - naive):  {delta_vs_naive}")
+    logger.info(f"  Delta (vector - random): {delta_vs_random}")
     logger.info(f"\nResults saved to {output_path}")
 
 

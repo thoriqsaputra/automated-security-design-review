@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import base64
 import json
+import random
 from dataclasses import dataclass
 from typing import Optional
 
@@ -69,6 +70,55 @@ def load_labeled_samples(
                 )
             )
     return samples
+
+
+def select_balanced_samples(
+    samples: list[RealLabeledSample],
+    *,
+    max_samples: int,
+    seed: int = 42,
+) -> list[RealLabeledSample]:
+    """Deterministically sample up to `max_samples`, roughly balancing labels."""
+    if max_samples <= 0 or len(samples) <= max_samples:
+        return list(samples)
+
+    rng = random.Random(seed)
+    by_label: dict[str, list[RealLabeledSample]] = {}
+    for sample in samples:
+        by_label.setdefault(sample.label, []).append(sample)
+    for group in by_label.values():
+        rng.shuffle(group)
+
+    selected: list[RealLabeledSample] = []
+    labels = sorted(by_label.keys())
+
+    # First pass: reserve one sample per label when possible.
+    for label in labels:
+        if len(selected) >= max_samples:
+            break
+        group = by_label.get(label) or []
+        if group:
+            selected.append(group.pop())
+
+    # Second pass: fill the remainder round-robin for rough balance.
+    while len(selected) < max_samples:
+        progressed = False
+        for label in labels:
+            group = by_label.get(label) or []
+            if not group:
+                continue
+            selected.append(group.pop())
+            progressed = True
+            if len(selected) >= max_samples:
+                break
+        if not progressed:
+            break
+
+    # Stable output order keeps logs/diffs predictable.
+    return sorted(
+        selected,
+        key=lambda sample: (sample.label, sample.diagram_id, sample.requirement_id),
+    )
 
 
 def diagrams_with_no_relevant_requirements(gt_data: dict) -> list[tuple[str, dict]]:

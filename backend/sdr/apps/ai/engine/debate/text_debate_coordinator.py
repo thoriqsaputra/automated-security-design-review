@@ -434,10 +434,28 @@ class TextDebateCoordinator:
         evidence_quality = self.extract_retrieval_evidence_quality(debate_output.analysis_trace)
         implementation_count = int(evidence_quality.get("implementation_evidence_count") or 0)
         applicability_signal = bool(evidence_quality.get("applicability_signal"))
+        verdict_policy = debate_output.analysis_trace.get("verdict_policy") or {}
+        structured_applicability_present = bool(verdict_policy.get("structured_applicability_present"))
+        applicability_status = str(verdict_policy.get("applicability_status") or "").strip().lower()
+        applicability_established = bool(verdict_policy.get("applicability_established", True))
+        if structured_applicability_present:
+            applicability_established = applicability_status == "established"
+        debate_output.analysis_trace["structured_applicability_present"] = structured_applicability_present
+        debate_output.analysis_trace["applicability_status"] = applicability_status or None
         if evidence_quality and implementation_count == 0 and not applicability_signal:
+            if structured_applicability_present and applicability_established:
+                reason = self.build_missing_evidence_reasoning(parameter, evidence_quality, applicability_established=True)
+                mediator.reasoning = reason
+                mediator.logic_summary = reason
+                debate_output.analysis_trace["evidence_gate_attempted"] = True
+                debate_output.analysis_trace["evidence_gate_outcome"] = "structured_applicability_preserved_not_met"
+                debate_output.analysis_trace["downgraded_due_to_missing_citations"] = False
+                debate_output.analysis_trace["downgrade_reason"] = None
+                return debate_output
             reason = self.build_missing_evidence_reasoning(parameter, evidence_quality, applicability_established=False)
             mediator.final_verdict = "na"
             mediator.raw_final_verdict = "na"
+            mediator.applicability_status = "not_established"
             mediator.severity = None
             mediator.recommendation = None
             mediator.reasoning = reason
@@ -460,10 +478,6 @@ class TextDebateCoordinator:
         debate_output.analysis_trace["evidence_gate_retry_context_available"] = False
         debate_output.analysis_trace["evidence_gate_retry_skipped"] = "disabled_no_new_evidence_source"
         downgrade_policy = self.ungrounded_not_met_policy()
-        applicability_established = True
-        verdict_policy = debate_output.analysis_trace.get("verdict_policy") or {}
-        if isinstance(verdict_policy, dict):
-            applicability_established = bool(verdict_policy.get("applicability_established", True))
         if downgrade_policy == "selective_fallback" and applicability_established:
             debate_output.analysis_trace["evidence_gate_outcome"] = "retry_disabled_preserved_not_met"
             debate_output.analysis_trace["downgraded_due_to_missing_citations"] = False
@@ -472,6 +486,7 @@ class TextDebateCoordinator:
         if downgrade_policy == "selective_fallback" and not applicability_established:
             debate_output.mediator_result.final_verdict = "na"
             debate_output.mediator_result.raw_final_verdict = "na"
+            debate_output.mediator_result.applicability_status = "not_established"
             debate_output.mediator_result.severity = None
             debate_output.mediator_result.recommendation = None
             debate_output.mediator_result.reasoning = (
@@ -490,6 +505,7 @@ class TextDebateCoordinator:
             return debate_output
         debate_output.mediator_result.final_verdict = "na"
         debate_output.mediator_result.raw_final_verdict = "na"
+        debate_output.mediator_result.applicability_status = "not_established"
         debate_output.mediator_result.severity = None
         debate_output.mediator_result.recommendation = None
         debate_output.mediator_result.reasoning = (

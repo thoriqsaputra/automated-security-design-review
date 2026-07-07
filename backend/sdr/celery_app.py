@@ -1,4 +1,5 @@
 from celery import Celery
+from celery.signals import worker_process_init
 from sdr.core.config import settings
 
 # -----------------------------------------------------------------------------
@@ -41,3 +42,14 @@ celery_app.conf.update(
     worker_prefetch_multiplier=1,  # Best practice for long-running AI tasks
     worker_max_tasks_per_child=50, # Prevents memory leaks in heavy ML processing
 )
+
+
+@worker_process_init.connect
+def _prewarm_openai_submodules(**kwargs):
+    """Import openai's lazily-loaded submodules once, single-threaded, before
+    the worker accepts tasks. Without this, the first concurrent chat +
+    embeddings calls in a fresh worker process can race on the same first
+    import and deadlock (_ModuleLock deadlock between openai.resources.chat
+    and openai.resources.embeddings)."""
+    import openai.resources.chat  # noqa: F401
+    import openai.resources.embeddings  # noqa: F401

@@ -8,6 +8,8 @@ from sdr.core.config import settings
 from sdr.apps.ai.retrieval.postprocessing.quote_grounding import is_quote_grounded
 
 from sdr.apps.ai.agents.base import (
+    APPLICABILITY_ESTABLISHED,
+    APPLICABILITY_NOT_ESTABLISHED,
     OUTCOME_OVERTURN,
     OUTCOME_PARTIAL,
     VERDICT_MET,
@@ -111,6 +113,11 @@ class DebateService:
         critic_rejected = []
         debate_history: List[Dict[str, Any]] = []
         rebuttal_context: List[str] = []
+        # Once a block_id's underlying text has been confirmed grounded in an
+        # earlier round, later rounds don't need to re-derive groundedness from
+        # that round's own re-phrased quote — the source text hasn't changed,
+        # only the agent's wording of it has.
+        grounded_block_ids: set = set()
 
         round_number = 0
         escalation_round_granted = False
@@ -154,7 +161,9 @@ class DebateService:
                 retrieved_chunk_ids,
                 "hunter",
                 context_chunk_map=context_chunk_map,
+                grounded_ids=grounded_block_ids,
             )
+            grounded_block_ids.update(c.block_id for c in hunter_result.citations)
             hunter_result = self._stabilize_hunter_grounding(
                 hunter_result,
                 rejected_citations=hunter_rejected,
@@ -176,8 +185,10 @@ class DebateService:
                     hunter_call_count=hunter_call_count,
                     retrieved_chunk_ids=retrieved_chunk_ids,
                     context_chunk_map=context_chunk_map,
+                    grounded_ids=grounded_block_ids,
                     stream_handler=(lambda chunk: agent_chunk_handler("hunter", chunk)) if agent_chunk_handler else None,
                 )
+                grounded_block_ids.update(c.block_id for c in hunter_result.citations)
             if agent_completed_handler:
                 agent_completed_handler("hunter", hunter_result.cot_trace or hunter_result.logic_summary or hunter_result.reasoning)
             sanitized_hunter = self._sanitize_hunter_for_handoff(hunter_result)
@@ -223,7 +234,9 @@ class DebateService:
                 retrieved_chunk_ids,
                 "critic",
                 context_chunk_map=context_chunk_map,
+                grounded_ids=grounded_block_ids,
             )
+            grounded_block_ids.update(c.block_id for c in critic_result.valid_citations)
             critic_result.invalid_citation_ids = self._merge_invalid_ids(
                 critic_result.invalid_citation_ids,
                 [citation.block_id for citation in critic_rejected],
@@ -328,6 +341,9 @@ class DebateService:
                     "verdict": hunter_result.verdict,
                     "confidence": hunter_result.confidence,
                     "citation_ids": [c.block_id for c in hunter_result.citations],
+                    "applicability_status": getattr(hunter_result, "applicability_status", None),
+                    "applicability_reason": getattr(hunter_result, "applicability_reason", ""),
+                    "missing_expected_evidence": list(getattr(hunter_result, "missing_expected_evidence", []) or []),
                 },
                 "hunter_diagnostics": {
                     "available_block_ids": list(retrieved_chunk_ids),
@@ -345,6 +361,9 @@ class DebateService:
                     "missed_evidence": list(critic_result.missed_evidence),
                     "objections": list(critic_result.objections),
                     "requires_rebuttal": critic_result.requires_rebuttal,
+                    "applicability_status": getattr(critic_result, "applicability_status", None),
+                    "applicability_reason": getattr(critic_result, "applicability_reason", ""),
+                    "missing_expected_evidence": list(getattr(critic_result, "missing_expected_evidence", []) or []),
                 },
                 "mediator_decision_basis": {
                     "final_verdict": mediator_result.final_verdict,
@@ -353,12 +372,19 @@ class DebateService:
                     "verified_evidence": list(mediator_result.verified_evidence),
                     "rejected_evidence": list(mediator_result.rejected_evidence),
                     "debate_rounds_used": mediator_result.debate_rounds_used or debate_rounds,
+                    "applicability_status": getattr(mediator_result, "applicability_status", None),
+                    "applicability_reason": getattr(mediator_result, "applicability_reason", ""),
+                    "missing_expected_evidence": list(getattr(mediator_result, "missing_expected_evidence", []) or []),
                 },
                 "verdict_policy": {
                     "source": getattr(mediator_result, "verdict_policy_source", "mediator"),
                     "raw_final_verdict": mediator_result.raw_final_verdict or mediator_result.final_verdict,
                     "final_verdict": mediator_result.final_verdict,
                     "applicability_established": bool(getattr(mediator_result, "applicability_established", True)),
+                    "structured_applicability_present": bool(getattr(mediator_result, "applicability_status", "")),
+                    "applicability_status": getattr(mediator_result, "applicability_status", None),
+                    "applicability_reason": getattr(mediator_result, "applicability_reason", ""),
+                    "missing_expected_evidence": list(getattr(mediator_result, "missing_expected_evidence", []) or []),
                     "evidence_sufficiency": getattr(mediator_result, "evidence_sufficiency", None),
                     "not_assessable_reason": getattr(mediator_result, "not_assessable_reason", None),
                     "verified_control_evidence_ids": [c.block_id for c in mediator_result.final_citations],
@@ -581,6 +607,7 @@ class DebateService:
         hunter_call_count: int,
         retrieved_chunk_ids: set,
         context_chunk_map: Optional[Dict[str, Any]] = None,
+        grounded_ids: Optional[set] = None,
         stream_handler: Optional[Callable[[str], None]] = None,
     ) -> tuple[HunterResult, int]:
         valid_ids_str = ", ".join(sorted(retrieved_chunk_ids)) or "none"
@@ -618,6 +645,7 @@ class DebateService:
             retrieved_chunk_ids,
             "hunter_citation_retry",
             context_chunk_map=context_chunk_map,
+            grounded_ids=grounded_ids,
         )
         retry_result = self._stabilize_hunter_grounding(retry_result)
         self.logger.info(
@@ -632,6 +660,9 @@ class DebateService:
         return HunterResult(
             verdict=result.verdict,
             confidence=result.confidence,
+            applicability_status=result.applicability_status,
+            applicability_reason=result.applicability_reason,
+            missing_expected_evidence=list(result.missing_expected_evidence),
             reasoning=result.logic_summary or result.reasoning,
             assumptions=list(result.assumptions),
             logic_summary=result.logic_summary or result.reasoning,
@@ -650,6 +681,9 @@ class DebateService:
             outcome=result.outcome,
             revised_verdict=result.revised_verdict,
             revised_confidence=result.revised_confidence,
+            applicability_status=result.applicability_status,
+            applicability_reason=result.applicability_reason,
+            missing_expected_evidence=list(result.missing_expected_evidence),
             reasoning=result.logic_summary or result.reasoning,
             assumptions=list(result.assumptions),
             logic_summary=result.logic_summary or result.reasoning,
@@ -794,8 +828,9 @@ class DebateService:
     def _is_quote_grounded(self, quoted_text: str, block_text: str) -> bool:
         return is_quote_grounded(quoted_text, block_text)
 
-    def _validate_citations(self, citations, allowed_ids, agent_name, context_chunk_map=None):
+    def _validate_citations(self, citations, allowed_ids, agent_name, context_chunk_map=None, grounded_ids=None):
         allowed = set(allowed_ids)
+        grounded = grounded_ids or set()
         valid = []
         rejected = []
         unknown_id_count = 0
@@ -804,6 +839,9 @@ class DebateService:
             if citation.block_id not in allowed:
                 rejected.append(citation)
                 unknown_id_count += 1
+                continue
+            if citation.block_id in grounded:
+                valid.append(citation)
                 continue
             if context_chunk_map is not None:
                 block_text = (context_chunk_map.get(citation.block_id) or {}).get("text", "")
@@ -844,14 +882,47 @@ class DebateService:
                 merged.append(citation_id)
         return merged
 
+    def _result_applicability_status(self, result: Optional[object]) -> Optional[str]:
+        if result is None:
+            return None
+        status = str(getattr(result, "applicability_status", "") or "").strip().lower()
+        if status in {APPLICABILITY_ESTABLISHED, APPLICABILITY_NOT_ESTABLISHED}:
+            return status
+        return None
+
+    def _applicability_is_established(self, result: Optional[object]) -> Optional[bool]:
+        status = self._result_applicability_status(result)
+        if status == APPLICABILITY_ESTABLISHED:
+            return True
+        if status == APPLICABILITY_NOT_ESTABLISHED:
+            return False
+        return None
+
     def _apply_mediator_evidence_policy(self, mediator_result, critic_result, contract, hunter_result=None):
         valid_citations = list(critic_result.valid_citations or [])
         in_scope = bool(contract.get("in_scope", True))
         specific = bool(contract.get("specific_enough", True))
         raw_verdict = mediator_result.raw_final_verdict or mediator_result.final_verdict
+        mediator_applicability = self._applicability_is_established(mediator_result)
+        critic_applicability = self._applicability_is_established(critic_result)
+        hunter_applicability = self._applicability_is_established(hunter_result)
+        applicability_not_established = False in {
+            value for value in (mediator_applicability, critic_applicability, hunter_applicability) if value is not None
+        }
+        applicability_established_by_agents = True in {
+            value for value in (mediator_applicability, critic_applicability, hunter_applicability) if value is not None
+        }
         mediator_result.raw_final_verdict = raw_verdict
         mediator_result.verdict_policy_source = "mediator"
-        mediator_result.applicability_established = bool(in_scope and specific)
+        mediator_result.applicability_established = (
+            False
+            if applicability_not_established
+            else (
+                True
+                if applicability_established_by_agents
+                else bool(in_scope and specific)
+            )
+        )
         mediator_result.evidence_sufficiency = "unverified"
         mediator_result.not_assessable_reason = None
         # A confident "not_met" from the actual debate outranks a pre-debate
@@ -863,13 +934,28 @@ class DebateService:
         # coincidental citation is a real false-"met" risk), but silently
         # discarding a "not_met" the debate already reached is the worse failure
         # mode for a security review — it hides a real, well-reasoned finding.
-        debate_reached_definitive_not_met = raw_verdict == VERDICT_NOT_MET
+        # This also covers the case where the Mediator's own raw verdict
+        # diverges to "na" even though Hunter and Critic already reached an
+        # explicit, unanimous "not_met" — the Mediator re-derives applicability
+        # independently and can disagree with an already-established consensus;
+        # that lone dissent shouldn't outrank the debate's own agreement.
+        critic_reached_not_met = critic_result.revised_verdict == VERDICT_NOT_MET
+        hunter_reached_not_met = hunter_result is None or hunter_result.verdict == VERDICT_NOT_MET
+        debate_reached_definitive_not_met = raw_verdict == VERDICT_NOT_MET or (
+            critic_reached_not_met and hunter_reached_not_met
+        )
         if (not in_scope or not specific) and not debate_reached_definitive_not_met:
             mediator_result.final_verdict = VERDICT_NA
             mediator_result.final_citations = []
             mediator_result.severity = None
             mediator_result.recommendation = None
             mediator_result.verdict_policy_source = "contract_not_applicable"
+            mediator_result.applicability_status = APPLICABILITY_NOT_ESTABLISHED
+            mediator_result.applicability_reason = (
+                mediator_result.applicability_reason
+                or "Contract synthesis marked the requirement out of scope or not specific enough."
+            )
+            mediator_result.missing_expected_evidence = []
             mediator_result.evidence_sufficiency = "not_applicable"
             mediator_result.not_assessable_reason = "contract_not_in_scope_or_not_specific"
             return mediator_result
@@ -878,16 +964,60 @@ class DebateService:
         # cases where the mediator's structured final_verdict field is missing or
         # ambiguous and its prose reveals the real intent. It must never override
         # an explicit, structured "not_met" the mediator already committed to.
-        if raw_verdict == VERDICT_NA or (
-            not debate_reached_definitive_not_met and self._reasoning_indicates_not_assessable(mediator_result)
+        free_text_na = (
+            not debate_reached_definitive_not_met
+            and mediator_applicability is None
+            and critic_applicability is None
+            and hunter_applicability is None
+            and self._reasoning_indicates_not_assessable(mediator_result)
+        )
+        if raw_verdict == VERDICT_NA and not applicability_not_established and applicability_established_by_agents:
+            raw_verdict = VERDICT_NOT_MET
+            mediator_result.raw_final_verdict = raw_verdict
+        # A "na" conclusion that nonetheless comes with Hunter or Critic
+        # citations is close to self-contradictory: "na" is meant to describe
+        # "nothing relevant to find," but citing block content shows an agent
+        # found and quoted *something* — typically a different-but-related
+        # mechanism that then got misjudged as proving inapplicability rather
+        # than an unaddressed property (the "named tech absent -> na"
+        # over-triggering pattern). Prefer "not_met" over "na" in this case,
+        # unless the contract gate above already established a genuine
+        # structural absence (handled separately; this only runs when we're
+        # still in-scope/specific per the contract).
+        raw_has_citations = bool(
+            (hunter_result.citations if hunter_result is not None else [])
+            or (critic_result.valid_citations or [])
+        )
+        if raw_verdict == VERDICT_NA and raw_has_citations and in_scope and specific:
+            raw_verdict = VERDICT_NOT_MET
+            mediator_result.raw_final_verdict = raw_verdict
+            applicability_not_established = False
+            debate_reached_definitive_not_met = True
+        # Same asymmetric carve-out as the contract-scope gate above: a
+        # confident "not_met" the debate actually reached must survive even if
+        # one agent separately flagged applicability as not established —
+        # discarding it here is the same failure mode the contract-gate
+        # carve-out exists to prevent.
+        if (
+            (applicability_not_established and not debate_reached_definitive_not_met)
+            or (raw_verdict == VERDICT_NA and not applicability_established_by_agents)
+            or free_text_na
         ):
             mediator_result.final_verdict = VERDICT_NA
             mediator_result.final_citations = []
             mediator_result.severity = None
             mediator_result.recommendation = None
-            mediator_result.verdict_policy_source = "not_assessable"
+            mediator_result.verdict_policy_source = (
+                "structured_not_applicable" if applicability_not_established else "not_assessable"
+            )
+            mediator_result.applicability_status = APPLICABILITY_NOT_ESTABLISHED
+            mediator_result.missing_expected_evidence = []
             mediator_result.evidence_sufficiency = "not_assessable"
-            mediator_result.not_assessable_reason = "mediator_or_critic_indicated_na_or_not_assessable"
+            mediator_result.not_assessable_reason = (
+                "agent_marked_applicability_not_established"
+                if applicability_not_established
+                else "mediator_or_critic_indicated_na_or_not_assessable"
+            )
             return mediator_result
 
         accepted_met = (
@@ -901,6 +1031,7 @@ class DebateService:
             mediator_result.final_citations = valid_citations
             mediator_result.severity = None
             mediator_result.recommendation = None
+            mediator_result.applicability_status = APPLICABILITY_ESTABLISHED
             mediator_result.evidence_sufficiency = "verified_met"
             return mediator_result
 
@@ -912,6 +1043,8 @@ class DebateService:
                 mediator_result.severity = None
                 mediator_result.recommendation = None
                 mediator_result.verdict_policy_source = "met_without_verified_evidence"
+                mediator_result.applicability_status = APPLICABILITY_NOT_ESTABLISHED
+                mediator_result.missing_expected_evidence = []
                 mediator_result.evidence_sufficiency = "insufficient_for_met"
                 mediator_result.not_assessable_reason = "met_claim_lacked_critic_verified_citations"
                 return mediator_result
@@ -925,6 +1058,7 @@ class DebateService:
                 mediator_result.severity = None
                 mediator_result.recommendation = None
                 mediator_result.verdict_policy_source = "partial_evidence_sufficient"
+                mediator_result.applicability_status = APPLICABILITY_ESTABLISHED
                 mediator_result.evidence_sufficiency = "partial_met"
             else:
                 mediator_result.final_verdict = VERDICT_NOT_MET
@@ -932,11 +1066,13 @@ class DebateService:
                     mediator_result.reasoning = f"Partial evidence only: {mediator_result.reasoning}"
                     mediator_result.logic_summary = mediator_result.reasoning
                 mediator_result.verdict_policy_source = "partial_evidence_not_met"
+                mediator_result.applicability_status = APPLICABILITY_ESTABLISHED
                 mediator_result.evidence_sufficiency = "partial"
                 mediator_result.final_citations = []
             return mediator_result
 
         mediator_result.final_verdict = VERDICT_NOT_MET
+        mediator_result.applicability_status = APPLICABILITY_ESTABLISHED
         mediator_result.final_citations = valid_citations if raw_verdict == VERDICT_NOT_MET else []
         mediator_result.verdict_policy_source = "applicable_missing_or_contradicted_evidence"
         mediator_result.evidence_sufficiency = "missing_or_contradicted"
@@ -954,6 +1090,8 @@ class DebateService:
             mediator_result.severity = None
             mediator_result.recommendation = None
             mediator_result.verdict_policy_source = "not_met_no_grounded_citations"
+            mediator_result.applicability_status = APPLICABILITY_NOT_ESTABLISHED
+            mediator_result.missing_expected_evidence = []
             mediator_result.evidence_sufficiency = "no_grounded_evidence"
             mediator_result.not_assessable_reason = "not_met_without_any_critic_verified_citations"
 

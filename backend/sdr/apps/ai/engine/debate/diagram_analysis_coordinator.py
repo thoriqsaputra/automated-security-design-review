@@ -195,6 +195,11 @@ class DiagramAnalysisCoordinator:
                 summary.total_parameters += 1
                 if output.error:
                     summary.error_count += 1
+                    self.logger.error(
+                        "DiagramAnalysisCoordinator.run: diagram_id=%s dropped — %s",
+                        output.diagram.diagram_id,
+                        output.error,
+                    )
                     review_debate_event_store.fail_agent(
                         review.id,
                         debate_id=build_debate_id(None, diagram_id=output.diagram.diagram_id),

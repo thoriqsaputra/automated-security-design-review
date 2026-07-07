@@ -28,6 +28,7 @@ import argparse
 import json
 import logging
 import os
+import re
 import sys
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "../../../../..")))
@@ -47,6 +48,20 @@ from sdr.apps.ai.evaluations.shared.metrics import calculate_binary_confusion
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
+_COMPOSITE_REQ_RE = re.compile(r"(job\d+-D-composite-[A-Za-z0-9-]+)")
+
+
+def _normalize_requirement_id(value: object) -> str:
+    raw = str(value or "").strip()
+    if not raw:
+        return ""
+    match = _COMPOSITE_REQ_RE.search(raw)
+    if match:
+        return match.group(1)
+    if raw.startswith("job") and "-D-composite-" in raw:
+        return raw
+    return raw
+
 
 def _load_ground_truth(gt_path: str) -> dict[tuple[str, str], str]:
     """Load {(diagram_id, requirement_id): label} from a labeled diagram ground-truth JSON."""
@@ -59,7 +74,7 @@ def _load_ground_truth(gt_path: str) -> dict[tuple[str, str], str]:
             if req.get("relevant") is not True:
                 continue
             label = req.get("label")
-            requirement_id = str(req.get("requirement_id", "")).strip()
+            requirement_id = _normalize_requirement_id(req.get("requirement_id", ""))
             if not diagram_id or not requirement_id or not label:
                 continue
             gt[(diagram_id, requirement_id)] = str(label).lower().strip()
@@ -71,7 +86,7 @@ def _per_requirement_verdicts(assessments: list) -> dict[str, str]:
     for item in assessments or []:
         if not isinstance(item, dict):
             continue
-        requirement_id = str(item.get("requirement_id", "")).strip()
+        requirement_id = _normalize_requirement_id(item.get("requirement_id", ""))
         verdict = str(item.get("verdict", "")).strip().lower()
         if requirement_id and verdict:
             verdicts[requirement_id] = verdict
@@ -179,6 +194,13 @@ def main():
     debate_cm = calculate_binary_confusion(debate_labels, debate_preds)
     delta_fpr = round(hunter_cm["fpr"] - debate_cm["fpr"], 4)
 
+    # Cases where a single-model (Hunter-only) verdict was wrong and the
+    # multi-agent debate corrected it — direct evidence that the debate
+    # mitigates single-model (visual) blindness, not just FPR in the aggregate.
+    blindness_mitigation_cases = [
+        row for row in disagreements if not row["hunter_correct"] and row["debate_correct"]
+    ]
+
     summary = {
         "review_id": args.review_id,
         "ground_truth_items": len(gt),
@@ -188,6 +210,8 @@ def main():
         "debate_final": debate_cm,
         "delta_fpr": delta_fpr,
         "fpr_suppression_achieved": delta_fpr >= 0,
+        "blindness_mitigation_cases": blindness_mitigation_cases,
+        "blindness_mitigation_rate": round(len(blindness_mitigation_cases) / len(per_item), 4),
         "per_item_results": per_item,
         "disagreement_cases": disagreements,
     }
@@ -212,6 +236,11 @@ def main():
     logger.info(
         f"\n  Delta FPR (hunter - debate): {delta_fpr:+.4f}  "
         f"({'FPR not increased' if delta_fpr >= 0 else 'FPR increased'})"
+    )
+    logger.info(
+        f"  Blindness-mitigation cases (Hunter wrong -> debate correct): "
+        f"{len(blindness_mitigation_cases)}/{len(per_item)} "
+        f"({100 * summary['blindness_mitigation_rate']:.1f}%)"
     )
     logger.info(f"\nResults saved to {output_path}")
 

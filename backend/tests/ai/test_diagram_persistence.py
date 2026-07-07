@@ -234,6 +234,7 @@ def test_persist_finding_keeps_met_when_citation_quotes_are_missing(monkeypatch)
     )
     citation = Citation(block_id="p1_b1", page_number=3, quoted_text="")
     debate_output = SimpleNamespace(
+        retrieval_result=None,
         hunter_result=HunterResult(
             verdict="met",
             confidence=0.91,
@@ -291,6 +292,150 @@ def test_persist_finding_keeps_met_when_citation_quotes_are_missing(monkeypatch)
     assert session.findings and session.findings[0].quoted_text == "The system requires MFA for privileged access."
     assert summary.met_count == 1
     assert summary.citation_count == 1
+
+
+def test_persist_finding_keeps_met_when_citations_cannot_be_anchored(monkeypatch):
+    # Regression: findings 1839/1846 (review 57), 1884/1906/1911/1898 (review
+    # 58) — the debate's own verdict_policy said "met" with Critic-verified
+    # citations, but the persisted finding came out "na" because
+    # _resolve_citations_for_anchoring couldn't place a UI bounding box for
+    # any of them (e.g. the cited block isn't in context_chunk_map at all, or
+    # the source text no longer matches). Anchoring failure is a UI/display
+    # concern, not evidence invalidity — a "met" verdict the debate already
+    # verified must survive it.
+    service = PersistenceService()
+    session = _Session()
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.persistence.persistence_service.SessionLocal",
+        lambda: _SessionContext(session),
+    )
+
+    review = SimpleNamespace(id=99)
+    category = SimpleNamespace(id=8, code="web_application")
+    parent = SimpleNamespace(id=17, title="Authentication", category_id=8)
+    parameter = SimpleNamespace(
+        id=24,
+        parent=parent,
+        stable_key="AUTH-1.2.4",
+        ordinal=1,
+        requirement_text="Use MFA for privileged access.",
+    )
+    citation = Citation(block_id="p9_b3", page_number=9, quoted_text="Completely unrelated fabricated text.")
+    debate_output = SimpleNamespace(
+        retrieval_result=None,
+        hunter_result=HunterResult(
+            verdict="met",
+            confidence=0.9,
+            reasoning="The context names the control.",
+            logic_summary="The context names the control.",
+            evidence_found=True,
+            citations=[citation],
+        ),
+        critic_result=CriticResult(
+            revised_verdict="met",
+            revised_confidence=0.9,
+            reasoning="The control is grounded in the retrieved block.",
+            logic_summary="The control is grounded in the retrieved block.",
+            valid_citations=[citation],
+        ),
+        mediator_result=MediatorResult(
+            final_verdict="met",
+            confidence=0.9,
+            reasoning="The control is shown in the TSD.",
+            logic_summary="The control is shown in the TSD.",
+            final_citations=[citation],
+            finding_description="MFA is present for privileged access.",
+            recommendation=None,
+        ),
+        analysis_trace={
+            # p9_b3 is absent entirely — anchoring cannot resolve it to any
+            # location, so _resolve_citations_for_anchoring returns [].
+            "context_chunk_map": {}
+        },
+    )
+    summary = AnalysisSummary()
+
+    finding = service.persist_finding(
+        review,
+        PersistenceInput.model_construct(
+            parameter=parameter,
+            category=category,
+            ingestion_job=None,
+            debate_output=debate_output,
+        ),
+        summary,
+    )
+
+    assert finding is session.finding
+    assert finding.met_status == "met"
+    assert summary.met_count == 1
+
+
+def test_persist_finding_downgrades_met_when_no_citations_at_all(monkeypatch):
+    # Contrast case: a "met" verdict with genuinely no citations at all must
+    # still downgrade to "na" — the fix only protects citations that exist
+    # but fail to anchor, not the (policy-shouldn't-happen) case of no
+    # citations whatsoever.
+    service = PersistenceService()
+    session = _Session()
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.persistence.persistence_service.SessionLocal",
+        lambda: _SessionContext(session),
+    )
+
+    review = SimpleNamespace(id=99)
+    category = SimpleNamespace(id=8, code="web_application")
+    parent = SimpleNamespace(id=17, title="Authentication", category_id=8)
+    parameter = SimpleNamespace(
+        id=25,
+        parent=parent,
+        stable_key="AUTH-1.2.5",
+        ordinal=1,
+        requirement_text="Use MFA for privileged access.",
+    )
+    debate_output = SimpleNamespace(
+        retrieval_result=None,
+        hunter_result=HunterResult(
+            verdict="met",
+            confidence=0.9,
+            reasoning="The context names the control.",
+            logic_summary="The context names the control.",
+            evidence_found=True,
+            citations=[],
+        ),
+        critic_result=CriticResult(
+            revised_verdict="met",
+            revised_confidence=0.9,
+            reasoning="No citations to verify.",
+            logic_summary="No citations to verify.",
+            valid_citations=[],
+        ),
+        mediator_result=MediatorResult(
+            final_verdict="met",
+            confidence=0.9,
+            reasoning="The control is shown in the TSD.",
+            logic_summary="The control is shown in the TSD.",
+            final_citations=[],
+            finding_description="MFA is present for privileged access.",
+            recommendation=None,
+        ),
+        analysis_trace={"context_chunk_map": {}},
+    )
+    summary = AnalysisSummary()
+
+    finding = service.persist_finding(
+        review,
+        PersistenceInput.model_construct(
+            parameter=parameter,
+            category=category,
+            ingestion_job=None,
+            debate_output=debate_output,
+        ),
+        summary,
+    )
+
+    assert finding is session.finding
+    assert finding.met_status == "na"
 
 
 def test_persist_diagram_debate_finding_preserves_non_architecture_scope(monkeypatch):

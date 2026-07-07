@@ -9,10 +9,13 @@ from sdr.apps.ai.prompts.agents import (
     build_batch_hunter_prompt,
 )
 from .base import (
+    APPLICABILITY_ESTABLISHED,
+    APPLICABILITY_NOT_ESTABLISHED,
     BaseAgent,
     HunterResult,
+    VERDICT_MET,
+    VERDICT_NA,
     VERDICT_NOT_MET,
-    VERDICT_MET
 )
 
 logger = logging.getLogger(__name__)
@@ -79,6 +82,12 @@ class HunterAgent(BaseAgent):
             return HunterResult(
                 verdict=VERDICT_NOT_MET,
                 confidence=0.3,
+                applicability_status=APPLICABILITY_NOT_ESTABLISHED,
+                applicability_reason=(
+                    "No relevant context was retrieved, so applicability could "
+                    "not be established from the TSD evidence."
+                ),
+                missing_expected_evidence=[],
                 reasoning=(
                     "No relevant context was retrieved from the TSD for this "
                     "parameter. This may indicate the topic is not covered in "
@@ -192,6 +201,20 @@ class HunterAgent(BaseAgent):
                 context_chunks=context_chunks,
             )
         )
+        applicability_status = self._extract_applicability_status(parsed, verdict=verdict)
+        applicability_reason = self._extract_applicability_reason(
+            parsed,
+            default="No applicability reasoning provided by the Hunter agent.",
+        )
+        missing_expected_evidence = self._extract_missing_expected_evidence(parsed)
+        if verdict == VERDICT_NA:
+            applicability_status = APPLICABILITY_NOT_ESTABLISHED
+        elif verdict in {VERDICT_MET, VERDICT_NOT_MET}:
+            applicability_status = APPLICABILITY_ESTABLISHED
+        if verdict == VERDICT_NOT_MET and not missing_expected_evidence:
+            missing_expected_evidence = [evidence_assessment[:400]] if evidence_assessment else []
+        if verdict != VERDICT_NOT_MET:
+            missing_expected_evidence = []
 
         # ------------------------------------------------------------------
         # 6. Log and return
@@ -217,6 +240,9 @@ class HunterAgent(BaseAgent):
         return HunterResult(
             verdict=verdict,
             confidence=confidence,
+            applicability_status=applicability_status,
+            applicability_reason=applicability_reason,
+            missing_expected_evidence=missing_expected_evidence,
             reasoning=reasoning_fields["reasoning"],
             assumptions=reasoning_fields["assumptions"],
             logic_summary=reasoning_fields["logic_summary"],
@@ -252,6 +278,12 @@ class HunterAgent(BaseAgent):
                 str(item.get("id")): HunterResult(
                     verdict=VERDICT_NOT_MET,
                     confidence=0.3,
+                    applicability_status=APPLICABILITY_NOT_ESTABLISHED,
+                    applicability_reason=(
+                        "No relevant parent context was retrieved, so applicability "
+                        "could not be established from the TSD evidence."
+                    ),
+                    missing_expected_evidence=[],
                     reasoning="No relevant parent context was retrieved from the TSD.",
                     logic_summary="No relevant parent context was retrieved from the TSD.",
                     evidence_found=False,
@@ -334,9 +366,26 @@ class HunterAgent(BaseAgent):
                     context_chunks=context_chunks,
                 )
             )
+            applicability_status = self._extract_applicability_status(item, verdict=verdict)
+            applicability_reason = self._extract_applicability_reason(
+                item,
+                default="No applicability reasoning provided by the Hunter agent.",
+            )
+            missing_expected_evidence = self._extract_missing_expected_evidence(item)
+            if verdict == VERDICT_NA:
+                applicability_status = APPLICABILITY_NOT_ESTABLISHED
+            elif verdict in {VERDICT_MET, VERDICT_NOT_MET}:
+                applicability_status = APPLICABILITY_ESTABLISHED
+            if verdict == VERDICT_NOT_MET and not missing_expected_evidence:
+                missing_expected_evidence = [evidence_assessment[:400]] if evidence_assessment else []
+            if verdict != VERDICT_NOT_MET:
+                missing_expected_evidence = []
             results[child_id] = HunterResult(
                 verdict=verdict,
                 confidence=confidence,
+                applicability_status=applicability_status,
+                applicability_reason=applicability_reason,
+                missing_expected_evidence=missing_expected_evidence,
                 reasoning=reasoning_fields["reasoning"],
                 assumptions=reasoning_fields["assumptions"],
                 logic_summary=reasoning_fields["logic_summary"],

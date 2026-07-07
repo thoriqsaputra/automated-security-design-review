@@ -1,0 +1,1193 @@
+{
+  "review_id": 53,
+  "design_id": 15,
+  "category_id": 1,
+  "ingestion_job_id": 53,
+  "items": [
+    {
+      "diagram_id": "p14_d0",
+      "finding_id": 1627,
+      "page_number": 14,
+      "caption": "Figure 1. Sequence Diagram for User Authentication and Transportation Registration",
+      "image_path": "vision/ground_truth_images/review_53/p14_d0.png",
+      "system_assessed_requirement_ids": [
+        "1. [job53-D-composite-39c0ed17abf94da14821b28e-53-000004] Verify documentation and justification of all the application's trust boundaries, components, and significant data flows.",
+        "11. [job53-D-0b309de7950edbfb5e56d372] Verify anti-automation controls (e.g., CAPTCHA, rate limiting) are depicted.",
+        "14. [job53-D-composite-0914062a97936d78c1a65e74] Sensitive secrets (e.g., initial activation, recovery secrets) are not sent in clear text.",
+        "15. [job53-D-composite-293a1c8ed0c3bb4df31cc936] Out-of-band authentication communication uses a secure, independent channel.",
+        "2. [job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005] Verify definition and security analysis of the application's high-level architecture and all connected remote services.",
+        "20. [job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006] Session invalidation and re-authentication flows are present.",
+        "22. [job53-D-composite-50463b4a59309f108755fa85-53-000015] OAuth token revocation and session token usage are depicted.",
+        "23. [job53-D-composite-65241fcf5f2d3be893aec59e-53-000018] Authentication time limits and re-authentication events are communicated between CSPs and RPs.",
+        "24. [job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001] Access control enforcement is located within trusted service layers.",
+        "3. [job53-D-3293e58191d94d1aef8b2d58-53-000009] Verify that communications between application components, including APIs, middleware and data layers, are authenticated.",
+        "31. [job53-D-composite-807bca2da85437284139bdbb-53-000001] All data flows across trust boundaries must be labeled with secure protocols (e.g., TLS, HTTPS).",
+        "4. [job53-D-db8e0236e3c71a01a22f92fc-53-000012] Verify that trusted enforcement points, such as access control gateways, enforce access controls.",
+        "5. [job53-D-f795ad19b9018b705f38ee07-53-000017] Verify that input validation is enforced on a trusted service layer.",
+        "7. [job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027] Secure communication: encryption and authenticity verification between components",
+        "8. [job53-D-composite-672799b90935437c9b41ce9b-53-000034] Component segregation: trust levels separated by security controls"
+      ],
+      "candidate_requirements": [
+        {
+          "requirement_id": "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
+          "requirement_text": "Verify documentation and justification of all the application's trust boundaries, components, and significant data flows.",
+          "verification_hint": "Examine the DFD for clearly defined trust boundaries (dashed lines), labeled components (processes, data stores), and data flow arrows with descriptive labels.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Diagram tidak menampilkan batas kepercayaan (trust boundaries) secara eksplisit."
+        },
+        {
+          "requirement_id": "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
+          "requirement_text": "Verify definition and security analysis of the application's high-level architecture and all connected remote services.",
+          "verification_hint": "Look for a high-level architecture diagram showing all major components, their connections, and external services. Ensure components are labeled and connections indicate protocols.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "na",
+          "notes": "Diagram tidak mencantumkan protokol koneksi secara spesifik pada arsitektur layanannya."
+        },
+        {
+          "requirement_id": "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+          "requirement_text": "Verify that communications between application components, including APIs, middleware and data layers, are authenticated.",
+          "verification_hint": "Check connections between components for annotations indicating authentication mechanisms (e.g., 'authenticated API call', 'mTLS').",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Tidak ada indikasi anotasi autentikasi (seperti mTLS) pada komunikasi antar komponen internal."
+        },
+        {
+          "requirement_id": "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+          "requirement_text": "Verify that trusted enforcement points, such as access control gateways, enforce access controls.",
+          "verification_hint": "Identify processes or components within trusted zones (inside trust boundaries) that are explicitly labeled as 'Access Control Gateway' or similar, mediating access to sensitive data stores or processes.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Tidak ada komponen gateway atau titik penegakan kontrol akses khusus yang ditampilkan."
+        },
+        {
+          "requirement_id": "job53-D-f795ad19b9018b705f38ee07-53-000017",
+          "requirement_text": "Verify that input validation is enforced on a trusted service layer.",
+          "verification_hint": "Locate data flows from untrusted sources entering a trusted process labeled 'Input Validation' or 'Service Layer' before proceeding to other internal components or data stores.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Alur pengiriman data [25] tidak menunjukkan adanya proses validasi input eksplisit di Application Layer."
+        },
+        {
+          "requirement_id": "job53-D-composite-6224cdc4224b15cc055e4d98-53-000023",
+          "requirement_text": "Logging system: logs securely transmitted to a remote system",
+          "verification_hint": "Look for a dedicated logging component or service, and data flows indicating secure transmission (e.g., TLS) to an external or remote logging system.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Diagram tidak memiliki komponen maupun alur data untuk sistem logging."
+        },
+        {
+          "requirement_id": "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+          "requirement_text": "Secure communication: encryption and authenticity verification between components",
+          "verification_hint": "Examine connections between components, especially across network zones. Look for annotations like HTTPS, TLS, or VPN, and indications of mutual authentication.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Tidak ada anotasi enkripsi (seperti TLS atau HTTPS) pada jalur komunikasi antar komponen."
+        },
+        {
+          "requirement_id": "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+          "requirement_text": "Component segregation: trust levels separated by security controls",
+          "verification_hint": "Identify components with differing trust levels and verify the presence of explicit security controls (e.g., firewalls, API gateways, security groups) between them.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Tidak ada kontrol keamanan eksplisit (seperti firewall) yang ditampilkan untuk memisahkan tingkat kepercayaan komponen."
+        },
+        {
+          "requirement_id": "job53-D-f9150a032d65c4d7d13987af-53-000038",
+          "requirement_text": "Application isolation: sandboxing, containerization, or network-level isolation",
+          "verification_hint": "Look for deployment boundaries, container orchestration platforms, or network segmentation that indicates isolation between applications or services.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Tidak ada batas isolasi jaringan, sandboxing, atau kontainerisasi yang digambarkan pada diagram."
+        },
+        {
+          "requirement_id": "job53-D-composite-ef72f311ee57ad5d1f39d412",
+          "requirement_text": "Verify external API calls for breached password checks are shown.",
+          "verification_hint": "Look for data flow arrows from an internal process to an external entity labeled 'Breached Password API' or similar, indicating an external check.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Alur autentikasi tidak menunjukkan adanya panggilan API eksternal untuk pengecekan kata sandi yang bocor."
+        },
+        {
+          "requirement_id": "job53-D-0b309de7950edbfb5e56d372",
+          "requirement_text": "Verify anti-automation controls (e.g., CAPTCHA, rate limiting) are depicted.",
+          "verification_hint": "Look for components like 'Rate Limiter', 'CAPTCHA Service', or 'WAF' placed before authentication services.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Tidak ada kontrol anti-otomatisasi seperti CAPTCHA yang ditampilkan sebelum proses autentikasi."
+        },
+        {
+          "requirement_id": "job53-D-b7e28781ff521b69f12383e6",
+          "requirement_text": "Verify secure notifications are sent to users after authentication detail updates.",
+          "verification_hint": "Look for messages from the application to a 'Notification Service' or 'User' lifeline after actions like 'credential reset' or 'email change'.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Diagram tidak menggambarkan alur pembaruan detail autentikasi pengguna."
+        },
+        {
+          "requirement_id": "job53-D-85169068a4a72321d8b315e6",
+          "requirement_text": "Verify mutual TLS is used between CSP and application.",
+          "verification_hint": "Look for data flow arrows between the 'Credential Service Provider' and the 'Application' labeled with 'mTLS' or 'Mutual TLS'.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Tidak ada Credential Service Provider (CSP) eksternal yang digambarkan pada diagram ini."
+        },
+        {
+          "requirement_id": "job53-D-composite-0914062a97936d78c1a65e74",
+          "requirement_text": "Sensitive secrets (e.g., initial activation, recovery secrets) are not sent in clear text.",
+          "verification_hint": "Examine data flow arrows carrying sensitive secrets. They must be labeled with encryption (e.g., TLS, HTTPS) or indicate a secure channel.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Diagram tidak menampilkan alur aktivasi awal atau pemulihan kata sandi."
+        },
+        {
+          "requirement_id": "job53-D-composite-293a1c8ed0c3bb4df31cc936",
+          "requirement_text": "Out-of-band authentication communication uses a secure, independent channel.",
+          "verification_hint": "Identify data flows for out-of-band authentication. These flows must be labeled as secure (e.g., TLS, HTTPS) and distinct from the primary application channel.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Tidak ada mekanisme autentikasi out-of-band yang digambarkan."
+        },
+        {
+          "requirement_id": "job53-D-composite-ad70cace67ce58c0b04f96e",
+          "requirement_text": "Verify that intra-service secrets and API keys are managed securely and not included in the source code.",
+          "verification_hint": "Look for dedicated secret management services (e.g., Vault, AWS Secrets Manager) and connections to them from services that require secrets. Ensure no secrets are depicted directly within service components.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Tidak ada layanan manajemen rahasia khusus yang ditampilkan untuk mengelola kunci API pihak ketiga."
+        },
+        {
+          "requirement_id": "job53-D-9d7c842b8eeeb6f4244a6be9",
+          "requirement_text": "Verify the application never reveals session tokens in URL parameters.",
+          "verification_hint": "Examine message flows between client and server. Ensure that session tokens are not shown as part of the URL in any request messages.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "na",
+          "notes": "Diagram menunjukkan pembuatan sesi namun tidak merinci parameter URL untuk memverifikasi lokasi token."
+        },
+        {
+          "requirement_id": "job53-D-4aa8734f54de242cbb68b789",
+          "requirement_text": "Verify the application generates a new session token on user authentication.",
+          "verification_hint": "After a successful authentication message, look for a subsequent message from the server to the client that explicitly indicates the issuance of a new session token.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "met",
+          "notes": "Langkah [14] secara eksplisit menyatakan pembuatan sesi terautentikasi baru setelah login berhasil."
+        },
+        {
+          "requirement_id": "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
+          "requirement_text": "Session tokens are protected during transmission and storage.",
+          "verification_hint": "Look for data flows carrying session tokens to be encrypted (e.g., HTTPS/TLS) and data stores holding session tokens to be marked as encrypted.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "na",
+          "notes": "Diagram tidak memberikan informasi detail tentang protokol transmisi atau metode penyimpanan token sesi."
+        },
+        {
+          "requirement_id": "job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006",
+          "requirement_text": "Session invalidation and re-authentication flows are present.",
+          "verification_hint": "Examine sequence diagrams for explicit 'logout' or 'invalidate session' messages, and re-authentication flows after idle periods or specific actions.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Tidak ada alur pembatalan sesi (logout) atau autentikasi ulang yang digambarkan dalam diagram."
+        },
+        {
+          "requirement_id": "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
+          "requirement_text": "Cookie-based session tokens are transmitted securely.",
+          "verification_hint": "Verify that data flows carrying cookie-based session tokens are labeled with secure protocols like HTTPS/TLS.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "na",
+          "notes": "Tidak ada detail yang menunjukkan apakah token sesi berbasis cookie maupun protokol transmisinya."
+        },
+        {
+          "requirement_id": "job53-D-composite-50463b4a59309f108755fa85-53-000015",
+          "requirement_text": "OAuth token revocation and session token usage are depicted.",
+          "verification_hint": "Look for sequence diagrams showing messages for OAuth token revocation and the use of dynamic session tokens instead of static API keys in interactions.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Diagram tidak menampilkan fungsionalitas maupun alur yang menggunakan OAuth."
+        },
+        {
+          "requirement_id": "job53-D-composite-65241fcf5f2d3be893aec59e-53-000018",
+          "requirement_text": "Authentication time limits and re-authentication events are communicated between CSPs and RPs.",
+          "verification_hint": "Check sequence diagrams for messages between CSP and RP lifelines indicating authentication time limits and last authentication events.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Diagram tidak memiliki interaksi antara sistem CSP dan RP."
+        },
+        {
+          "requirement_id": "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+          "requirement_text": "Access control enforcement is located within trusted service layers.",
+          "verification_hint": "Identify trusted service components within the architecture diagram and verify that access control logic is depicted within or directly associated with them, not solely on client-side components.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Tidak ada penegakan kontrol akses eksplisit yang ditampilkan di Application Layer sebelum memproses permintaan."
+        },
+        {
+          "requirement_id": "job53-D-composite-6bcdb4ad3f3fa4ee0d6cf733-53-000005",
+          "requirement_text": "Verify that sensitive data and APIs are protected against IDOR, CSRF, and unauthorized access.",
+          "verification_hint": "Examine message flows between user and system, and between internal components. Look for explicit authorization checks or tokens in messages for sensitive operations. Check for anti-CSRF tokens in requests.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Tidak ada anotasi mengenai penggunaan token anti-CSRF atau pengecekan otorisasi pada operasi sensitif."
+        },
+        {
+          "requirement_id": "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
+          "requirement_text": "Verify that all external inputs are validated and sanitized before processing.",
+          "verification_hint": "Look for a 'Validation' or 'Sanitization' process immediately following data ingress from external entities or across trust boundaries. Data flows into these processes should be clearly labeled.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Tidak ada langkah validasi atau sanitasi input pengguna yang ditunjukkan sebelum data diproses dan dimasukkan."
+        },
+        {
+          "requirement_id": "job53-D-composite-3dc6f67a223cf26e26edfebf",
+          "requirement_text": "Sensitive data stores must be labeled as encrypted at rest.",
+          "verification_hint": "Examine data stores (open rectangles) in the DFD. Any data store holding PII, health, or financial data must have an annotation indicating encryption at rest.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Database (Data Layer) tidak dilabeli sebagai penyimpanan terenkripsi saat istirahat (encrypted at rest)."
+        },
+        {
+          "requirement_id": "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
+          "requirement_text": "Secrets management solution (e.g., key vault) is used for secure secret handling.",
+          "verification_hint": "Look for a dedicated component labeled as a 'Key Vault', 'Secrets Manager', or similar, connected to application components.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Tidak terdapat komponen khusus untuk solusi manajemen rahasia (seperti key vault) pada diagram."
+        },
+        {
+          "requirement_id": "job53-D-composite-4596dd8573f228bd18ecd33a-53-000001",
+          "requirement_text": "Sensitive data is not logged to data stores accessible by unauthorized parties.",
+          "verification_hint": "Examine data flows to logging data stores. Ensure sensitive data (credentials, PII) is not shown flowing into these stores, especially across trust boundaries.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Diagram tidak mencantumkan alur ke penyimpanan data untuk sistem logging."
+        },
+        {
+          "requirement_id": "job53-D-composite-137ee8430adb220056a6773d-53-000001",
+          "requirement_text": "Sensitive data caching protection in server components.",
+          "verification_hint": "Examine architecture diagrams for load balancers, caches, and other server components. Verify that sensitive data is not shown flowing into or being stored in these components without explicit protection mechanisms.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Tidak ada komponen caching server yang digambarkan di dalam diagram ini."
+        },
+        {
+          "requirement_id": "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+          "requirement_text": "All data flows across trust boundaries must be labeled with secure protocols (e.g., TLS, HTTPS).",
+          "verification_hint": "Examine all data-flow arrows crossing trust boundaries. Each must be explicitly labeled with a secure protocol like TLS or HTTPS.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Aliran data yang melintasi batas komponen tidak secara spesifik dilabeli dengan protokol keamanan eksplisit seperti TLS."
+        },
+        {
+          "requirement_id": "job53-D-composite-9454a8814d51e3209de88a23-53-000008",
+          "requirement_text": "Update mechanisms must show secure channels and digital signature validation.",
+          "verification_hint": "Look for components responsible for updates. Their connections to update sources must be labeled as secure (e.g., HTTPS), and a validation step for digital signatures should be indicated.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Tidak terdapat mekanisme pembaruan aplikasi (update) yang digambarkan."
+        },
+        {
+          "requirement_id": "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
+          "requirement_text": "Anti-automation and business logic controls are deployed.",
+          "verification_hint": "Look for components like WAFs, API gateways, or dedicated rate-limiting/anti-bot services positioned to protect application components.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Tidak ada layanan kontrol anti-otomatisasi eksternal (seperti WAF atau API Gateway) yang ditampilkan."
+        },
+        {
+          "requirement_id": "job53-D-composite-bede99b5e5f325a33e768fce-53-000001",
+          "requirement_text": "File storage components are configured with size and quota limits.",
+          "verification_hint": "Identify data stores or file storage services and look for annotations indicating size limits, quotas, or dedicated file validation services.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Diagram tidak memiliki komponen fungsionalitas penyimpanan maupun unggah file."
+        },
+        {
+          "requirement_id": "job53-D-composite-fbb3a72ceae2857088a8d4c2-53-000004",
+          "requirement_text": "Untrusted file processing includes validation and scanning components.",
+          "verification_hint": "Look for dedicated services or components (e.g., file validation service, antivirus scanner) in the data flow path for untrusted file uploads.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Tidak ada proses yang terkait dengan pengunggahan atau pemrosesan file dalam diagram."
+        },
+        {
+          "requirement_id": "job53-D-d416547723579cd22fbd0779-53-000011",
+          "requirement_text": "Untrusted files are stored outside the web root with limited permissions.",
+          "verification_hint": "Identify the storage location for untrusted files and ensure it's a separate, non-web-accessible component or zone.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Tidak terdapat indikasi penyimpanan file eksternal yang diunggah pengguna."
+        },
+        {
+          "requirement_id": "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
+          "requirement_text": "Verify that the application server only sends requests to or loads data/files from allowed resources/systems.",
+          "verification_hint": "Examine connections from the application server component to other components or external systems. Ensure these connections are explicitly defined and limited to expected targets.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "na",
+          "notes": "Diagram menunjukkan koneksi ke API eksternal namun tidak memiliki bukti cukup mengenai penegakan mekanisme daftar putih (allowlist)."
+        },
+        {
+          "requirement_id": "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+          "requirement_text": "Verify that message headers and payload are protected in transit using strong encryption (TLS).",
+          "verification_hint": "Inspect data flow arrows between processes, data stores, and external entities. Look for annotations indicating TLS or HTTPS for all sensitive data in transit.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Tidak ada anotasi enkripsi kuat (TLS) yang diaplikasikan pada aliran pesan antar komponen."
+        },
+        {
+          "requirement_id": "job53-D-composite-700fbe6b2db199ae12159350-53-000008",
+          "requirement_text": "External asset hosting uses integrity checks (SRI) and trusted sources.",
+          "verification_hint": "Identify external CDN or third-party integrations. Look for annotations indicating SRI usage or trusted repository sourcing.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Diagram tidak menggambarkan pemuatan aset pustaka eksternal berbasis CDN yang memerlukan pemeriksaan integritas SRI."
+        },
+        {
+          "requirement_id": "job53-D-composite-c2bc34e911d53b529699c749-53-000016",
+          "requirement_text": "HTTP responses include security headers (CSP, HSTS, X-Content-Type-Options, Referrer-Policy, X-Frame-Options).",
+          "verification_hint": "Examine message arrows representing HTTP responses. Look for annotations or labels on these messages indicating the presence and content of security-related HTTP headers.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Respons dari Application Layer tidak mencantumkan atau mengindikasikan adanya penggunaan header keamanan HTTP."
+        },
+        {
+          "requirement_id": "job53-D-composite-c4bb57eb009543d5ad0c32ef-53-000023",
+          "requirement_text": "CORS Access-Control-Allow-Origin uses a strict allow list; trusted proxy headers are authenticated.",
+          "verification_hint": "For CORS, check message arrows for `Access-Control-Allow-Origin` headers and verify if the allowed origins are explicitly listed. For proxy headers, look for messages from proxies to the application and subsequent authentication steps.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Detail terkait header kontrol kebijakan akses (seperti CORS) dan otentikasi proxy tidak dilampirkan dalam pengiriman pesan."
+        }
+      ]
+    },
+    {
+      "diagram_id": "p28_d0",
+      "finding_id": 1628,
+      "page_number": 28,
+      "caption": "The application is designed with specific error handling guidelines to prevent information leakage",
+      "image_path": "vision/ground_truth_images/review_53/p28_d0.png",
+      "system_assessed_requirement_ids": [
+        "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+        "job53-D-85169068a4a72321d8b315e6",
+        "job53-D-b7e28781ff521b69f12383e6",
+        "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+        "job53-D-composite-0914062a97936d78c1a65e74",
+        "job53-D-composite-293a1c8ed0c3bb4df31cc936",
+        "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
+        "job53-D-composite-4596dd8573f228bd18ecd33a-53-000001",
+        "job53-D-composite-6224cdc4224b15cc055e4d98-53-000023",
+        "job53-D-composite-65241fcf5f2d3be893aec59e-53-000018",
+        "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+        "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
+        "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+        "job53-D-f795ad19b9018b705f38ee07-53-000017",
+        "job53-D-f9150a032d65c4d7d13987af-53-000038"
+      ],
+      "candidate_requirements": [
+        {
+          "requirement_id": "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
+          "requirement_text": "Verify documentation and justification of all the application's trust boundaries, components, and significant data flows.",
+          "verification_hint": "Examine the DFD for clearly defined trust boundaries (dashed lines), labeled components (processes, data stores), and data flow arrows with descriptive labels.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "met",
+          "notes": "Diagram ini secara eksplisit mendokumentasikan batas kepercayaan (trust boundaries), komponen, dan aliran data beserta label yang deskriptif."
+        },
+        {
+          "requirement_id": "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
+          "requirement_text": "Verify definition and security analysis of the application's high-level architecture and all connected remote services.",
+          "verification_hint": "Look for a high-level architecture diagram showing all major components, their connections, and external services. Ensure components are labeled and connections indicate protocols.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "met",
+          "notes": "Diagram menunjukkan arsitektur tingkat tinggi dengan komponen utama, koneksi protokol (TLS), dan layanan eksternal (Google Maps, Notification Gateway)."
+        },
+        {
+          "requirement_id": "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+          "requirement_text": "Verify that communications between application components, including APIs, middleware and data layers, are authenticated.",
+          "verification_hint": "Check connections between components for annotations indicating authentication mechanisms (e.g., 'authenticated API call', 'mTLS').",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": "na",
+          "notes": "Koneksi antar komponen ditampilkan beserta enkripsinya (TLS), namun tidak ada anotasi eksplisit mengenai mekanisme autentikasi yang digunakan."
+        },
+        {
+          "requirement_id": "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+          "requirement_text": "Verify that trusted enforcement points, such as access control gateways, enforce access controls.",
+          "verification_hint": "Identify processes or components within trusted zones (inside trust boundaries) that are explicitly labeled as 'Access Control Gateway' or similar, mediating access to sensitive data stores or processes.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Komponen untuk penegakan kontrol akses (seperti Access Control Gateway) tidak terdapat pada diagram."
+        },
+        {
+          "requirement_id": "job53-D-f795ad19b9018b705f38ee07-53-000017",
+          "requirement_text": "Verify that input validation is enforced on a trusted service layer.",
+          "verification_hint": "Locate data flows from untrusted sources entering a trusted process labeled 'Input Validation' or 'Service Layer' before proceeding to other internal components or data stores.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "Tidak ada proses atau komponen validasi input yang ditampilkan dalam diagram."
+        },
+        {
+          "requirement_id": "job53-D-composite-6224cdc4224b15cc055e4d98-53-000023",
+          "requirement_text": "Logging system: logs securely transmitted to a remote system",
+          "verification_hint": "Look for a dedicated logging component or service, and data flows indicating secure transmission (e.g., TLS) to an external or remote logging system.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "Diagram sama sekali tidak menampilkan komponen atau aliran data untuk sistem pencatatan log (logging)."
+        },
+        {
+          "requirement_id": "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+          "requirement_text": "Secure communication: encryption and authenticity verification between components",
+          "verification_hint": "Examine connections between components, especially across network zones. Look for annotations like HTTPS, TLS, or VPN, and indications of mutual authentication.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": "na",
+          "notes": "Enkripsi ditunjukkan (TLS), namun verifikasi keaslian (authenticity verification / mutual authentication) antar komponen tidak diuraikan."
+        },
+        {
+          "requirement_id": "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+          "requirement_text": "Component segregation: trust levels separated by security controls",
+          "verification_hint": "Identify components with differing trust levels and verify the presence of explicit security controls (e.g., firewalls, API gateways, security groups) between them.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "na",
+          "notes": "Terdapat pemisahan batas kepercayaan zona, namun kontrol keamanan eksplisit seperti firewall di antara zona tersebut tidak digambarkan."
+        },
+        {
+          "requirement_id": "job53-D-f9150a032d65c4d7d13987af-53-000038",
+          "requirement_text": "Application isolation: sandboxing, containerization, or network-level isolation",
+          "verification_hint": "Look for deployment boundaries, container orchestration platforms, or network segmentation that indicates isolation between applications or services.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": "na",
+          "notes": "Batas lingkungan aplikasi (Application Boundary) ditunjukkan, tetapi tidak ada detail spesifik terkait sandboxing atau kontainerisasi."
+        },
+        {
+          "requirement_id": "job53-D-composite-ef72f311ee57ad5d1f39d412",
+          "requirement_text": "Verify external API calls for breached password checks are shown.",
+          "verification_hint": "Look for data flow arrows from an internal process to an external entity labeled 'Breached Password API' or similar, indicating an external check.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Diagram tidak menampilkan panggilan API eksternal untuk pengecekan kata sandi yang bocor."
+        },
+        {
+          "requirement_id": "job53-D-0b309de7950edbfb5e56d372",
+          "requirement_text": "Verify anti-automation controls (e.g., CAPTCHA, rate limiting) are depicted.",
+          "verification_hint": "Look for components like 'Rate Limiter', 'CAPTCHA Service', or 'WAF' placed before authentication services.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Kontrol anti-otomatisasi (CAPTCHA, rate limiting, dll.) tidak tergambar pada arsitektur."
+        },
+        {
+          "requirement_id": "job53-D-b7e28781ff521b69f12383e6",
+          "requirement_text": "Verify secure notifications are sent to users after authentication detail updates.",
+          "verification_hint": "Look for messages from the application to a 'Notification Service' or 'User' lifeline after actions like 'credential reset' or 'email change'.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": "na",
+          "notes": "Ada gateway notifikasi yang mengirimkan peringatan, namun pemicunya (seperti pembaruan detail autentikasi) tidak dijelaskan secara spesifik."
+        },
+        {
+          "requirement_id": "job53-D-85169068a4a72321d8b315e6",
+          "requirement_text": "Verify mutual TLS is used between CSP and application.",
+          "verification_hint": "Look for data flow arrows between the 'Credential Service Provider' and the 'Application' labeled with 'mTLS' or 'Mutual TLS'.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "Tidak terdapat komponen Credential Service Provider (CSP) pada diagram ini."
+        },
+        {
+          "requirement_id": "job53-D-composite-0914062a97936d78c1a65e74",
+          "requirement_text": "Sensitive secrets (e.g., initial activation, recovery secrets) are not sent in clear text.",
+          "verification_hint": "Examine data flow arrows carrying sensitive secrets. They must be labeled with encryption (e.g., TLS, HTTPS) or indicate a secure channel.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "Aliran data spesifik yang mentransmisikan rahasia sensitif (sensitive secrets) tidak ditampilkan."
+        },
+        {
+          "requirement_id": "job53-D-composite-293a1c8ed0c3bb4df31cc936",
+          "requirement_text": "Out-of-band authentication communication uses a secure, independent channel.",
+          "verification_hint": "Identify data flows for out-of-band authentication. These flows must be labeled as secure (e.g., TLS, HTTPS) and distinct from the primary application channel.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "Diagram tidak merinci bahwa notifikasi yang ada digunakan secara khusus untuk autentikasi out-of-band."
+        },
+        {
+          "requirement_id": "job53-D-composite-ad70cace67ce58c0b04f96e",
+          "requirement_text": "Verify that intra-service secrets and API keys are managed securely and not included in the source code.",
+          "verification_hint": "Look for dedicated secret management services (e.g., Vault, AWS Secrets Manager) and connections to them from services that require secrets. Ensure no secrets are depicted directly within service components.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Diagram tidak menampilkan layanan manajemen rahasia intra-service atau penanganan kunci API."
+        },
+        {
+          "requirement_id": "job53-D-9d7c842b8eeeb6f4244a6be9",
+          "requirement_text": "Verify the application never reveals session tokens in URL parameters.",
+          "verification_hint": "Examine message flows between client and server. Ensure that session tokens are not shown as part of the URL in any request messages.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Parameter URL atau pengiriman token sesi tidak dirinci dalam diagram ini."
+        },
+        {
+          "requirement_id": "job53-D-4aa8734f54de242cbb68b789",
+          "requirement_text": "Verify the application generates a new session token on user authentication.",
+          "verification_hint": "After a successful authentication message, look for a subsequent message from the server to the client that explicitly indicates the issuance of a new session token.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Proses autentikasi dan pembuatan token sesi tidak ditampilkan."
+        },
+        {
+          "requirement_id": "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
+          "requirement_text": "Session tokens are protected during transmission and storage.",
+          "verification_hint": "Look for data flows carrying session tokens to be encrypted (e.g., HTTPS/TLS) and data stores holding session tokens to be marked as encrypted.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Tidak ada informasi mengenai token sesi dan keamanannya di dalam diagram."
+        },
+        {
+          "requirement_id": "job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006",
+          "requirement_text": "Session invalidation and re-authentication flows are present.",
+          "verification_hint": "Examine sequence diagrams for explicit 'logout' or 'invalidate session' messages, and re-authentication flows after idle periods or specific actions.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Aliran logis untuk pembatalan sesi (session invalidation) tidak ditampilkan."
+        },
+        {
+          "requirement_id": "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
+          "requirement_text": "Cookie-based session tokens are transmitted securely.",
+          "verification_hint": "Verify that data flows carrying cookie-based session tokens are labeled with secure protocols like HTTPS/TLS.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "Penggunaan token sesi berbasis cookie tidak tergambar di diagram."
+        },
+        {
+          "requirement_id": "job53-D-composite-50463b4a59309f108755fa85-53-000015",
+          "requirement_text": "OAuth token revocation and session token usage are depicted.",
+          "verification_hint": "Look for sequence diagrams showing messages for OAuth token revocation and the use of dynamic session tokens instead of static API keys in interactions.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Komponen atau aliran untuk token OAuth tidak ada dalam arsitektur."
+        },
+        {
+          "requirement_id": "job53-D-composite-65241fcf5f2d3be893aec59e-53-000018",
+          "requirement_text": "Authentication time limits and re-authentication events are communicated between CSPs and RPs.",
+          "verification_hint": "Check sequence diagrams for messages between CSP and RP lifelines indicating authentication time limits and last authentication events.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "Entitas CSP (Credential Service Provider) dan RP (Relying Party) tidak eksis di diagram."
+        },
+        {
+          "requirement_id": "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+          "requirement_text": "Access control enforcement is located within trusted service layers.",
+          "verification_hint": "Identify trusted service components within the architecture diagram and verify that access control logic is depicted within or directly associated with them, not solely on client-side components.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Detail logika kontrol akses di dalam layer layanan tidak ditampilkan."
+        },
+        {
+          "requirement_id": "job53-D-composite-6bcdb4ad3f3fa4ee0d6cf733-53-000005",
+          "requirement_text": "Verify that sensitive data and APIs are protected against IDOR, CSRF, and unauthorized access.",
+          "verification_hint": "Examine message flows between user and system, and between internal components. Look for explicit authorization checks or tokens in messages for sensitive operations. Check for anti-CSRF tokens in requests.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Perlindungan terhadap kerentanan aplikasi web spesifik (seperti IDOR atau CSRF) tidak dapat dinilai melalui diagram tingkat tinggi ini."
+        },
+        {
+          "requirement_id": "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
+          "requirement_text": "Verify that all external inputs are validated and sanitized before processing.",
+          "verification_hint": "Look for a 'Validation' or 'Sanitization' process immediately following data ingress from external entities or across trust boundaries. Data flows into these processes should be clearly labeled.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Tidak ada proses validasi atau sanitasi input yang digambarkan."
+        },
+        {
+          "requirement_id": "job53-D-composite-3dc6f67a223cf26e26edfebf",
+          "requirement_text": "Sensitive data stores must be labeled as encrypted at rest.",
+          "verification_hint": "Examine data stores (open rectangles) in the DFD. Any data store holding PII, health, or financial data must have an annotation indicating encryption at rest.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "met",
+          "notes": "Basis data MySQL secara eksplisit diberi label 'AES-256 encryption at rest'."
+        },
+        {
+          "requirement_id": "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
+          "requirement_text": "Secrets management solution (e.g., key vault) is used for secure secret handling.",
+          "verification_hint": "Look for a dedicated component labeled as a 'Key Vault', 'Secrets Manager', or similar, connected to application components.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Sistem penyimpanan rahasia (seperti Key Vault) tidak terdapat dalam arsitektur yang disediakan."
+        },
+        {
+          "requirement_id": "job53-D-composite-4596dd8573f228bd18ecd33a-53-000001",
+          "requirement_text": "Sensitive data is not logged to data stores accessible by unauthorized parties.",
+          "verification_hint": "Examine data flows to logging data stores. Ensure sensitive data (credentials, PII) is not shown flowing into these stores, especially across trust boundaries.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "Sistem atau mekanisme logging tidak digambarkan di dalam diagram."
+        },
+        {
+          "requirement_id": "job53-D-composite-137ee8430adb220056a6773d-53-000001",
+          "requirement_text": "Sensitive data caching protection in server components.",
+          "verification_hint": "Examine architecture diagrams for load balancers, caches, and other server components. Verify that sensitive data is not shown flowing into or being stored in these components without explicit protection mechanisms.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Komponen caching tidak dimodelkan dalam diagram."
+        },
+        {
+          "requirement_id": "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+          "requirement_text": "All data flows across trust boundaries must be labeled with secure protocols (e.g., TLS, HTTPS).",
+          "verification_hint": "Examine all data-flow arrows crossing trust boundaries. Each must be explicitly labeled with a secure protocol like TLS or HTTPS.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Aliran data peringatan (Alerts and verification messages) yang melintasi batas menuju Klien tidak memiliki label protokol aman."
+        },
+        {
+          "requirement_id": "job53-D-composite-9454a8814d51e3209de88a23-53-000008",
+          "requirement_text": "Update mechanisms must show secure channels and digital signature validation.",
+          "verification_hint": "Look for components responsible for updates. Their connections to update sources must be labeled as secure (e.g., HTTPS), and a validation step for digital signatures should be indicated.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Mekanisme pembaruan tidak ditunjukkan dalam arsitektur."
+        },
+        {
+          "requirement_id": "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
+          "requirement_text": "Anti-automation and business logic controls are deployed.",
+          "verification_hint": "Look for components like WAFs, API gateways, or dedicated rate-limiting/anti-bot services positioned to protect application components.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "Kontrol anti-otomatisasi (seperti WAF) tidak terdapat di dalam diagram."
+        },
+        {
+          "requirement_id": "job53-D-composite-bede99b5e5f325a33e768fce-53-000001",
+          "requirement_text": "File storage components are configured with size and quota limits.",
+          "verification_hint": "Identify data stores or file storage services and look for annotations indicating size limits, quotas, or dedicated file validation services.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Tidak ada penyimpanan file berbasis ukuran/kuota yang tergambar (hanya database yang ditampilkan)."
+        },
+        {
+          "requirement_id": "job53-D-composite-fbb3a72ceae2857088a8d4c2-53-000004",
+          "requirement_text": "Untrusted file processing includes validation and scanning components.",
+          "verification_hint": "Look for dedicated services or components (e.g., file validation service, antivirus scanner) in the data flow path for untrusted file uploads.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Pemrosesan atau pemindaian file yang tidak terpercaya (untrusted file) tidak ada pada diagram."
+        },
+        {
+          "requirement_id": "job53-D-d416547723579cd22fbd0779-53-000011",
+          "requirement_text": "Untrusted files are stored outside the web root with limited permissions.",
+          "verification_hint": "Identify the storage location for untrusted files and ensure it's a separate, non-web-accessible component or zone.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Sistem penyimpanan untuk file yang tidak terpercaya tidak terdapat dalam arsitektur."
+        },
+        {
+          "requirement_id": "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
+          "requirement_text": "Verify that the application server only sends requests to or loads data/files from allowed resources/systems.",
+          "verification_hint": "Examine connections from the application server component to other components or external systems. Ensure these connections are explicitly defined and limited to expected targets.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "na",
+          "notes": "Server terhubung pada sumber daya eksternal yang diizinkan (Google Maps API), namun tidak ada bukti eksplisit bahwa sistem secara aktif memblokir akses ke sumber daya yang tidak terdaftar."
+        },
+        {
+          "requirement_id": "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+          "requirement_text": "Verify that message headers and payload are protected in transit using strong encryption (TLS).",
+          "verification_hint": "Inspect data flow arrows between processes, data stores, and external entities. Look for annotations indicating TLS or HTTPS for all sensitive data in transit.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": "met",
+          "notes": "Penggunaan enkripsi (TLS 1.2 / TLS 1.3) untuk melindungi data saat transit dicantumkan secara eksplisit pada sebagian besar aliran data yang utama."
+        },
+        {
+          "requirement_id": "job53-D-composite-700fbe6b2db199ae12159350-53-000008",
+          "requirement_text": "External asset hosting uses integrity checks (SRI) and trusted sources.",
+          "verification_hint": "Identify external CDN or third-party integrations. Look for annotations indicating SRI usage or trusted repository sourcing.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Tidak terdapat hosting aset eksternal yang relevan (seperti CDN untuk skrip) yang memerlukan SRI pada diagram ini."
+        },
+        {
+          "requirement_id": "job53-D-composite-c2bc34e911d53b529699c749-53-000016",
+          "requirement_text": "HTTP responses include security headers (CSP, HSTS, X-Content-Type-Options, Referrer-Policy, X-Frame-Options).",
+          "verification_hint": "Examine message arrows representing HTTP responses. Look for annotations or labels on these messages indicating the presence and content of security-related HTTP headers.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Detail terkait HTTP response header untuk keamanan tidak ditampilkan di diagram."
+        },
+        {
+          "requirement_id": "job53-D-composite-c4bb57eb009543d5ad0c32ef-53-000023",
+          "requirement_text": "CORS Access-Control-Allow-Origin uses a strict allow list; trusted proxy headers are authenticated.",
+          "verification_hint": "For CORS, check message arrows for `Access-Control-Allow-Origin` headers and verify if the allowed origins are explicitly listed. For proxy headers, look for messages from proxies to the application and subsequent authentication steps.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Konfigurasi CORS atau header proxy tidak dimodelkan pada tingkat abstraksi diagram ini."
+        }
+      ]
+    },
+    {
+      "diagram_id": "p37_d0",
+      "finding_id": 1629,
+      "page_number": 37,
+      "caption": "Figure 3. System Architecture Diagram",
+      "image_path": "vision/ground_truth_images/review_53/p37_d0.png",
+      "system_assessed_requirement_ids": [
+        "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+        "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+        "job53-D-composite-137ee8430adb220056a6773d-53-000001",
+        "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
+        "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
+        "job53-D-composite-6224cdc4224b15cc055e4d98-53-000023",
+        "job53-D-composite-65241fcf5f2d3be893aec59e-53-000018",
+        "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+        "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+        "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
+        "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+        "job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006",
+        "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+        "job53-D-f795ad19b9018b705f38ee07-53-000017",
+        "job53-D-f9150a032d65c4d7d13987af-53-000038"
+      ],
+      "candidate_requirements": [
+        {
+          "requirement_id": "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
+          "requirement_text": "Verify documentation and justification of all the application's trust boundaries, components, and significant data flows.",
+          "verification_hint": "Examine the DFD for clearly defined trust boundaries (dashed lines), labeled components (processes, data stores), and data flow arrows with descriptive labels.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": "na",
+          "notes": "Diagram menampilkan komponen dan batas kepercayaan dengan jelas, namun garis aliran datanya tidak memiliki label deskriptif."
+        },
+        {
+          "requirement_id": "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
+          "requirement_text": "Verify definition and security analysis of the application's high-level architecture and all connected remote services.",
+          "verification_hint": "Look for a high-level architecture diagram showing all major components, their connections, and external services. Ensure components are labeled and connections indicate protocols.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": "na",
+          "notes": "Arsitektur tingkat tinggi dan layanan eksternal ditampilkan, tetapi tidak ada indikasi protokol pada koneksinya."
+        },
+        {
+          "requirement_id": "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+          "requirement_text": "Verify that communications between application components, including APIs, middleware and data layers, are authenticated.",
+          "verification_hint": "Check connections between components for annotations indicating authentication mechanisms (e.g., 'authenticated API call', 'mTLS').",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Garis koneksi antar komponen tidak menyertakan anotasi yang menunjukkan adanya mekanisme autentikasi."
+        },
+        {
+          "requirement_id": "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+          "requirement_text": "Verify that trusted enforcement points, such as access control gateways, enforce access controls.",
+          "verification_hint": "Identify processes or components within trusted zones (inside trust boundaries) that are explicitly labeled as 'Access Control Gateway' or similar, mediating access to sensitive data stores or processes.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Tidak ada komponen yang secara eksplisit dilabeli sebagai Access Control Gateway atau penegak kontrol akses."
+        },
+        {
+          "requirement_id": "job53-D-f795ad19b9018b705f38ee07-53-000017",
+          "requirement_text": "Verify that input validation is enforced on a trusted service layer.",
+          "verification_hint": "Locate data flows from untrusted sources entering a trusted process labeled 'Input Validation' or 'Service Layer' before proceeding to other internal components or data stores.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Tidak terdapat komponen atau proses dalam diagram yang dilabeli secara khusus untuk melakukan validasi input."
+        },
+        {
+          "requirement_id": "job53-D-composite-6224cdc4224b15cc055e4d98-53-000023",
+          "requirement_text": "Logging system: logs securely transmitted to a remote system",
+          "verification_hint": "Look for a dedicated logging component or service, and data flows indicating secure transmission (e.g., TLS) to an external or remote logging system.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Sistem logging maupun transmisinya tidak digambarkan sama sekali dalam arsitektur ini."
+        },
+        {
+          "requirement_id": "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+          "requirement_text": "Secure communication: encryption and authenticity verification between components",
+          "verification_hint": "Examine connections between components, especially across network zones. Look for annotations like HTTPS, TLS, or VPN, and indications of mutual authentication.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Tidak ada satupun garis koneksi antar komponen yang dilengkapi anotasi enkripsi atau keamanan (seperti TLS/HTTPS)."
+        },
+        {
+          "requirement_id": "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+          "requirement_text": "Component segregation: trust levels separated by security controls",
+          "verification_hint": "Identify components with differing trust levels and verify the presence of explicit security controls (e.g., firewalls, API gateways, security groups) between them.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": "met",
+          "notes": "Tingkat kepercayaan dipisahkan secara eksplisit menggunakan Public Subnet/DMZ, Isolated Private Subnet, dan WAF."
+        },
+        {
+          "requirement_id": "job53-D-f9150a032d65c4d7d13987af-53-000038",
+          "requirement_text": "Application isolation: sandboxing, containerization, or network-level isolation",
+          "verification_hint": "Look for deployment boundaries, container orchestration platforms, or network segmentation that indicates isolation between applications or services.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": "met",
+          "notes": "Isolasi tingkat jaringan terlihat jelas melalui segmentasi area DMZ dan Isolated Private Subnet."
+        },
+        {
+          "requirement_id": "job53-D-composite-ef72f311ee57ad5d1f39d412",
+          "requirement_text": "Verify external API calls for breached password checks are shown.",
+          "verification_hint": "Look for data flow arrows from an internal process to an external entity labeled 'Breached Password API' or similar, indicating an external check.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Layanan pihak ketiga eksternal telah ditampilkan, namun tidak ada API untuk pengecekan kata sandi yang bocor."
+        },
+        {
+          "requirement_id": "job53-D-0b309de7950edbfb5e56d372",
+          "requirement_text": "Verify anti-automation controls (e.g., CAPTCHA, rate limiting) are depicted.",
+          "verification_hint": "Look for components like 'Rate Limiter', 'CAPTCHA Service', or 'WAF' placed before authentication services.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "met",
+          "notes": "Terdapat komponen Web Application Firewall (WAF) yang bertindak sebagai perlindungan anti-otomatisasi pada lapisan depan."
+        },
+        {
+          "requirement_id": "job53-D-b7e28781ff521b69f12383e6",
+          "requirement_text": "Verify secure notifications are sent to users after authentication detail updates.",
+          "verification_hint": "Look for messages from the application to a 'Notification Service' or 'User' lifeline after actions like 'credential reset' or 'email change'.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Ini adalah diagram arsitektur tingkat tinggi sehingga tidak dapat digunakan untuk memverifikasi alur pemicu notifikasi secara sekuensial."
+        },
+        {
+          "requirement_id": "job53-D-85169068a4a72321d8b315e6",
+          "requirement_text": "Verify mutual TLS is used between CSP and application.",
+          "verification_hint": "Look for data flow arrows between the 'Credential Service Provider' and the 'Application' labeled with 'mTLS' or 'Mutual TLS'.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Tidak ada komponen Credential Service Provider (CSP) maupun indikasi penggunaan mTLS."
+        },
+        {
+          "requirement_id": "job53-D-composite-0914062a97936d78c1a65e74",
+          "requirement_text": "Sensitive secrets (e.g., initial activation, recovery secrets) are not sent in clear text.",
+          "verification_hint": "Examine data flow arrows carrying sensitive secrets. They must be labeled with encryption (e.g., TLS, HTTPS) or indicate a secure channel.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Koneksi menuju Enterprise Secrets Vault tidak dilengkapi keterangan enkripsi yang mengindikasikan pengiriman rahasia terlindungi."
+        },
+        {
+          "requirement_id": "job53-D-composite-293a1c8ed0c3bb4df31cc936",
+          "requirement_text": "Out-of-band authentication communication uses a secure, independent channel.",
+          "verification_hint": "Identify data flows for out-of-band authentication. These flows must be labeled as secure (e.g., TLS, HTTPS) and distinct from the primary application channel.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Terdapat gateway saluran independen (SMS/Email), namun alirannya tidak diberi label enkripsi yang aman."
+        },
+        {
+          "requirement_id": "job53-D-composite-ad70cace67ce58c0b04f96e",
+          "requirement_text": "Verify that intra-service secrets and API keys are managed securely and not included in the source code.",
+          "verification_hint": "Look for dedicated secret management services (e.g., Vault, AWS Secrets Manager) and connections to them from services that require secrets. Ensure no secrets are depicted directly within service components.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "met",
+          "notes": "Diagram menampilkan komponen Enterprise Secrets Vault yang terisolasi untuk manajemen kredensial secara aman."
+        },
+        {
+          "requirement_id": "job53-D-9d7c842b8eeeb6f4244a6be9",
+          "requirement_text": "Verify the application never reveals session tokens in URL parameters.",
+          "verification_hint": "Examine message flows between client and server. Ensure that session tokens are not shown as part of the URL in any request messages.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Parameter URL tidak ditampilkan karena ini adalah diagram infrastruktur, bukan diagram alur pesan aplikasi."
+        },
+        {
+          "requirement_id": "job53-D-4aa8734f54de242cbb68b789",
+          "requirement_text": "Verify the application generates a new session token on user authentication.",
+          "verification_hint": "After a successful authentication message, look for a subsequent message from the server to the client that explicitly indicates the issuance of a new session token.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Proses pembuatan token sesi spesifik setelah autentikasi tidak dapat dinilai melalui diagram arsitektur ini."
+        },
+        {
+          "requirement_id": "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
+          "requirement_text": "Session tokens are protected during transmission and storage.",
+          "verification_hint": "Look for data flows carrying session tokens to be encrypted (e.g., HTTPS/TLS) and data stores holding session tokens to be marked as encrypted.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Diagram ini sama sekali tidak menampilkan penyimpanan atau aliran spesifik untuk token sesi."
+        },
+        {
+          "requirement_id": "job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006",
+          "requirement_text": "Session invalidation and re-authentication flows are present.",
+          "verification_hint": "Examine sequence diagrams for explicit 'logout' or 'invalidate session' messages, and re-authentication flows after idle periods or specific actions.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "Ini bukan diagram sequence, sehingga alur invalidasi sesi (logout) tidak terlihat."
+        },
+        {
+          "requirement_id": "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
+          "requirement_text": "Cookie-based session tokens are transmitted securely.",
+          "verification_hint": "Verify that data flows carrying cookie-based session tokens are labeled with secure protocols like HTTPS/TLS.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Manajemen cookie sesi tidak terdeteksi pada diagram jaringan ini."
+        },
+        {
+          "requirement_id": "job53-D-composite-50463b4a59309f108755fa85-53-000015",
+          "requirement_text": "OAuth token revocation and session token usage are depicted.",
+          "verification_hint": "Look for sequence diagrams showing messages for OAuth token revocation and the use of dynamic session tokens instead of static API keys in interactions.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Diagram tidak menunjukkan alur implementasi OAuth atau pembatalan token."
+        },
+        {
+          "requirement_id": "job53-D-composite-65241fcf5f2d3be893aec59e-53-000018",
+          "requirement_text": "Authentication time limits and re-authentication events are communicated between CSPs and RPs.",
+          "verification_hint": "Check sequence diagrams for messages between CSP and RP lifelines indicating authentication time limits and last authentication events.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "Detail batas waktu autentikasi hanya bisa dievaluasi melalui diagram pesan atau sequence, bukan di sini."
+        },
+        {
+          "requirement_id": "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+          "requirement_text": "Access control enforcement is located within trusted service layers.",
+          "verification_hint": "Identify trusted service components within the architecture diagram and verify that access control logic is depicted within or directly associated with them, not solely on client-side components.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Meskipun terdapat server di layer tepercaya, tidak ada representasi eksplisit mengenai logika penegakan kontrol akses di dalamnya."
+        },
+        {
+          "requirement_id": "job53-D-composite-6bcdb4ad3f3fa4ee0d6cf733-53-000005",
+          "requirement_text": "Verify that sensitive data and APIs are protected against IDOR, CSRF, and unauthorized access.",
+          "verification_hint": "Examine message flows between user and system, and between internal components. Look for explicit authorization checks or tokens in messages for sensitive operations. Check for anti-CSRF tokens in requests.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Perlindungan tingkat kerentanan aplikasi (seperti anti-CSRF dan IDOR) tidak dapat dilihat dari diagram infrastruktur."
+        },
+        {
+          "requirement_id": "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
+          "requirement_text": "Verify that all external inputs are validated and sanitized before processing.",
+          "verification_hint": "Look for a 'Validation' or 'Sanitization' process immediately following data ingress from external entities or across trust boundaries. Data flows into these processes should be clearly labeled.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Setelah memasuki WAF, tidak ada komponen tambahan yang ditandai untuk proses validasi atau sanitasi input khusus."
+        },
+        {
+          "requirement_id": "job53-D-composite-3dc6f67a223cf26e26edfebf",
+          "requirement_text": "Sensitive data stores must be labeled as encrypted at rest.",
+          "verification_hint": "Examine data stores (open rectangles) in the DFD. Any data store holding PII, health, or financial data must have an annotation indicating encryption at rest.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Database primer, replika, dan Secrets Vault ditampilkan, namun tidak memiliki keterangan enkripsi saat istirahat (encrypted at rest)."
+        },
+        {
+          "requirement_id": "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
+          "requirement_text": "Secrets management solution (e.g., key vault) is used for secure secret handling.",
+          "verification_hint": "Look for a dedicated component labeled as a 'Key Vault', 'Secrets Manager', or similar, connected to application components.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "met",
+          "notes": "Terdapat komponen Enterprise Secrets Vault yang digunakan secara khusus untuk menangani kerahasiaan data."
+        },
+        {
+          "requirement_id": "job53-D-composite-4596dd8573f228bd18ecd33a-53-000001",
+          "requirement_text": "Sensitive data is not logged to data stores accessible by unauthorized parties.",
+          "verification_hint": "Examine data flows to logging data stores. Ensure sensitive data (credentials, PII) is not shown flowing into these stores, especially across trust boundaries.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Komponen penyimpanan log (logging data store) tidak terdapat di diagram ini."
+        },
+        {
+          "requirement_id": "job53-D-composite-137ee8430adb220056a6773d-53-000001",
+          "requirement_text": "Sensitive data caching protection in server components.",
+          "verification_hint": "Examine architecture diagrams for load balancers, caches, and other server components. Verify that sensitive data is not shown flowing into or being stored in these components without explicit protection mechanisms.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "Sistem atau lapisan cache (caching layer) tidak digambarkan dalam arsitektur yang disediakan."
+        },
+        {
+          "requirement_id": "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+          "requirement_text": "All data flows across trust boundaries must be labeled with secure protocols (e.g., TLS, HTTPS).",
+          "verification_hint": "Examine all data-flow arrows crossing trust boundaries. Each must be explicitly labeled with a secure protocol like TLS or HTTPS.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Walaupun banyak aliran melintasi batas kepercayaan, garis alirannya sama sekali tidak dilengkapi dengan label protokol aman."
+        },
+        {
+          "requirement_id": "job53-D-composite-9454a8814d51e3209de88a23-53-000008",
+          "requirement_text": "Update mechanisms must show secure channels and digital signature validation.",
+          "verification_hint": "Look for components responsible for updates. Their connections to update sources must be labeled as secure (e.g., HTTPS), and a validation step for digital signatures should be indicated.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Mekanisme pembaruan (update) aplikasi tidak tercakup di diagram arsitektur ini."
+        },
+        {
+          "requirement_id": "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
+          "requirement_text": "Anti-automation and business logic controls are deployed.",
+          "verification_hint": "Look for components like WAFs, API gateways, or dedicated rate-limiting/anti-bot services positioned to protect application components.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": "met",
+          "notes": "Diagram mengonfirmasi pengerahan WAF sebagai lapis awal untuk kontrol terkait web dan otomatisasi."
+        },
+        {
+          "requirement_id": "job53-D-composite-bede99b5e5f325a33e768fce-53-000001",
+          "requirement_text": "File storage components are configured with size and quota limits.",
+          "verification_hint": "Identify data stores or file storage services and look for annotations indicating size limits, quotas, or dedicated file validation services.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Diagram tidak menampilkan infrastruktur atau layanan penyimpanan file (file storage system)."
+        },
+        {
+          "requirement_id": "job53-D-composite-fbb3a72ceae2857088a8d4c2-53-000004",
+          "requirement_text": "Untrusted file processing includes validation and scanning components.",
+          "verification_hint": "Look for dedicated services or components (e.g., file validation service, antivirus scanner) in the data flow path for untrusted file uploads.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Komponen untuk menangani unggahan atau pemindaian file yang tidak dipercaya tidak ada pada diagram ini."
+        },
+        {
+          "requirement_id": "job53-D-d416547723579cd22fbd0779-53-000011",
+          "requirement_text": "Untrusted files are stored outside the web root with limited permissions.",
+          "verification_hint": "Identify the storage location for untrusted files and ensure it's a separate, non-web-accessible component or zone.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Arsitektur tidak menunjukkan mekanisme maupun lokasi penyimpanan file sama sekali."
+        },
+        {
+          "requirement_id": "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
+          "requirement_text": "Verify that the application server only sends requests to or loads data/files from allowed resources/systems.",
+          "verification_hint": "Examine connections from the application server component to other components or external systems. Ensure these connections are explicitly defined and limited to expected targets.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "met",
+          "notes": "Garis koneksi dari server PHP digambarkan secara jelas dan dibatasi hanya ke DB, Vault, dan API yang diizinkan."
+        },
+        {
+          "requirement_id": "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+          "requirement_text": "Verify that message headers and payload are protected in transit using strong encryption (TLS).",
+          "verification_hint": "Inspect data flow arrows between processes, data stores, and external entities. Look for annotations indicating TLS or HTTPS for all sensitive data in transit.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Perlindungan payload pesan tidak dapat dikonfirmasi karena braeti tidak ada label TLS/enkripsi pada transmisi antar komponen."
+        },
+        {
+          "requirement_id": "job53-D-composite-700fbe6b2db199ae12159350-53-000008",
+          "requirement_text": "External asset hosting uses integrity checks (SRI) and trusted sources.",
+          "verification_hint": "Identify external CDN or third-party integrations. Look for annotations indicating SRI usage or trusted repository sourcing.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": "not_met",
+          "notes": "Meski mengintegrasikan layanan dari pihak ketiga, tidak ada catatan terkait mekanisme pengecekan integritas sumber."
+        },
+        {
+          "requirement_id": "job53-D-composite-c2bc34e911d53b529699c749-53-000016",
+          "requirement_text": "HTTP responses include security headers (CSP, HSTS, X-Content-Type-Options, Referrer-Policy, X-Frame-Options).",
+          "verification_hint": "Examine message arrows representing HTTP responses. Look for annotations or labels on these messages indicating the presence and content of security-related HTTP headers.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Diagram fisik tingkat tinggi seperti ini tidak mengkomunikasikan informasi mengenai header HTTP."
+        },
+        {
+          "requirement_id": "job53-D-composite-c4bb57eb009543d5ad0c32ef-53-000023",
+          "requirement_text": "CORS Access-Control-Allow-Origin uses a strict allow list; trusted proxy headers are authenticated.",
+          "verification_hint": "For CORS, check message arrows for `Access-Control-Allow-Origin` headers and verify if the allowed origins are explicitly listed. For proxy headers, look for messages from proxies to the application and subsequent authentication steps.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "Rincian spesifik mengenai header dan kebijakan CORS pada tingkat aplikasi tidak dapat diobservasi."
+        }
+      ]
+    }
+  ]
+}

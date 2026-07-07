@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 import logging
-from typing import Any, Callable, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 from sdr.core.config import settings
 from sdr.apps.ai.agents.vision import (
     DiagramInput,
     DiagramDebateOutput,
-    VisionAgent,
+    VisionHunterAgent,
+    VisionCriticAgent,
+    VisionMediatorAgent,
     _format_requirements_compact,
     _format_requirements_with_hints,
     _apply_diagram_evidence_policy,
@@ -34,7 +36,9 @@ class DiagramDebateService:
 
     def __init__(self) -> None:
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self._agent = VisionAgent()
+        self._hunter_agent = VisionHunterAgent()
+        self._critic_agent = VisionCriticAgent()
+        self._mediator_agent = VisionMediatorAgent()
 
     def run_diagram_debate(
         self,
@@ -44,6 +48,7 @@ class DiagramDebateService:
         tsd_context: str = "",
         cancel_check=None,
         apply_markers: bool = True,
+        skip_mediator_on_uphold: bool = False,
         agent_started_handler: Optional[Callable[[str], None]] = None,
         agent_completed_handler: Optional[Callable[..., None]] = None,
     ) -> DiagramDebateOutput:
@@ -117,11 +122,12 @@ class DiagramDebateService:
             surrounding_text=surrounding,
             tsd_context=tsd_context[:2000],
         )
-        hunter_result = self._agent.run_multimodal(
+        hunter_result = self._hunter_agent.run_multimodal(
             user_prompt=hunter_prompt,
             image_bytes=image_bytes,
             image_format=image_format,
             system_prompt=VISION_HUNTER_SYSTEM_PROMPT,
+            log_context=f"diagram_id={diagram.diagram_id} agent=hunter",
         )
         if callable(cancel_check):
             try:
@@ -139,8 +145,19 @@ class DiagramDebateService:
                     exc_info=True,
                 )
         if hunter_result is None:
-            output.error = f"VisionHunter failed for diagram_id={diagram.diagram_id}"
-            return output
+            self.logger.error(
+                "DiagramDebateService: VisionHunter failed for diagram_id=%s — "
+                "falling back to inconclusive result",
+                diagram.diagram_id,
+            )
+            hunter_result = {
+                "overall_verdict": VERDICT_NA,
+                "confidence": 0.0,
+                "reasoning": "Hunter analysis failed to produce a parseable result; treating as inconclusive.",
+                "requirement_assessments": [],
+                "diagram_scope_verdict": "uncertain",
+                "diagram_scope_reasoning": "Hunter call failed before scope could be assessed.",
+            }
 
         hunter_verdict = str(
             hunter_result.get("overall_verdict", VERDICT_NA)
@@ -166,11 +183,12 @@ class DiagramDebateService:
             diagram_caption=caption,
             surrounding_text=surrounding,
         )
-        critic_result = self._agent.run_multimodal(
+        critic_result = self._critic_agent.run_multimodal(
             user_prompt=critic_prompt,
             image_bytes=image_bytes,
             image_format=image_format,
             system_prompt=VISION_CRITIC_DEBATE_SYSTEM_PROMPT,
+            log_context=f"diagram_id={diagram.diagram_id} agent=critic",
         )
         if callable(cancel_check):
             try:
@@ -230,23 +248,44 @@ class DiagramDebateService:
             hunter_result=hunter_result,
             critic_result=critic_result,
         )
+        if skip_mediator_on_uphold and critic_outcome != "overturn":
+            self.logger.info(
+                "DiagramDebateService: skipping mediator LLM for diagram_id=%s because cheap mode is enabled and Critic upheld",
+                diagram.diagram_id,
+            )
+            mediator_result = {
+                "final_verdict": hunter_result.get("overall_verdict", VERDICT_NA),
+                "confidence": hunter_result.get("confidence", 0.5),
+                "finding_description": hunter_result.get("reasoning", ""),
+                "recommendation": None,
+                "assessed_requirements": hunter_result.get("requirement_assessments", []),
+                "diagram_scope_verdict": critic_result.get(
+                    "diagram_scope_verdict",
+                    hunter_result.get("diagram_scope_verdict", "uncertain"),
+                ),
+                "diagram_scope_reasoning": critic_result.get("diagram_scope_reasoning")
+                or hunter_result.get("diagram_scope_reasoning"),
+                "verdict_policy_source": "cheap_mode_skip_mediator",
+            }
         # Give the Mediator the diagram image only when it needs to break a disagreement.
         # This avoids paying the vision-token cost on every call.
-        if critic_outcome == "overturn":
+        elif critic_outcome == "overturn":
             self.logger.info(
                 "DiagramDebateService: Critic overturned Hunter — Mediator will see the diagram image diagram_id=%s",
                 diagram.diagram_id,
             )
-            mediator_result = self._agent.run_multimodal(
+            mediator_result = self._mediator_agent.run_multimodal(
                 user_prompt=mediator_prompt,
                 image_bytes=image_bytes,
                 image_format=image_format,
                 system_prompt=VISION_MEDIATOR_DEBATE_SYSTEM_PROMPT,
+                log_context=f"diagram_id={diagram.diagram_id} agent=mediator",
             )
         else:
-            mediator_result = self._agent.run_text(
+            mediator_result = self._mediator_agent.run_text(
                 user_prompt=mediator_prompt,
                 system_prompt=VISION_MEDIATOR_DEBATE_SYSTEM_PROMPT,
+                log_context=f"diagram_id={diagram.diagram_id} agent=mediator",
             )
         if callable(cancel_check):
             try:
@@ -311,6 +350,67 @@ class DiagramDebateService:
             mediator_result.get("confidence", 0.0),
         )
         return output
+
+    def run_diagram_debate_voted(
+        self,
+        *,
+        diagram: DiagramInput,
+        requirements: List[Any],
+        tsd_context: str = "",
+        votes: int = 3,
+        **kwargs: Any,
+    ) -> DiagramDebateOutput:
+        """
+        Runs `run_diagram_debate` `votes` times and returns the run whose
+        final_verdict matches the majority — a self-consistency pass to
+        suppress per-call LLM non-determinism (confirmed present even at
+        temperature=0 with a fixed seed, most likely from OpenRouter's
+        automatic provider routing). Ties break toward the run with the
+        highest mediator confidence.
+        """
+        if votes <= 1:
+            return self.run_diagram_debate(
+                diagram=diagram, requirements=requirements, tsd_context=tsd_context, **kwargs
+            )
+
+        outputs: List[DiagramDebateOutput] = []
+        for i in range(votes):
+            outputs.append(
+                self.run_diagram_debate(
+                    diagram=diagram, requirements=requirements, tsd_context=tsd_context, **kwargs
+                )
+            )
+
+        tally: Dict[str, int] = {}
+        for output in outputs:
+            verdict = str((output.mediator_result or {}).get("final_verdict", VERDICT_NA)).strip().lower()
+            tally[verdict] = tally.get(verdict, 0) + 1
+
+        majority_verdict = max(tally.items(), key=lambda kv: kv[1])[0]
+        candidates = [
+            output for output in outputs
+            if str((output.mediator_result or {}).get("final_verdict", VERDICT_NA)).strip().lower() == majority_verdict
+        ]
+        winner = max(candidates, key=lambda output: float((output.mediator_result or {}).get("confidence", 0.0) or 0.0))
+
+        winner.mediator_result["self_consistency"] = {
+            "votes": votes,
+            "tally": tally,
+            "agreement_rate": round(tally[majority_verdict] / votes, 4),
+            # Secondary metrics (marker utilization, invalid-citation rate) are
+            # about evidence quality, not the final verdict — reporting them
+            # only from the single winning run would understate their sample
+            # size under voting, so callers can aggregate over every run here.
+            "all_hunter_results": [output.hunter_result for output in outputs],
+            "all_critic_results": [output.critic_result for output in outputs],
+        }
+        self.logger.info(
+            "DiagramDebateService: self-consistency vote diagram_id=%s tally=%s winner=%s",
+            diagram.diagram_id,
+            tally,
+            majority_verdict,
+        )
+        return winner
 
     @staticmethod
     def _normalize_scope(value: Any) -> str:

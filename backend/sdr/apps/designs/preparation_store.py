@@ -7,7 +7,7 @@ import gzip
 import threading
 import time
 from datetime import datetime, timezone
-from typing import Any, Callable, Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
@@ -15,9 +15,6 @@ from sqlalchemy.orm import Session
 from sdr.apps.ai.client import usage_tracker
 from sdr.apps.ai.client.session import build_tsd_ingestion_session_id, job_session_context
 from sdr.apps.ai.engine.dto import IngestionOutput, RetrievalIndexes
-from sdr.apps.ai.engine.preparation.ingestion_service import IngestionService
-from sdr.apps.ai.engine.preparation.retrieval_service import RetrievalService
-from sdr.apps.ai.engine.reporting.retrieval_snapshot_builder import RetrievalSnapshotBuilder
 from sdr.apps.ai.tsd_processing.document_models import DiagramBlock, TSDDocument, TSDPage, TextBlock
 from sdr.apps.ai.tsd_processing.raptor import RAPTORNode, RAPTORTree
 from sdr.apps.workspace.services.storage import storage_service
@@ -30,6 +27,11 @@ from .models import (
 )
 
 logger = logging.getLogger(__name__)
+
+if TYPE_CHECKING:
+    from sdr.apps.ai.engine.preparation.ingestion_service import IngestionService
+    from sdr.apps.ai.engine.preparation.retrieval_service import RetrievalService
+    from sdr.apps.ai.engine.reporting.retrieval_snapshot_builder import RetrievalSnapshotBuilder
 
 try:
     import zstandard as zstd
@@ -248,11 +250,21 @@ class DesignPreparationStore:
     def __init__(
         self,
         *,
-        ingestion_service: Optional[IngestionService] = None,
-        retrieval_service: Optional[RetrievalService] = None,
+        ingestion_service: Optional["IngestionService"] = None,
+        retrieval_service: Optional["RetrievalService"] = None,
     ) -> None:
-        self.ingestion_service = ingestion_service or IngestionService()
-        self.retrieval_service = retrieval_service or RetrievalService()
+        if ingestion_service is None:
+            from sdr.apps.ai.engine.preparation.ingestion_service import IngestionService
+
+            ingestion_service = IngestionService()
+        if retrieval_service is None:
+            from sdr.apps.ai.engine.preparation.retrieval_service import RetrievalService
+
+            retrieval_service = RetrievalService()
+        from sdr.apps.ai.engine.reporting.retrieval_snapshot_builder import RetrievalSnapshotBuilder
+
+        self.ingestion_service = ingestion_service
+        self.retrieval_service = retrieval_service
         self.snapshot_builder = RetrievalSnapshotBuilder(workflow_repository=_NoopWorkflowRepository())
 
     def ensure_preparation(

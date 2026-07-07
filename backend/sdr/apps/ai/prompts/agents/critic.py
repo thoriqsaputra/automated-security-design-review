@@ -30,8 +30,15 @@ YOUR ROLE:
 - Determine if the evidence genuinely satisfies the requirement or merely \
 mentions related concepts without naming a specific mechanism.
 - INDEPENDENTLY verify applicability: even if the Hunter says "not_met", \
-check whether the requirement actually applies to this TSD scope. If the \
-technology/domain isn't present, the correct verdict is "na", not "not_met".
+check whether the requirement's underlying security objective and governed \
+capability — not just the exact named technology or standard — is present \
+in this TSD scope. Use "na" ONLY when that capability itself is \
+architecturally absent (e.g., no mobile app, no third-party integrations, \
+no session concept at all). A different mechanism serving the same \
+governed capability (e.g. OOB SMS/email instead of TOTP, REST instead of \
+GraphQL, a single service instead of many) does NOT make the requirement \
+inapplicable — it is still "established", and missing evidence for it is \
+"not_met", not "na".
 - Check if "na" is more appropriate than "met" or "not_met".
 - Produce a structured challenge or confirmation.
 
@@ -59,6 +66,26 @@ partially-relevant evidence exists anywhere in context.\n\
   UPHOLD → ONLY when NO evidence exists in ANY provided context chunk that even \
 tangentially addresses the requirement topic.
 
+"EXPLICITLY names the specific mechanism" means the cited text names a \
+specific, concrete control that implements the requirement's underlying \
+security PROPERTY — it does NOT mean the TSD must repeat the requirement's \
+own wording verbatim. Do not reject genuine evidence merely because it uses \
+different terminology than the requirement text. Examples of evidence that \
+IS specific enough despite different wording (do not treat these as \
+"implicit" or "generic"):\n\
+  - Requirement: "audit access to sensitive data." TSD: "every attempt to \
+access a restricted resource is logged and generates an alert." → this \
+names a concrete logging+alerting mechanism for the exact access-control \
+event the requirement cares about; OVERTURN to met is warranted, not PARTIAL.\n\
+  - Requirement: "no weaker authentication pathway exists." TSD: "all \
+system roles (Admin, Driver, Hitchhiker) require mandatory Multi-Factor \
+Authentication." → this names a concrete, uniformly-applied control across \
+every role; it directly establishes no weaker path exists, even though the \
+TSD never uses the phrase "weaker alternative".\n\
+Contrast with genuinely generic evidence that should still be rejected: "the \
+system is secure," "access is controlled," or a heading/topic mention with \
+no named mechanism at all — those remain insufficient regardless of wording.
+
 FOR met VERDICTS — UPHOLD when the evidence is genuinely sufficient. \
 Issue UPHOLD when ALL of the following are true: \
   (1) at least one citation you personally verified contains text that specifically \
@@ -72,7 +99,19 @@ Issue PARTIAL whenever any of the following is true: \
       (e.g., "secure communication" without naming TLS/mTLS/HTTPS); \
   (c) Hunter confidence < 0.70; \
   (d) evidence covers only one component when the requirement explicitly \
-      requires multiple (e.g., MFA on login but not on API). \
+      requires multiple (e.g., MFA on login but not on API); \
+  (e) the cited evidence proves a related-but-not-identical property, or a \
+      different verification level, than the one the requirement demands — \
+      even if the citation is accurately quoted. Before UPHOLD, explicitly \
+      check that the cited mechanism addresses the EXACT property named \
+      (e.g. an architecture/design mention is not proof of an \
+      implementation-level guarantee like "non-duplicated, vetted controls"; \
+      a general audit-logging mention is not proof of a more specific \
+      required property like "replay resistance" unless it actually \
+      addresses replay; a general MFA mention does not by itself prove a \
+      distinct sub-property like "consistent auth strength across all \
+      roles" unless the citation actually covers every role). If the \
+      citation only shows an adjacent property, use PARTIAL, not UPHOLD. \
 Only OVERTURN if the cited evidence clearly cannot support the verdict at all \
   (e.g., block content is unrelated, or the mechanism named is explicitly \
    out-of-scope for this TSD).
@@ -182,11 +221,14 @@ Respond with a single JSON object matching this exact schema:
   "decision": "uphold" | "challenge" | "reject",
   "revised_verdict": {_VERDICT_VALUES},
   "revised_confidence": <float 0.0–1.0>,
+  "applicability_status": "established" | "not_established",
+  "applicability_reason": "<why this requirement is applicable or not>",
   "reasoning": "<one paragraph explaining your challenge or confirmation>",
   "weak_evidence": ["<evidence weakness or generic reasoning issue>", ...],
   "missed_evidence": ["<context evidence Hunter may have missed>", ...],
   "objections": ["<specific objection requiring Hunter rebuttal>", ...],
   "requires_rebuttal": <true | false>,
+  "missing_expected_evidence": ["<specific missing control evidence>", ...],
   "valid_citations": [
     {_CITATION_SCHEMA}
   ],
@@ -197,20 +239,69 @@ Few-shot example:
 Input -> Hunter cites p2_b7 for MFA, but p2_b7 only says "users log in".
 Reasoning -> assumptions: ["Validity depends on quoted evidence in cited blocks."]; logic_summary: "The cited block does not mention MFA, so the Hunter over-claimed compliance."; output -> outcome "OVERTURN", revised_verdict "not_met", invalid_citation_ids ["p2_b7"].
 
+Few-shot examples — WRONG vs RIGHT applicability reasoning (do not repeat the WRONG pattern):
+1. Requirement: "GraphQL authorization logic at the business logic layer." TSD: REST endpoints \
+with a PHP controller layer, no GraphQL.
+   WRONG: "TSD doesn't use GraphQL -> na." RIGHT: the governed capability (authorization \
+enforcement at the business logic layer) still exists via the REST/controller layer; \
+if the TSD doesn't document where authorization is enforced, that is "not_met".
+2. Requirement: "Message payload signing via WS-Security." TSD: JSON/REST APIs, no SOAP.
+   WRONG: "WS-Security is SOAP-only, TSD is REST -> na." RIGHT: the governed capability \
+(message-level integrity/signing) still applies to REST APIs; absence of any documented \
+signing mechanism is "not_met", not "na".
+3. Requirement: "Time-based OTPs have a defined lifetime." TSD: MFA via SMS/email OOB codes, no TOTP.
+   WRONG: "TSD uses OOB SMS, not TOTP -> na." RIGHT: MFA (the governed capability) is present; \
+a different second-factor mechanism doesn't make an OTP-lifetime-shaped gap inapplicable — \
+undocumented lifetime/expiry handling for the OOB code is still "not_met".
+4. Requirement: "Intra-service secrets do not rely on unchanging credentials." TSD: single \
+application with internal API endpoints, no explicit multi-service architecture described.
+   WRONG: "TSD describes one service, not multiple -> na." RIGHT: internal API endpoints are \
+themselves a service boundary; if secret rotation for that boundary isn't documented, that's \
+"not_met", not "na".
+5. Requirement: "Biometric authenticator enrollment and use are secure." TSD: MFA via SMS/email \
+OOB codes, no biometric mechanism.
+   WRONG: "TSD has no biometric authenticator -> na." RIGHT: authentication/enrollment (the \
+governed capability) is present via OOB codes; the requirement's specific property (secure \
+enrollment/use of the second factor) is still unaddressed for the mechanism actually used — \
+"not_met", not "na".
+6. Requirement: "CSPs inform RPs of the last authentication event." TSD: a single self-hosted \
+application, no separate federated identity provider/relying party split.
+   WRONG: "No CSP/RP concept in the TSD -> na." RIGHT: the application's own session/auth \
+service plays both the CSP and RP role for itself; if it doesn't document surfacing the last \
+auth event to itself, treat the governed capability (auth-event awareness) as present and \
+unaddressed — "not_met", not "na" — unless the TSD's own contract/scope explicitly rules out \
+any session-based re-authentication concept at all.
+7. Requirement: "Regulated/sensitive personal data has documented retention and access controls." \
+TSD: mentions user profile data, location, or messages but never uses the words "regulated" or \
+"PII".
+   WRONG: "TSD doesn't call this data regulated/PII -> na." RIGHT: the governed capability \
+(handling of sensitive personal data) is present by content, regardless of label; missing \
+retention/access documentation for that data is "not_met", not "na".
+
+MANDATORY CHECK whenever the Hunter's verdict is "na": explicitly ask "does the TSD implement \
+ANY alternative mechanism serving the same underlying security function as the one named in the \
+requirement?" If yes, the correct verdict is "not_met" (if the specific property is unaddressed) \
+— never "na". Only accept "na" when you can name what governed capability/domain is \
+architecturally absent, not merely that the named mechanism differs.
+
 	Rules:
 	- "UPHOLD"   → Hunter's verdict is correct and citations are valid.
 	- "OVERTURN" → Hunter's verdict is wrong; provide the correct verdict.
 	- "PARTIAL"  → Some citations are valid, verdict needs adjustment.
 	- decision mapping → uphold = UPHOLD, challenge = PARTIAL, reject = OVERTURN.
 	- requires_rebuttal → true when Hunter reasoning is weak/generic, evidence may be missed, or citations need a direct response.
+	- applicability_status → Use "not_established" ONLY when the control's prerequisite/capability is absent from the design itself. A missing named mechanism, silent TSD, or weaker implementation is still "established" and should usually remain "not_met".
+	- applicability_reason → Name the prerequisite/capability basis. If revising to "na", explicitly identify the absent prerequisite.
+	- missing_expected_evidence → Required whenever revised_verdict is "not_met". Name the specific implementation evidence that should have appeared.
 	- valid_citations   → Only block_ids you have personally verified in the context, and only from CONTEXT_CHUNK elements with citable="true". "Verified" means the quoted text literally appears in that block's own raw text — never accept a quote that was inferred, paraphrased, or merged from a different chunk, even if that other chunk is nearby or about the same topic.
 	- invalid_citation_ids → block_ids cited by the Hunter that do NOT contain \
 	the claimed evidence.
 	- If revised_verdict is "met", valid_citations MUST contain at least one block_id you verified this way. Never output revised_verdict "met" (or an OVERTURN to "met") with an empty valid_citations list — if you cannot find a verified citation, the verdict must be "not_met" or "na" instead.
 	- CRITICAL: When the Hunter's verdict is "met", never issue UPHOLD with an empty valid_citations list. "Met" requires at least one citation you personally verified in the context. If you cannot locate a verified citation confirming the Hunter's "met" finding, you MUST issue PARTIAL instead — even if you agree with the Hunter's reasoning. Reasoning without a citable block is not sufficient to UPHOLD a "met" verdict at the TSD review level. For "not_met" or "na" Hunter verdicts, UPHOLD with empty valid_citations is acceptable when no evidence exists to challenge the verdict.
-	- Challenge generic missing-evidence findings unless Hunter identified both why the control applies and what implementation evidence is missing.
-	- If the retrieved context is only headings, graph summaries, baseline requirements, or unrelated snippets and does not establish applicability, revise the verdict to "na".
-	- Do not uphold "not_met" solely because evidence is absent; absent evidence is a failure only after applicability is established.
+- Challenge generic missing-evidence findings unless Hunter identified both why the control applies and what implementation evidence is missing.
+- If the retrieved context is only headings, graph summaries, baseline requirements, or unrelated snippets and does not establish applicability, revise the verdict to "na".
+- Do not revise "not_met" to "na" merely because the exact named standard/mechanism is absent from the stack. If the design still has the governed capability (API, session, MFA, service boundary, business logic flow, integration, etc.), applicability remains established and silence is a "not_met" problem.
+- Do not uphold "not_met" solely because evidence is absent; absent evidence is a failure only after applicability is established.
 	- Use evidence-only reasoning; do not infer controls that are not explicitly stated.
 	- If YOUR PRIOR CHALLENGE is present above, this is a rebuttal round: explicitly check whether each prior objection/weak_evidence/missed_evidence item was resolved by the Hunter's new evidence. Carry forward any item that is still unresolved into this round's objections list — do not silently drop it just because the Hunter restated its position.
 {block_ids_block}
@@ -251,11 +342,14 @@ Challenge or confirm each Hunter finding independently. Return strict JSON:
       "decision": "uphold" | "challenge" | "reject",
       "revised_verdict": "met" | "not_met" | "na",
       "revised_confidence": <float 0.0-1.0>,
+      "applicability_status": "established" | "not_established",
+      "applicability_reason": "<why this requirement is applicable or not>",
       "reasoning": "<one paragraph>",
       "weak_evidence": ["<weakness>", "..."],
       "missed_evidence": ["<missed evidence>", "..."],
       "objections": ["<specific objection>", "..."],
       "requires_rebuttal": <true | false>,
+      "missing_expected_evidence": ["<specific missing control evidence>", "..."],
       "valid_citations": [
         {{"block_id": "<verified CONTEXT_CHUNK id>", "page_number": <integer>, "quoted_text": "<short quote>", "bbox": {{"x0": null, "y0": null, "x1": null, "y1": null}}}}
       ],
@@ -269,9 +363,10 @@ Rules:
 - Verify citations against ORIGINAL TSD CONTEXT for that child only.
 - valid_citations → only block_ids from CONTEXT_CHUNK elements with citable="true", and only when the quoted text literally appears in that block's own raw text — never accept a quote inferred, paraphrased, or merged from a different chunk.
 - If a child's revised_verdict is "met", that child's valid_citations MUST contain at least one such verified block_id. Never output revised_verdict "met" with an empty valid_citations list for that child.
+- Use applicability_status="not_established" only when the child's prerequisite/capability is absent from the design scope. A silent TSD on an otherwise relevant control remains "established" and should usually be "not_met".
+- Do not revise "not_met" to "na" merely because the exact named standard/mechanism (e.g. GraphQL, WS-Security, TOTP) is absent from the stack. If the design still has the governed capability via a different mechanism (a business logic layer, REST APIs, another second-factor, internal API endpoints as a service boundary, etc.), applicability remains established and silence is a "not_met" problem, not "na".
 - CRITICAL: When a child's Hunter verdict is "met", never issue UPHOLD with an empty valid_citations list for that child. If you cannot locate a verified citation confirming a "met" verdict, issue PARTIAL instead. For "not_met" or "na" Hunter verdicts, UPHOLD with empty valid_citations is acceptable.
 - Do not let evidence for one child satisfy a different child.
 - Scrutinise the Hunter's assumptions and cot_trace for logical leaps.
 {block_ids_block}
 """
-

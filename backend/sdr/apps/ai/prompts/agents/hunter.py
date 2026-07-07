@@ -46,6 +46,18 @@ for a "met" verdict in a TSD review.
 control text, "the application shall..." with no named mechanism, technology, \
 or enforcement point, generic mentions of security without specifics.
 
+"Explicit evidence naming a specific mechanism" is about the underlying \
+security PROPERTY the requirement demands, not about the TSD repeating the \
+requirement's own wording. Do not mark "not_met" just because the TSD uses \
+different terminology than the requirement text — check whether a named, \
+concrete mechanism achieves the same property. Example: requirement "audit \
+access to sensitive data" is satisfied by "every attempt to access a \
+restricted resource is logged and generates an alert," even though the TSD \
+never says "audit" or "sensitive data" verbatim — the named logging+alerting \
+mechanism covers the same property. This is still distinct from genuinely \
+generic evidence ("the system is secure," a bare topic mention) which \
+remains WEAK regardless of wording.
+
 OUTPUT: Strict JSON only. No prose outside the JSON object.
 """
 
@@ -95,10 +107,13 @@ Respond with a single JSON object matching this exact schema:
 {_REASONING_SCHEMA},
   "verdict": {_VERDICT_VALUES},
   "confidence": <float 0.0–1.0>,
+  "applicability_status": "established" | "not_established",
+  "applicability_reason": "<what prerequisite/capability makes this requirement applicable or not>",
   "reasoning": "<one paragraph explaining your verdict>",
   "checked_context": "<what context you checked and why it was sufficient or insufficient>",
   "evidence_quotes": ["<short verbatim snippets from context, empty if none>"],
   "evidence_assessment": "<why the evidence satisfies, partially satisfies, or fails the requirement>",
+  "missing_expected_evidence": ["<specific missing control evidence>", ...],
   "evidence_found": <true | false>,
   "citations": [
     {_CITATION_SCHEMA}
@@ -112,7 +127,10 @@ Reasoning -> assumptions: ["Only retrieved context may be used."]; logic_summary
 	Rules:
 	- "met"     → TSD contains explicit evidence (STRONG or MODERATE) satisfying the requirement. Architectural design mandates naming specific mechanisms count as MODERATE and are sufficient for "met".
 	- "not_met" → The requirement is applicable, and the TSD lacks implementation evidence or explicitly contradicts the requirement.
-	- "na"      → The retrieved context does not establish the technology, data flow, control trigger, or document scope needed to assess this requirement.
+	- "na"      → The retrieved context does not establish that the underlying governed capability (not just the exact named technology or standard) — e.g. any data flow, control trigger, or document scope this requirement's security objective depends on — is present at all. A different mechanism serving the same capability (e.g. REST instead of GraphQL, OOB SMS/email instead of TOTP, a single service instead of many) does NOT make the requirement inapplicable; missing evidence for it is "not_met", not "na".
+	- applicability_status → "established" for "met" and "not_met". Use "not_established" only when the control's own prerequisite/capability is absent from the design scope, not merely undocumented.
+	- applicability_reason → Name the prerequisite/capability basis. For "not_met", state why the control applies. For "na", state which prerequisite is absent.
+	- missing_expected_evidence → Required for "not_met". Name the specific implementation evidence that should have appeared in the TSD (mechanism, enforcement point, configuration, component, flow, or validation behavior).
 	- citations → You MUST copy the id, page_number, and bbox coordinates EXACTLY from the CONTEXT_CHUNK XML attributes into the JSON, and the CONTEXT_CHUNK must have citable="true". Do not invent or guess them. If attributes are missing, use null.
 	- The quoted_text field MUST be a short verbatim excerpt (5–20 words) copied character-for-character from the CONTEXT_CHUNK text. Do NOT paraphrase, summarize, or construct your own sentence. Pick the most distinctive technical phrase or named mechanism directly from the chunk text. Shorter, specific quotes (e.g. "TLS 1.3 with HSTS enforcement", "parameterized queries and prepared statements") are better than long sentences — they are easier to verify and almost never contain paraphrasing errors. Never write text that is not character-for-character present in the source chunk.
 	- A "met" verdict must include at least one valid citation and an evidence quote.
@@ -163,10 +181,13 @@ Return strict JSON with exactly one result object per child id:
       "logic_summary": "<concise evidence-only reasoning>",
       "verdict": "met" | "not_met" | "na",
       "confidence": <float 0.0-1.0>,
+      "applicability_status": "established" | "not_established",
+      "applicability_reason": "<what prerequisite/capability makes this requirement applicable or not>",
       "reasoning": "<one paragraph explaining this child's verdict>",
       "checked_context": "<what context you checked and why it was sufficient or insufficient>",
       "evidence_quotes": ["<short verbatim snippets from context, empty if none>"],
       "evidence_assessment": "<why evidence satisfies or fails this child>",
+      "missing_expected_evidence": ["<specific missing control evidence>", "..."],
       "evidence_found": <true | false>,
       "citations": [
         {{"block_id": "<CONTEXT_CHUNK id>", "page_number": <CONTEXT_CHUNK page_number or null>, "quoted_text": "<verbatim quote>", "bbox": {{"x0": <bbox_x0 or null>, "y0": <bbox_y0 or null>, "x1": <bbox_x1 or null>, "y1": <bbox_y1 or null>}}}}
@@ -179,6 +200,7 @@ Rules:
 - Use child_id exactly as supplied.
 - A "met" verdict must include at least one valid citation and evidence quote.
 - A "not_met" verdict where evidence_found=true must include citations to the block_ids examined and found insufficient. If no relevant block_id exists, set evidence_found=false.
+- Use applicability_status="established" for "met" and "not_met". Only use "not_established" when the control's prerequisite/capability is absent from the design scope itself.
 - For "not_met", explain what explicit evidence is missing for that child.
 - You MUST copy the id, page_number, and bbox coordinates EXACTLY from the CONTEXT_CHUNK XML attributes into the JSON, and the CONTEXT_CHUNK must have citable="true". Do not invent or guess them. If missing, use null.
 """

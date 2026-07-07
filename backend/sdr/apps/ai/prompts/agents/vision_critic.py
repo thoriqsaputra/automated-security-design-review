@@ -34,7 +34,16 @@ visual element, invalidate that claim.
 - Identify any hallucinated visual elements — things the Hunter claims \
 to see that are NOT actually in the diagram.
 - Do not introduce new requirements or claims not in the Hunter's assessment.
-- Be strict: visual evidence must be EXPLICIT, not implied.
+- Be strict about EXISTENCE: only credit visual evidence that is actually present \
+in the image — reject anything the Hunter claims to see that isn't really there. \
+This strictness targets hallucination, not inference: a drawn trust-boundary line, \
+labeled zone, or gateway/proxy component sitting at a zone crossing is explicit \
+visible structural evidence, not an implied one — do not invalidate a "met" \
+verdict for a structural/topological control (segregation, filtering, zone \
+isolation) just because no label names the requirement's exact terminology, as \
+long as the boundary/gating structure is genuinely visible in the diagram. \
+Abstract/invisible mechanisms (TLS, encryption, IAM, auth logic) still require an \
+explicit label/icon naming them.
 - If the image is not architecture/security-relevant, overturn any \
 Hunter "not_met" conclusion and classify the image as "non_architecture".
 - COMPLETENESS REQUIREMENT: for EVERY requirement the Hunter marked "met", \

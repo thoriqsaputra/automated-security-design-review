@@ -61,10 +61,11 @@ class DiagramDebateOutput:
 
 class VisionAgent(BaseAgent):
     """Thin wrapper around BaseAgent for diagram debate multimodal calls."""
-    model_component: str = "vision"  
+    model_component: str = "vision"
     max_tokens: int = 8192
     temperature: float = 0.0
     top_p: float = 0.9
+    seed: int = 42
 
     def run_multimodal(
         self,
@@ -73,6 +74,7 @@ class VisionAgent(BaseAgent):
         image_bytes: bytes,
         image_format: str = "png",
         system_prompt: str = "",
+        log_context: str = "",
     ) -> Optional[Dict[str, Any]]:
         original_prompt = self.system_prompt
         if system_prompt:
@@ -83,17 +85,18 @@ class VisionAgent(BaseAgent):
                 image_b64=image_bytes,
                 image_format=image_format,
                 top_p=self.top_p,
+                log_context=log_context,
             )
         finally:
             self.system_prompt = original_prompt
 
         if response.error:
-            self.logger.error("VisionDebateAgent LLM error: %s", response.error)
+            self.logger.error("VisionDebateAgent[%s] LLM error: %s", log_context, response.error)
             return None
 
-        parsed = self._parse_json_response(response)
+        parsed = self._parse_json_response(response, log_context=log_context)
         if parsed is None:
-            self.logger.error("VisionDebateAgent: failed to parse JSON response")
+            self.logger.error("VisionDebateAgent[%s]: failed to parse JSON response", log_context)
         return parsed
 
     def run_text(
@@ -101,23 +104,41 @@ class VisionAgent(BaseAgent):
         *,
         user_prompt: str,
         system_prompt: str = "",
+        log_context: str = "",
     ) -> Optional[Dict[str, Any]]:
         original_prompt = self.system_prompt
         if system_prompt:
             self.system_prompt = system_prompt
         try:
-            response = self._call_llm_with_truncation_retry(user_prompt)
+            response = self._call_llm_with_truncation_retry(user_prompt, log_context=log_context)
         finally:
             self.system_prompt = original_prompt
 
         if response.error:
-            self.logger.error("VisionDebateAgent text LLM error: %s", response.error)
+            self.logger.error("VisionDebateAgent[%s] text LLM error: %s", log_context, response.error)
             return None
 
-        parsed = self._parse_json_response(response)
+        parsed = self._parse_json_response(response, log_context=log_context)
         if parsed is None:
-            self.logger.error("VisionDebateAgent: failed to parse JSON text response")
+            self.logger.error("VisionDebateAgent[%s]: failed to parse JSON text response", log_context)
         return parsed
+
+
+class VisionHunterAgent(VisionAgent):
+    """VisionAgent pinned to the Hunter's own model (AI_MODEL_VISION_HUNTER)."""
+    model_component: str = "vision_hunter"
+
+
+class VisionCriticAgent(VisionAgent):
+    """VisionAgent pinned to the Critic's own model (AI_MODEL_VISION_CRITIC) —
+    a different underlying model than the Hunter so the Critic's re-examination
+    of the same image is a genuinely independent second opinion."""
+    model_component: str = "vision_critic"
+
+
+class VisionMediatorAgent(VisionAgent):
+    """VisionAgent pinned to the Mediator's own model (AI_MODEL_VISION_MEDIATOR)."""
+    model_component: str = "vision_mediator"
 
 
 def _format_requirements_compact(requirements: List[Any]) -> str:

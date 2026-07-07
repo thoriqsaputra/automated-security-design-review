@@ -10,7 +10,7 @@ evaluations/
 ├── extraction/          Standard ingestion quality
 ├── debate/              Multi-agent debate quality
 ├── retrieval/           RAG retrieval quality
-├── vision/              Vision agent quality
+├── vision/              Shared real-diagram sourcing (used by retrieval/debate diagram evals)
 ├── shared/              Shared judges, metrics, dataset utils
 ├── data/                Ground truth files and gold ID sets
 └── results/             ← All output files land here (host-mounted volume)
@@ -320,12 +320,13 @@ Note on thesis metrics:
 
 ---
 
-## Vision evaluations (real diagrams, ground-truth-backed)
+## Diagram evaluations (real diagrams, ground-truth-backed)
 
-All vision evaluations below run against **real diagrams** pulled from a
-design's parsed TSD document (no synthetic/PIL-drawn diagrams), using the
-same human-labeled ground truth file described in Step 1. Each script reads
-`design_id` directly from that file, so only `--ground-truth` is required.
+Two scripts, both consuming the same real-diagram ground truth (Step 1 below):
+retrieval quality (Tujuan 2 — hybrid retrieval mitigating lost-in-the-middle for
+diagram requirements) and multi-agent debate ablation (Tujuan 2 + 3 — multimodal
+debate mitigating single-model visual blindness and suppressing false positives
+vs. single-model inference).
 
 ### Step 1 — Build the ground-truth template
 
@@ -348,77 +349,7 @@ entry set:
 - `"relevant": true/false` — is this requirement genuinely checkable from this diagram?
 - `"label": "met"|"not_met"|"na"` — only for `relevant: true` rows.
 
-This one labeled file feeds every eval below (blindness, grounding, SoM
-ablation, diagram retrieval, and diagram debate ablation).
-
-### Blindness mitigation
-
-Tests whether the vision debate detects a control's presence/absence purely
-from a real diagram image, using `"met"`/`"not_met"`-labeled rows from the
-ground truth as the two classes. Caption/surrounding_text are blanked out
-before re-running the debate to isolate the vision channel — a real
-diagram's caption might otherwise describe the very control under test.
-
-```bash
-docker exec automated-security-design-review-backend-1 \
-  python /app/sdr/apps/ai/evaluations/vision/blindness_eval.py \
-  --ground-truth /app/sdr/apps/ai/evaluations/data/diagram_ground_truth_review_1.json
-```
-
-Output: `results/vision/eval_vision_blindness.json`
-
-### Grounding & marker utilization
-
-Measures marker-utilization rate, scope-classification accuracy, critic
-overturn rate, invalid-marker-citation rate, and confidence calibration on
-the same labeled real diagrams (caption/surrounding_text left intact this
-time). The "non-architecture" scope-negative class is derived from any real
-diagram in the ground truth where every candidate requirement is labeled
-`relevant: false`; if none exists, a single synthetic blank-image scenario
-is used as a documented fallback so the metric stays computable.
-
-```bash
-docker exec automated-security-design-review-backend-1 \
-  python /app/sdr/apps/ai/evaluations/vision/grounding_eval.py \
-  --ground-truth /app/sdr/apps/ai/evaluations/data/diagram_ground_truth_review_1.json
-```
-
-Output: `results/vision/grounding_results.json`
-
-### Set-of-Mark (SoM) ablation
-
-Tests whether Set-of-Mark marker annotation (numbered boxes burned into the
-diagram image before it reaches the LLM) actually improves the diagram debate,
-as opposed to Grounding above, which only measures how often a marker is
-*cited* once one exists. Runs each labeled real diagram twice through
-`DiagramDebateService.run_diagram_debate` — once with markers applied, once
-with the raw unmarked image — and compares outcome quality between the two
-conditions.
-
-```bash
-docker exec automated-security-design-review-backend-1 \
-  python /app/sdr/apps/ai/evaluations/vision/som_ablation_eval.py \
-  --ground-truth /app/sdr/apps/ai/evaluations/data/diagram_ground_truth_review_1.json
-```
-
-| Metric | Target | Meaning |
-|--------|--------|---------|
-| `som_final.fpr` | lower | FPR with SoM markers applied |
-| `raw_final.fpr` | higher | FPR on the raw, unmarked image |
-| `delta_fpr` | > 0 | FPR suppression attributable to SoM markers |
-| `delta_accuracy` | > 0 | verdict-accuracy gain attributable to SoM markers |
-| `marker_utilization_rate` | higher | fraction of SoM-condition runs where the Hunter cited a marker |
-
-Output: `results/vision/som_ablation_results.json`
-
----
-
-## Diagram evaluations (real diagrams, ground-truth-backed)
-
-These two scripts also consume the Step 1 ground-truth file above, evaluating
-the diagram requirement selector and the diagram debate (Hunter → Critic →
-Mediator) against real diagrams pulled from a completed, vision-enabled
-review.
+This one labeled file feeds both evals below.
 
 ### Step 2a — Diagram requirement retrieval eval
 
@@ -444,7 +375,9 @@ Output: `results/retrieval/eval_diagram_retrieval.json`
 ### Step 2b — Diagram debate ablation (Hunter-only vs full debate)
 
 Same FPR-suppression thesis as Exp 6 above, but matched at `(diagram_id, requirement_id)`
-granularity since one diagram finding can cover multiple requirements at once.
+granularity since one diagram finding can cover multiple requirements at once. Runs
+entirely off data already stored in the database (`Finding.requirement_metadata`
+from a completed, vision-enabled review) — no LLM calls, free to re-run.
 
 ```bash
 docker exec automated-security-design-review-backend-1 \
@@ -456,9 +389,24 @@ docker exec automated-security-design-review-backend-1 \
 |--------|--------|---------|
 | `hunter_only.fpr` | higher | FPR without Critic/Mediator |
 | `debate_final.fpr` | lower | FPR with full 3-agent debate |
-| `delta_fpr` | > 0 | FPR suppression achieved by debate |
+| `delta_fpr` | > 0 | FPR suppression achieved by debate (Tujuan 3) |
+| `blindness_mitigation_rate` | > 0 | fraction of matched pairs where a wrong Hunter-only (single vision model) verdict was corrected by the debate (Tujuan 2 — visual blindness mitigation) |
+| `blindness_mitigation_cases` | — | the actual `(diagram_id, requirement_id)` rows behind that rate, for qualitative citation in the thesis |
 
 Output: `results/debate/diagram_debate_ablation_results.json`
+
+---
+
+## Threats to validity
+
+Both diagram evals currently draw on a single design/review (design 15 /
+review 53), which has 53 usable met/not_met-labeled `(diagram, requirement)`
+samples (12 `met`, 41 `not_met`). This is a real generalizability limit —
+results have not been confirmed to hold across other designs or diagram
+styles. Extending coverage requires running
+`data/build_diagram_ground_truth_template.py` against another completed,
+vision-enabled review and manually labeling the resulting candidates; it is
+not something that can be scripted away.
 
 ---
 

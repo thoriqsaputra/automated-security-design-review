@@ -76,7 +76,17 @@ class PersistenceService:
                 anchorable_citations or (mediator.final_citations or []),
                 debate_output.analysis_trace or {},
             )
-            if persisted_met_status == "met" and not anchorable_citations:
+            # anchorable_citations reflects whether a citation could be resolved
+            # to a precise UI bounding-box/page-span location — a rendering
+            # concern, not evidence validity. The debate's own gating
+            # (_apply_mediator_evidence_policy's accepted_met branch) already
+            # requires non-empty Critic-verified valid_citations before it will
+            # ever set final_verdict="met", so a "met" verdict reaching here
+            # already has real, debate-verified evidence. Only fall back to na
+            # if that evidence was itself empty (a defensive case that
+            # shouldn't occur given the debate's own gating) — never because
+            # anchoring merely failed to place a bounding box for it.
+            if persisted_met_status == "met" and not (mediator.final_citations or []):
                 persisted_met_status = "na"
                 raw_final_verdict = "met_without_grounded_citations"
             sanitized_description = self._strip_null_bytes(

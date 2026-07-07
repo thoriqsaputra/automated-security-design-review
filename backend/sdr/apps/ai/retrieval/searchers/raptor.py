@@ -28,6 +28,13 @@ _MAX_TOP_K = 20
 # 0.6 similarity is a reasonable floor for security parameter relevance.
 _MIN_COSINE_SIMILARITY = 0.6
 
+# When only some (not all) result slots are filled by results that cleared
+# _MIN_COSINE_SIMILARITY, near-miss candidates within this margin below the
+# floor may fill the otherwise-empty remaining slots. This never displaces a
+# genuinely above-threshold result — it only prevents a real, if imperfectly-
+# embedded, match from being silently dropped when there was spare room.
+_RELAXATION_MARGIN = 0.1
+
 # Embedding dimensions — consistent with vector_search.py and tasks.py [5]
 _EMBEDDING_DIMENSIONS = 1024
 
@@ -277,6 +284,37 @@ class RAPTORSearcher:
                 query_text[:60],
                 top_results[0].cosine_similarity,
             )
+        elif len(top_results) < resolved_top_k and scored_results:
+            # Some, but not all, slots are filled by strictly-relevant
+            # results — fill the remaining slots with the best near-miss
+            # candidates within _RELAXATION_MARGIN of the floor, rather than
+            # leaving them empty. This never displaces an above-threshold
+            # result (only fills otherwise-unused slots).
+            selected_ids = {r.node.node_id for r in top_results}
+            near_miss = [
+                r for r in scored_results
+                if r.node.node_id not in selected_ids
+                and r.cosine_similarity >= (self.min_cosine_similarity - _RELAXATION_MARGIN)
+            ]
+            near_miss.sort(key=lambda r: r.cosine_similarity, reverse=True)
+            fill = near_miss[: resolved_top_k - len(top_results)]
+            if fill:
+                threshold_relaxed = True
+                for result in fill:
+                    result.threshold_relaxed = True
+                self.logger.info(
+                    "RAPTORSearcher.search: filled %d/%d remaining slot(s) "
+                    "with near-miss candidates (within %.2f of floor=%.2f) "
+                    "at level %d in tree '%s' for query '%s...'.",
+                    len(fill),
+                    resolved_top_k - len(top_results),
+                    _RELAXATION_MARGIN,
+                    self.min_cosine_similarity,
+                    level,
+                    tree.document_name,
+                    query_text[:60],
+                )
+                top_results = top_results + fill
 
         self.logger.info(
             "RAPTORSearcher.search: level=%d found %d/%d node(s) above "

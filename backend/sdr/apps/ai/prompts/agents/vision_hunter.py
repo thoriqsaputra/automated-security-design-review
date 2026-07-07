@@ -22,14 +22,28 @@ _VISION_HUNTER_GUARDRAILS = """\
 - Use only explicit VISIBLE evidence from the diagram image.
 - Do not infer hidden connections, unseen controls, or off-screen components.
 - Crossing lines are NOT connections unless a clear junction/endpoint is shown.
-- Do not assume TLS, mTLS, IAM, encryption, firewall, WAF, authentication, \
-or authorization unless explicitly shown with labels, icons, or annotations.
+- Two evidence classes — treat them differently:
+  - ABSTRACT/INVISIBLE mechanisms (TLS, mTLS, IAM policy, encryption, hashing, \
+authentication/authorization logic) cannot be seen directly — do not assume them \
+unless explicitly shown with a label, icon, or annotation naming the mechanism.
+  - STRUCTURAL/TOPOLOGICAL controls (network segregation, trust-boundary \
+enforcement, zone isolation, egress/ingress filtering) ARE evidenced by the \
+diagram's visible layout itself: a drawn boundary line separating differently \
+labeled zones, a gateway/proxy/firewall-shaped component sitting at the crossing \
+point between zones, or arrows that only flow in one direction across a boundary. \
+This structural evidence is sufficient for "met" even when no label uses the \
+requirement's exact terminology — the layout itself is the explicit visible evidence.
 - If a requirement is not relevant to what the diagram depicts, return "na" \
 for that requirement — do not force "not_met".
-- "met" requires visible security controls matching the requirement \
-(e.g., labeled boundaries, encryption annotations, auth flow steps).
-- "not_met" requires visible ABSENCE or CONTRADICTION of the expected \
-security control in the depicted scope.
+- "met" requires visible security controls matching the requirement — either an \
+explicit label/icon/annotation naming the mechanism (for abstract controls), or \
+visible structural evidence such as a boundary line plus a gating component at \
+the crossing point (for structural/topological controls).
+- "not_met" requires visible ABSENCE or CONTRADICTION of the expected security \
+control in the depicted scope — e.g. two differently-trusted zones/components \
+connected with no intervening boundary or gate at all. Do not mark "not_met" \
+merely because no label names the requirement's terminology if the diagram's \
+structure already shows the control.
 - If evidence is uncertain, return "na" and explain the ambiguity.
 - Each assessment MUST reference the exact requirement_id from the checklist.
 - Claims without a matching requirement_id are invalid and will be discarded.

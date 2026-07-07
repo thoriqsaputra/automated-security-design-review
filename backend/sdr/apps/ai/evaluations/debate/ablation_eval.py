@@ -54,8 +54,17 @@ def _load_ground_truth(gt_path: str) -> dict[str, str]:
         data = json.load(f)
     items = data.get("items", data)
     if isinstance(items, list):
-        return {str(item["requirement_id"]): item["label"].lower().strip() for item in items}
-    return {str(k): v.lower().strip() for k, v in items.items()}
+        loaded = {str(item["requirement_id"]): item["label"].lower().strip() for item in items}
+    else:
+        loaded = {str(k): v.lower().strip() for k, v in items.items()}
+    invalid = {req_id: label for req_id, label in loaded.items() if label not in VALID_VERDICTS}
+    if invalid:
+        preview = ", ".join(f"{req_id}={label}" for req_id, label in list(invalid.items())[:10])
+        raise ValueError(
+            f"Invalid ground-truth labels in {gt_path}. Expected one of {sorted(VALID_VERDICTS)}. "
+            f"Examples: {preview}"
+        )
+    return loaded
 
 
 def _extract_hunter_verdict(finding: Finding) -> str | None:

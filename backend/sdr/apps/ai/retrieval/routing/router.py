@@ -25,8 +25,8 @@ from sdr.core.config import settings
 logger = logging.getLogger(__name__)
 
 _VECTOR_TOP_K = 8
-_RAPTOR_TOP_K = 5
-_MAX_CONTEXT_CHUNKS = 12
+_RAPTOR_TOP_K = 7
+_MAX_CONTEXT_CHUNKS = 16
 _EMBEDDING_DIMENSIONS = 1024
 
 # Simple keyword extractor used for BM25 coverage boost — splits on

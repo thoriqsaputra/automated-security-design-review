@@ -216,7 +216,7 @@ def main():
     logger.info("\n=== Exp 8: Debate Dynamics Results ===")
     logger.info(f"  Findings with trace:        {n} / {len(findings)}")
     logger.info(f"  Critic intervention rate:   {critic_intervention_rate:.4f}  "
-                f"(threshold >0.10: {summary['thresholds']['critic_intervention_rate_gt_0.10']})")
+                f"(threshold >0.30: {summary['thresholds']['critic_intervention_rate_gt_0.30']})")
     logger.info(f"  Verdict revision rate:      {verdict_revision_rate:.4f}  "
                 f"(Critic changed verdict; threshold uses final_change_rate={final_change_rate:.4f}: "
                 f"{summary['thresholds']['verdict_revision_rate_gt_0.10']})")

@@ -567,12 +567,26 @@ class TSDIngestor:
         text_blocks = self._extract_text_blocks(fitz_page, page_number)
         tsd_page.text_blocks = text_blocks
 
-        # --- Update section heading from this page's headings ---
-        if tsd_page.heading_blocks:
-            tsd_page.section_heading = tsd_page.heading_blocks[0].text
-
+        # Assign each block the heading actually in effect at its position in
+        # reading order, rather than blanket-labeling every block on the page
+        # with the page's first heading. A page that starts one section and
+        # ends another (a heading transition partway down) must not have its
+        # later-section blocks mislabeled with the earlier section's heading —
+        # that mislabeling causes RAPTOR leaf grouping to lump both sections'
+        # text into one embedding (see raptor.py::_build_leaf_nodes).
+        running_heading = current_section_heading
         for block in text_blocks:
-            block.section_heading = tsd_page.section_heading
+            if block.is_heading:
+                running_heading = block.text
+            block.section_heading = running_heading
+
+        # tsd_page.section_heading reflects the page's LAST heading in effect,
+        # for cross-page carry-forward (see the caller's `current_section_heading`
+        # threading) and any page-level consumers (e.g. content_filter.py).
+        if tsd_page.heading_blocks:
+            tsd_page.section_heading = tsd_page.heading_blocks[-1].text
+        else:
+            tsd_page.section_heading = running_heading
 
         if not tsd_page.markdown_text.strip():
             tsd_page.markdown_text = tsd_page.all_text

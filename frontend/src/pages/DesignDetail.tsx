@@ -224,6 +224,17 @@ export default function DesignDetailPage() {
     selectedReview &&
       ['pending', 'cancelled', 'failed', 'running'].includes(selectedReviewState.review?.status || '')
   );
+  // When the selected review is the running one, the left "Review Control"
+  // cluster already renders its own Cancel Review button — don't duplicate it
+  // in the toolbar too.
+  const showToolbarCancelButton =
+    hasRunningReview && !(hasControls && selectedReviewState.review?.status === 'running');
+  // When the selected review is pending/cancelled/failed/running, the left
+  // cluster already offers the right action (Trigger/Re-trigger/Cancel) for
+  // it — showing "Start TSD Analysis" in the toolbar too is redundant and,
+  // for a cancelled/failed review, misleading (it starts a brand new review
+  // instead of retrying the existing one).
+  const showToolbarStartButton = !showToolbarCancelButton && !hasControls;
 
   const preparationLabel = useMemo(() => {
     if (!design) return '';
@@ -455,7 +466,7 @@ export default function DesignDetailPage() {
             {pickerOpen && (
               <div className="absolute right-0 z-20 mt-2 w-full rounded-2xl border border-surface-border bg-midnight shadow-2xl shadow-black/30">
                 <div className="space-y-3 border-b border-surface-border p-3">
-                  {hasRunningReview ? (
+                  {showToolbarCancelButton ? (
                     <button
                       onClick={() => {
                         setPickerOpen(false);
@@ -466,7 +477,7 @@ export default function DesignDetailPage() {
                     >
                       {cancellingRunningReview ? 'Cancelling...' : 'Cancel Review'}
                     </button>
-                  ) : (
+                  ) : showToolbarStartButton ? (
                     <button
                       onClick={() => {
                         if (!design.can_start_analysis || creating) {
@@ -480,7 +491,7 @@ export default function DesignDetailPage() {
                     >
                       <Play size={16} /> Start TSD Analysis
                     </button>
-                  )}
+                  ) : null}
                   {reviews.length > 0 && (
                     <div className="flex items-center gap-2 rounded-xl border border-surface-border bg-surface-base px-3 py-2.5">
                       <Search size={16} className="text-text-muted" />
@@ -554,7 +565,7 @@ export default function DesignDetailPage() {
               {retryingPreparation ? 'Retrying...' : 'Retry Preparation'}
             </button>
           )}
-          {hasRunningReview ? (
+          {showToolbarCancelButton ? (
             <button
               onClick={() => void handleCancelRunningReview()}
               disabled={cancellingRunningReview}
@@ -562,7 +573,7 @@ export default function DesignDetailPage() {
             >
               {cancellingRunningReview ? 'Cancelling...' : 'Cancel Review'}
             </button>
-          ) : (
+          ) : showToolbarStartButton ? (
             <button
               onClick={() => setShowReviewModal(true)}
               disabled={!design.can_start_analysis || creating}
@@ -571,7 +582,7 @@ export default function DesignDetailPage() {
               <Play size={16} />
               Start TSD Analysis
             </button>
-          )}
+          ) : null}
         </div>
       </div>
     </Card>

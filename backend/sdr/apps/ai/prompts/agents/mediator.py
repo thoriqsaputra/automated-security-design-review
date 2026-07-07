@@ -163,10 +163,13 @@ Respond with a single JSON object matching this exact schema:
 {_REASONING_SCHEMA},
   "final_verdict": {_VERDICT_VALUES},
   "confidence": <float 0.0–1.0>,
+  "applicability_status": "established" | "not_established",
+  "applicability_reason": "<why this requirement is applicable or not>",
   "finding_description": "<factual summary of the system state regarding this requirement>",
   "reasoning": "<concise executive-level justification for the verdict, 2–3 sentences>",
   "verified_evidence": ["<evidence accepted as satisfying the requirement>", ...],
   "rejected_evidence": ["<evidence rejected or found insufficient>", ...],
+  "missing_expected_evidence": ["<specific missing control evidence>", ...],
   "debate_rounds_used": <integer>,
   "final_citations": [
     {_CITATION_SCHEMA}
@@ -187,6 +190,8 @@ Reasoning B -> The precondition (a mobile client) is not established by the TSD 
 	Rules:
 	- final_verdict  → The single binding decision. Cannot be changed after this.
 	- confidence     → Must reflect genuine certainty. Do not inflate.
+	- applicability_status → "not_established" only when the control's prerequisite/capability is absent from the design scope itself. Otherwise use "established".
+	- applicability_reason → Name the prerequisite/capability basis. If returning "na", explicitly identify the absent prerequisite.
 	- recommendation → Specific, actionable remediation. Null if "met" or "na".
 	- final_citations → Only citations from the Critic's verified list above. The quoted_text in each citation MUST be a short verbatim excerpt (5–20 words) copied character-for-character from the source block — do NOT paraphrase or restate. Prefer short specific technical phrases (e.g. "TLS 1.3 with HSTS", "Fail-Closed policy") over long sentences.
 	- "met" requires verified evidence that clearly satisfies the requirement, not merely any valid citation.
@@ -228,10 +233,13 @@ Produce one final binding verdict per child independently. Return strict JSON:
       "logic_summary": "<concise final reasoning>",
       "final_verdict": "met" | "not_met" | "na",
       "confidence": <float 0.0-1.0>,
+      "applicability_status": "established" | "not_established",
+      "applicability_reason": "<why this requirement is applicable or not>",
       "finding_description": "<factual summary of the system state regarding this requirement>",
       "reasoning": "<2-3 sentence executive justification for the verdict>",
       "verified_evidence": ["<accepted evidence>", "..."],
       "rejected_evidence": ["<insufficient or rejected evidence>", "..."],
+      "missing_expected_evidence": ["<specific missing control evidence>", "..."],
       "debate_rounds_used": <integer>,
       "final_citations": [
         {{"block_id": "<Critic-verified block_id only>", "page_number": <integer>, "quoted_text": "<short quote>", "bbox": {{"x0": null, "y0": null, "x1": null, "y1": null}}}}

@@ -1,7 +1,7 @@
 import { XCircle } from 'lucide-react';
 import type { Review } from '../../../api/reviews';
 import Card from '../../../components/ui/Card';
-import LlmUsageCard from '../../../components/ui/LlmUsageCard';
+import LlmUsageCard, { formatDuration } from '../../../components/ui/LlmUsageCard';
 import { formatAnalysisModeLabel, isRecord, normalizeAnalysisMode } from '../utils/reviewPresentation';
 
 interface ReviewOverviewPanelProps {
@@ -9,14 +9,25 @@ interface ReviewOverviewPanelProps {
   findingCount: number;
 }
 
+function reviewDurationLabel(review: Review): string {
+  if (!review.started_at) {
+    return '—';
+  }
+  const start = new Date(review.started_at).getTime();
+  const end = review.completed_at ? new Date(review.completed_at).getTime() : Date.now();
+  const totalSeconds = (end - start) / 1000;
+  return totalSeconds > 0 ? formatDuration(totalSeconds) : '—';
+}
+
 export default function ReviewOverviewPanel({ review, findingCount }: ReviewOverviewPanelProps) {
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
         {[
           { label: 'Status', value: review.status },
           { label: 'Analysis Mode', value: formatAnalysisModeLabel(normalizeAnalysisMode(review.analysis_mode)) },
           { label: 'Findings', value: findingCount },
+          { label: 'Duration', value: reviewDurationLabel(review) },
           { label: 'Started', value: review.started_at ? new Date(review.started_at).toLocaleString() : '—' },
           { label: 'Completed', value: review.completed_at ? new Date(review.completed_at).toLocaleString() : '—' },
         ].map((item) => (

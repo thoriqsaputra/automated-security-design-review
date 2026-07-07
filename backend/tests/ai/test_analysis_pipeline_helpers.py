@@ -206,6 +206,34 @@ def test_citation_validator_tolerates_whitespace_variation_in_quotes():
     assert rejected == []
 
 
+def test_citation_validator_accepts_previously_grounded_block_id_without_requoting():
+    # Regression for review 54 finding 1744: a block_id confirmed grounded in
+    # an earlier debate round shouldn't be re-derived from that round's own
+    # re-phrased quote — the source text doesn't change between rounds, only
+    # the agent's wording of it does. A quote that would otherwise fail the
+    # grounding check must still pass if its block_id was already confirmed.
+    debate = DebateService()
+    context_chunk_map = {
+        "p1_b1": {"text": "The gateway enforces mTLS for all services."},
+        "p2_b1": {"text": "The gateway enforces mTLS for all services."},
+    }
+    citations = [
+        Citation(block_id="p1_b1", page_number=1, quoted_text="Completely unrelated fabricated sentence."),
+        Citation(block_id="p2_b1", page_number=2, quoted_text="Completely unrelated fabricated sentence."),
+    ]
+
+    valid, rejected = debate._validate_citations(
+        citations,
+        ["p1_b1", "p2_b1"],
+        "critic",
+        context_chunk_map=context_chunk_map,
+        grounded_ids={"p1_b1"},
+    )
+
+    assert [c.block_id for c in valid] == ["p1_b1"]
+    assert [c.block_id for c in rejected] == ["p2_b1"]
+
+
 def test_citation_validator_rejects_real_world_fabricated_quote_p24_b8():
     """Regression test for hunter/20260622_154521_704_adhoc.md (requirement 4.1.3)."""
     debate = DebateService()
@@ -790,6 +818,143 @@ def test_mediator_evidence_policy_lets_confident_not_met_survive_contract_out_of
     assert met_still_gated.final_verdict == "na"
 
 
+def test_mediator_evidence_policy_lets_confident_not_met_survive_lone_applicability_dissent():
+    # Regression for review 53 findings 1638/1669/1682: a confident, structured
+    # "not_met" the debate actually reached was being discarded to "na" just
+    # because one agent (here, the critic) separately flagged applicability as
+    # "not_established" — even though hunter and mediator agreed the control
+    # applies and is missing. This mirrors the contract-scope carve-out above:
+    # a definitive "not_met" the debate reached must survive a lone dissenting
+    # applicability flag.
+    debate = DebateService()
+    result = debate._apply_mediator_evidence_policy(
+        MediatorResult(
+            final_verdict="not_met",
+            raw_final_verdict="not_met",
+            confidence=1.0,
+            applicability_status="established",
+            final_citations=[Citation(block_id="p1_b1", page_number=1)],
+        ),
+        CriticResult(
+            revised_verdict="not_met",
+            applicability_status="not_established",
+            valid_citations=[Citation(block_id="p1_b1", page_number=1)],
+        ),
+        {"in_scope": True, "specific_enough": True},
+        HunterResult(
+            verdict="not_met",
+            applicability_status="established",
+        ),
+    )
+
+    assert result.final_verdict == "not_met"
+    assert result.verdict_policy_source not in {"not_assessable", "structured_not_applicable"}
+
+
+def test_mediator_evidence_policy_lets_confident_not_met_survive_mediator_own_dissent():
+    # Regression for review 54 finding 1726: Hunter and Critic both explicitly
+    # reached "not_met" in agreement (an established, unanimous consensus),
+    # but the Mediator's own independent applicability pass diverged to "na".
+    # Unlike the lone-dissent case above (where a third agent disagrees but
+    # the debate itself already committed to "not_met"), here the Mediator
+    # itself is the one agent out of step — its own re-derivation of
+    # applicability must not outrank an already-established Hunter+Critic
+    # agreement.
+    debate = DebateService()
+    result = debate._apply_mediator_evidence_policy(
+        MediatorResult(
+            final_verdict="na",
+            raw_final_verdict="na",
+            confidence=0.7,
+            applicability_status="not_established",
+            applicability_reason="The design does not establish the prerequisite party.",
+            final_citations=[],
+        ),
+        CriticResult(
+            revised_verdict="not_met",
+            applicability_status="established",
+            valid_citations=[],
+        ),
+        {"in_scope": True, "specific_enough": True},
+        HunterResult(
+            verdict="not_met",
+            applicability_status="established",
+        ),
+    )
+
+    assert result.final_verdict == "not_met"
+    assert result.verdict_policy_source not in {"not_assessable", "structured_not_applicable"}
+
+
+def test_mediator_evidence_policy_na_with_citations_prefers_not_met():
+    # Regression for review 55's na-over-triggering pattern (e.g. findings
+    # 1776/1779/1780/1785/1787/1788): Hunter and Critic structurally agree
+    # applicability is "not_established" (because a different-but-related
+    # mechanism was used instead of the exact one named) while still citing
+    # real block content — e.g. "TSD uses OOB SMS, not TOTP, so na" cites the
+    # OOB-code block itself. A "na" verdict that comes with citations
+    # attached is close to self-contradictory ("na" should mean nothing
+    # relevant was found); prefer "not_met" instead — this is what the
+    # citations backstop specifically targets (distinct from the
+    # `..._na_without_citations_still_stays_na` case below, which has the
+    # same structural "not_established" agreement but no citations and must
+    # stay "na").
+    debate = DebateService()
+    result = debate._apply_mediator_evidence_policy(
+        MediatorResult(
+            final_verdict="na",
+            raw_final_verdict="na",
+            confidence=0.6,
+            applicability_status="not_established",
+            final_citations=[],
+        ),
+        CriticResult(
+            revised_verdict="na",
+            applicability_status="not_established",
+            valid_citations=[Citation(block_id="p1_b1", page_number=1)],
+        ),
+        {"in_scope": True, "specific_enough": True},
+        HunterResult(
+            verdict="na",
+            applicability_status="not_established",
+            citations=[Citation(block_id="p1_b1", page_number=1)],
+        ),
+    )
+
+    assert result.final_verdict == "not_met"
+    assert result.verdict_policy_source not in {"not_assessable", "structured_not_applicable"}
+
+
+def test_mediator_evidence_policy_na_without_citations_still_stays_na():
+    # Contrast case: a genuine "na" — all three agents structurally agree
+    # applicability is not established, and no citations are attached — must
+    # still be preserved as "na". The citations backstop above should only
+    # override when citations are actually attached to the na conclusion.
+    debate = DebateService()
+    result = debate._apply_mediator_evidence_policy(
+        MediatorResult(
+            final_verdict="na",
+            raw_final_verdict="na",
+            confidence=0.6,
+            applicability_status="not_established",
+            final_citations=[],
+        ),
+        CriticResult(
+            revised_verdict="na",
+            applicability_status="not_established",
+            valid_citations=[],
+        ),
+        {"in_scope": True, "specific_enough": True},
+        HunterResult(
+            verdict="na",
+            applicability_status="not_established",
+            citations=[],
+        ),
+    )
+
+    assert result.final_verdict == "na"
+
+
 def test_mediator_evidence_policy_reasoning_sniffer_never_overrides_explicit_not_met():
     # Regression: the free-text "not assessable" keyword sniffer must not
     # override an explicit, structured "not_met" final_verdict just because the
@@ -809,6 +974,65 @@ def test_mediator_evidence_policy_reasoning_sniffer_never_overrides_explicit_not
 
     assert result.final_verdict == "not_met"
     assert result.verdict_policy_source != "not_assessable"
+
+
+def test_mediator_evidence_policy_structured_applicability_preserves_not_met_over_na():
+    debate = DebateService()
+    result = debate._apply_mediator_evidence_policy(
+        MediatorResult(
+            final_verdict="na",
+            raw_final_verdict="na",
+            confidence=0.7,
+            applicability_status="established",
+            applicability_reason="The control applies to the documented API flow.",
+            missing_expected_evidence=["No OTP lifetime or retry limit is specified."],
+            final_citations=[],
+            reasoning="The evidence is incomplete, but the requirement still applies to the workflow.",
+        ),
+        CriticResult(
+            revised_verdict="not_met",
+            applicability_status="established",
+            applicability_reason="The control applies but implementation evidence is missing.",
+            missing_expected_evidence=["No OTP lifetime or retry limit is specified."],
+            valid_citations=[],
+        ),
+        {"in_scope": True, "specific_enough": True},
+        HunterResult(
+            verdict="not_met",
+            applicability_status="established",
+            applicability_reason="Authentication control applies to the design.",
+            missing_expected_evidence=["No OTP lifetime or retry limit is specified."],
+        ),
+    )
+
+    assert result.final_verdict == "not_met"
+    assert result.applicability_status == "established"
+    assert result.verdict_policy_source == "applicable_missing_or_contradicted_evidence"
+
+
+def test_mediator_evidence_policy_structured_not_established_keeps_na():
+    debate = DebateService()
+    result = debate._apply_mediator_evidence_policy(
+        MediatorResult(
+            final_verdict="na",
+            raw_final_verdict="na",
+            confidence=0.7,
+            applicability_status="not_established",
+            applicability_reason="The design does not include the prerequisite subsystem.",
+            final_citations=[],
+        ),
+        CriticResult(
+            revised_verdict="na",
+            applicability_status="not_established",
+            applicability_reason="The design does not include the prerequisite subsystem.",
+            valid_citations=[],
+        ),
+        {"in_scope": True, "specific_enough": True},
+    )
+
+    assert result.final_verdict == "na"
+    assert result.applicability_status == "not_established"
+    assert result.verdict_policy_source == "structured_not_applicable"
 
 
 def test_is_cancelled_detects_cancelled_status(monkeypatch):

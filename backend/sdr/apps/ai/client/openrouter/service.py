@@ -68,16 +68,22 @@ class OpenRouterAIService(AIServiceInterface):
 
             metadata = kwargs.get("metadata")
             reasoning = kwargs.get("reasoning")
-            if metadata or reasoning:
+            provider = kwargs.get("provider")
+            if metadata or reasoning or provider:
                 extra_body: Dict[str, Any] = {}
                 if metadata:
                     extra_body["metadata"] = metadata
                 if reasoning:
                     extra_body["reasoning"] = reasoning
+                if provider:
+                    extra_body["provider"] = provider
                 request_kwargs["extra_body"] = extra_body
 
             if "top_p" in kwargs:
                 request_kwargs["top_p"] = kwargs["top_p"]
+
+            if kwargs.get("seed") is not None:
+                request_kwargs["seed"] = kwargs["seed"]
             
             if response_format:
                 request_kwargs["response_format"] = response_format

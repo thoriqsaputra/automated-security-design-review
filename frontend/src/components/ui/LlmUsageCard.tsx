@@ -7,7 +7,7 @@ interface LlmUsageCardProps {
   usage: JsonRecord | null | undefined;
 }
 
-function formatDuration(totalSeconds: number): string {
+export function formatDuration(totalSeconds: number): string {
   if (!totalSeconds || totalSeconds <= 0) {
     return '0s';
   }

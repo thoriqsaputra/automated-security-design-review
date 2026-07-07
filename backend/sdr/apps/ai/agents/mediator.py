@@ -12,6 +12,8 @@ from sdr.apps.ai.prompts.agents import (
     build_mediator_recommendation_prompt,
 )
 from .base import (
+    APPLICABILITY_ESTABLISHED,
+    APPLICABILITY_NOT_ESTABLISHED,
     BaseAgent,
     Citation,
     CriticResult,
@@ -242,6 +244,20 @@ class MediatorAgent(BaseAgent):
                 parameter_text=parameter_text,
             )
         )
+        applicability_status = self._extract_applicability_status(parsed, verdict=final_verdict)
+        applicability_reason = self._extract_applicability_reason(
+            parsed,
+            default="No applicability reasoning provided by the Mediator agent.",
+        )
+        missing_expected_evidence = self._extract_missing_expected_evidence(parsed)
+        if final_verdict == VERDICT_NA:
+            applicability_status = APPLICABILITY_NOT_ESTABLISHED
+        elif final_verdict in {VERDICT_MET, VERDICT_NOT_MET}:
+            applicability_status = APPLICABILITY_ESTABLISHED
+        if final_verdict == VERDICT_NOT_MET and not missing_expected_evidence:
+            missing_expected_evidence = list(critic_result.missing_expected_evidence or [])
+        if final_verdict != VERDICT_NOT_MET:
+            missing_expected_evidence = []
 
         # ------------------------------------------------------------------
         # 7. Post-parse severity / verdict consistency checks
@@ -312,6 +328,9 @@ class MediatorAgent(BaseAgent):
         return MediatorResult(
             final_verdict=final_verdict,
             confidence=confidence,
+            applicability_status=applicability_status,
+            applicability_reason=applicability_reason,
+            missing_expected_evidence=missing_expected_evidence,
             finding_description=finding_description,
             reasoning=reasoning_fields["reasoning"],
             assumptions=reasoning_fields["assumptions"],
@@ -459,6 +478,20 @@ class MediatorAgent(BaseAgent):
                 recommendation = None
             if final_verdict == VERDICT_NOT_MET and severity is None:
                 severity = "medium"
+            applicability_status = self._extract_applicability_status(item, verdict=final_verdict)
+            applicability_reason = self._extract_applicability_reason(
+                item,
+                default="No applicability reasoning provided by the Mediator agent.",
+            )
+            missing_expected_evidence = self._extract_missing_expected_evidence(item)
+            if final_verdict == VERDICT_NA:
+                applicability_status = APPLICABILITY_NOT_ESTABLISHED
+            elif final_verdict in {VERDICT_MET, VERDICT_NOT_MET}:
+                applicability_status = APPLICABILITY_ESTABLISHED
+            if final_verdict == VERDICT_NOT_MET and not missing_expected_evidence:
+                missing_expected_evidence = list(critic_result.missing_expected_evidence or [])
+            if final_verdict != VERDICT_NOT_MET:
+                missing_expected_evidence = []
             try:
                 debate_rounds_used = int(item.get("debate_rounds_used") or 1)
             except (TypeError, ValueError):
@@ -473,6 +506,9 @@ class MediatorAgent(BaseAgent):
             results[child_id] = MediatorResult(
                 final_verdict=final_verdict,
                 confidence=confidence,
+                applicability_status=applicability_status,
+                applicability_reason=applicability_reason,
+                missing_expected_evidence=missing_expected_evidence,
                 finding_description=finding_description,
                 reasoning=reasoning_fields["reasoning"],
                 assumptions=reasoning_fields["assumptions"],
@@ -593,6 +629,17 @@ class MediatorAgent(BaseAgent):
         return MediatorResult(
             final_verdict=agreed_verdict,
             confidence=averaged_confidence,
+            applicability_status=(
+                APPLICABILITY_NOT_ESTABLISHED
+                if agreed_verdict == VERDICT_NA
+                else APPLICABILITY_ESTABLISHED
+            ),
+            applicability_reason=(
+                "Hunter and Critic agreed that applicability was not established."
+                if agreed_verdict == VERDICT_NA
+                else "Hunter and Critic agreed the requirement remains applicable."
+            ),
+            missing_expected_evidence=list(critic_result.missing_expected_evidence or []),
             finding_description=self._build_fast_path_description(agreed_verdict),
             reasoning=self._build_fast_path_reasoning(
                 agreed_verdict=agreed_verdict,
@@ -953,6 +1000,9 @@ class MediatorAgent(BaseAgent):
         return MediatorResult(
             final_verdict=final_verdict,
             confidence=confidence,
+            applicability_status=critic_result.applicability_status,
+            applicability_reason=critic_result.applicability_reason,
+            missing_expected_evidence=list(critic_result.missing_expected_evidence or []),
             reasoning=reasoning_fields["reasoning"],
             logic_summary=reasoning_fields["logic_summary"],
             final_citations=final_citations,

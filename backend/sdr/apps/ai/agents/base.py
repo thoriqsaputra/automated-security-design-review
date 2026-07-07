@@ -26,6 +26,12 @@ VERDICT_NA = "na"
 VERDICT_PARTIAL = "partial"
 VALID_VERDICTS = {VERDICT_MET, VERDICT_NOT_MET, VERDICT_NA}
 VALID_INTERNAL_VERDICTS = {VERDICT_MET, VERDICT_NOT_MET, VERDICT_NA, VERDICT_PARTIAL}
+APPLICABILITY_ESTABLISHED = "established"
+APPLICABILITY_NOT_ESTABLISHED = "not_established"
+VALID_APPLICABILITY_STATUSES = {
+    APPLICABILITY_ESTABLISHED,
+    APPLICABILITY_NOT_ESTABLISHED,
+}
 
 OUTCOME_UPHOLD = "UPHOLD"
 OUTCOME_OVERTURN = "OVERTURN"
@@ -92,6 +98,9 @@ class AgentReasoningMixin:
 class HunterResult(AgentReasoningMixin):
     verdict: str = VERDICT_NOT_MET
     confidence: float = 0.0
+    applicability_status: str = APPLICABILITY_ESTABLISHED
+    applicability_reason: str = ""
+    missing_expected_evidence: List[str] = field(default_factory=list)
     evidence_found: bool = False
     citations: List[Citation] = field(default_factory=list)
     checked_context: str = ""
@@ -104,6 +113,9 @@ class CriticResult(AgentReasoningMixin):
     outcome: str = OUTCOME_UPHOLD
     revised_verdict: str = VERDICT_NOT_MET
     revised_confidence: float = 0.0
+    applicability_status: str = APPLICABILITY_ESTABLISHED
+    applicability_reason: str = ""
+    missing_expected_evidence: List[str] = field(default_factory=list)
     valid_citations: List[Citation] = field(default_factory=list)
     invalid_citation_ids: List[str] = field(default_factory=list)
     decision: str = "uphold"
@@ -117,6 +129,9 @@ class CriticResult(AgentReasoningMixin):
 class MediatorResult(AgentReasoningMixin):
     final_verdict: str = VERDICT_NOT_MET
     confidence: float = 0.0
+    applicability_status: str = APPLICABILITY_ESTABLISHED
+    applicability_reason: str = ""
+    missing_expected_evidence: List[str] = field(default_factory=list)
     finding_description: str = ""
     final_citations: List[Citation] = field(default_factory=list)
     severity: Optional[str] = None
@@ -149,9 +164,13 @@ class BaseAgent:
     max_tokens: int = 2048
     temperature: float = 0.05
     reasoning_effort: Optional[str] = None
+    seed: Optional[int] = None
 
     def __init__(self) -> None:
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+
+    def _log_label(self, log_context: str = "") -> str:
+        return f"{self.__class__.__name__}[{log_context}]" if log_context else self.__class__.__name__
 
     def _call_llm(
         self,
@@ -161,6 +180,7 @@ class BaseAgent:
         top_p: Optional[float] = None,
         stream_handler: Optional[Callable[[str], None]] = None,
         max_tokens: Optional[int] = None,
+        log_context: str = "",
     ) -> AIResponse:
         request_kwargs = {
             "messages": [
@@ -179,6 +199,8 @@ class BaseAgent:
         reasoning_effort = self.reasoning_effort or getattr(settings, "AI_OPENROUTER_REASONING_EFFORT", "") or ""
         if reasoning_effort:
             request_kwargs["reasoning"] = {"effort": reasoning_effort}
+        if self.seed is not None:
+            request_kwargs["seed"] = self.seed
         if stream_handler:
             stream = chat_completion(stream=True, **request_kwargs)
             content_parts: List[str] = []
@@ -194,7 +216,7 @@ class BaseAgent:
                         try:
                             stream_handler(chunk)
                         except Exception:
-                            self.logger.debug("%s._call_llm: stream handler raised.", self.__class__.__name__, exc_info=True)
+                            self.logger.debug("%s._call_llm: stream handler raised.", self._log_label(log_context), exc_info=True)
                 except Exception as exc:
                     error = str(exc)
                 response = AIResponse(
@@ -204,12 +226,12 @@ class BaseAgent:
                     error=error,
                 )
                 if error:
-                    self.logger.warning("%s._call_llm: streamed request failed: %s", self.__class__.__name__, error)
+                    self.logger.warning("%s._call_llm: streamed request failed: %s", self._log_label(log_context), error)
         else:
             response = chat_completion(**request_kwargs)
         self.logger.info(
             "%s._call_llm: output_chars=%d max_tokens=%d finish_reason=%s error=%s",
-            self.__class__.__name__,
+            self._log_label(log_context),
             len(response.content or ""),
             request_kwargs["max_tokens"],
             getattr(response, "finish_reason", None),
@@ -237,7 +259,7 @@ class BaseAgent:
             self.logger.warning(
                 "%s._call_llm_with_truncation_retry: truncated at max_tokens=%d; "
                 "retrying once with max_tokens=%d.",
-                self.__class__.__name__,
+                self._log_label(kwargs.get("log_context", "")),
                 self.max_tokens,
                 retry_max_tokens,
             )
@@ -245,18 +267,19 @@ class BaseAgent:
             self.logger.warning(
                 "%s._call_llm_with_truncation_retry: empty response (finish_reason=%s); "
                 "retrying once.",
-                self.__class__.__name__,
+                self._log_label(kwargs.get("log_context", "")),
                 getattr(response, "finish_reason", None),
             )
         retry_kwargs = dict(kwargs)
         retry_kwargs["max_tokens"] = retry_max_tokens
         return self._call_llm(user_prompt=user_prompt, **retry_kwargs)
 
-    def _parse_json_response(self, response: AIResponse) -> Optional[Dict[str, Any]]:
+    def _parse_json_response(self, response: AIResponse, log_context: str = "") -> Optional[Dict[str, Any]]:
+        label = self._log_label(log_context)
         if getattr(response, "finish_reason", None) == "length":
             self.logger.warning(
                 "%s._parse_json_response: response truncated by max_tokens; skipping JSON repair.",
-                self.__class__.__name__,
+                label,
             )
             return None
 
@@ -265,7 +288,7 @@ class BaseAgent:
         if not content.strip():
             self.logger.warning(
                 "%s._parse_json_response: empty response content.",
-                self.__class__.__name__,
+                label,
             )
             return None
 
@@ -275,10 +298,30 @@ class BaseAgent:
             err_pos = getattr(exc, "pos", "unknown")
             self.logger.warning(
                 "%s._parse_json_response: json decode/value failed at pos=%s: %s. Attempting repair.",
-                self.__class__.__name__,
+                label,
                 err_pos,
                 exc,
             )
+            lenient_parsed = None
+            try:
+                lenient_parsed = json.loads(content, strict=False)
+            except (json.JSONDecodeError, ValueError):
+                pass
+            if lenient_parsed is not None:
+                self.logger.info(
+                    "%s._parse_json_response: recovered via lenient (strict=False) reparse — "
+                    "response contained an unescaped control character.",
+                    label,
+                )
+                parsed = lenient_parsed
+                if not isinstance(parsed, dict):
+                    self.logger.warning(
+                        "%s._parse_json_response: expected dict, got %s.",
+                        label,
+                        type(parsed).__name__,
+                    )
+                    return None
+                return parsed
             repair_prompt = (
                 "The following JSON has syntax errors (e.g. missing commas, unescaped quotes). "
                 "Fix it and return ONLY valid JSON without any markdown or conversational text.\n\n"
@@ -292,20 +335,20 @@ class BaseAgent:
                 response_format={"type": "json_object"}
             )
             if repair_resp.error:
-                self.logger.warning("%s._parse_json_response: JSON repair API error.", self.__class__.__name__)
+                self.logger.warning("%s._parse_json_response: JSON repair API error.", label)
                 return None
             try:
                 clean_repair = strip_thinking_block(repair_resp.content or "")
                 parsed = json.loads(strip_markdown_code_blocks(clean_repair))
-                self.logger.info("%s._parse_json_response: successfully repaired JSON via LLM fallback.", self.__class__.__name__)
+                self.logger.info("%s._parse_json_response: successfully repaired JSON via LLM fallback.", label)
             except (json.JSONDecodeError, ValueError):
-                self.logger.warning("%s._parse_json_response: JSON repair failed.", self.__class__.__name__)
+                self.logger.warning("%s._parse_json_response: JSON repair failed.", label)
                 return None
 
         if not isinstance(parsed, dict):
             self.logger.warning(
                 "%s._parse_json_response: expected dict, got %s.",
-                self.__class__.__name__,
+                label,
                 type(parsed).__name__,
             )
             return None
@@ -512,10 +555,44 @@ class BaseAgent:
         except (TypeError, ValueError):
             return None
 
+    def _extract_applicability_status(
+        self,
+        parsed: dict,
+        *,
+        verdict: str,
+        default: Optional[str] = None,
+    ) -> str:
+        value = parsed.get("applicability_status")
+        if isinstance(value, str):
+            candidate = value.strip().lower()
+            if candidate in VALID_APPLICABILITY_STATUSES:
+                return candidate
+        if default in VALID_APPLICABILITY_STATUSES:
+            return str(default)
+        return APPLICABILITY_NOT_ESTABLISHED if verdict == VERDICT_NA else APPLICABILITY_ESTABLISHED
+
+    def _extract_applicability_reason(self, parsed: dict, *, default: str = "") -> str:
+        return self._extract_text_field(
+            parsed,
+            "applicability_reason",
+            default=default,
+            max_chars=1200,
+        )
+
+    def _extract_missing_expected_evidence(self, parsed: dict) -> List[str]:
+        return self._extract_string_list(
+            parsed,
+            "missing_expected_evidence",
+            max_items=8,
+            max_chars=280,
+        )
+
     def _hunter_error(self, message: str, raw: Optional[str] = None) -> HunterResult:
         return HunterResult(
             verdict=VERDICT_NA,
             confidence=0.0,
+            applicability_status=APPLICABILITY_NOT_ESTABLISHED,
+            applicability_reason="Hunter failed before applicability could be established.",
             reasoning=message,
             logic_summary=message,
             evidence_found=False,
@@ -529,6 +606,8 @@ class BaseAgent:
             outcome=OUTCOME_UPHOLD,
             revised_verdict=VERDICT_NA,
             revised_confidence=0.0,
+            applicability_status=APPLICABILITY_NOT_ESTABLISHED,
+            applicability_reason="Critic failed before applicability could be established.",
             reasoning=message,
             logic_summary=message,
             valid_citations=[],
@@ -541,6 +620,8 @@ class BaseAgent:
         return MediatorResult(
             final_verdict=VERDICT_NOT_MET,
             confidence=0.0,
+            applicability_status=APPLICABILITY_ESTABLISHED,
+            applicability_reason="Mediator failed; preserving conservative applicable verdict.",
             reasoning=message,
             logic_summary=message,
             final_citations=[],

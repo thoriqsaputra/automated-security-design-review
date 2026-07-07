@@ -11,6 +11,8 @@ from sdr.apps.ai.prompts.agents import (
     build_batch_critic_prompt,
 )
 from .base import (
+    APPLICABILITY_ESTABLISHED,
+    APPLICABILITY_NOT_ESTABLISHED,
     BaseAgent,
     Citation,
     CriticResult,
@@ -20,6 +22,7 @@ from .base import (
     OUTCOME_PARTIAL,
     VALID_OUTCOMES,
     VERDICT_MET,
+    VERDICT_NA,
     VERDICT_NOT_MET,
 )
 
@@ -104,6 +107,12 @@ class CriticAgent(BaseAgent):
                 outcome=OUTCOME_UPHOLD,
                 revised_verdict=hunter_result.verdict,
                 revised_confidence=hunter_result.confidence,
+                applicability_status=hunter_result.applicability_status or APPLICABILITY_NOT_ESTABLISHED,
+                applicability_reason=(
+                    hunter_result.applicability_reason
+                    or "Critic skipped because Hunter errored before applicability could be challenged."
+                ),
+                missing_expected_evidence=list(hunter_result.missing_expected_evidence or []),
                 reasoning=(
                     "Critic skipped: Hunter agent returned an error. "
                     "No challenge possible — Hunter's result is passed through."
@@ -139,6 +148,12 @@ class CriticAgent(BaseAgent):
                 outcome=OUTCOME_UPHOLD,
                 revised_verdict=VERDICT_NOT_MET,
                 revised_confidence=hunter_result.confidence,
+                applicability_status=APPLICABILITY_ESTABLISHED,
+                applicability_reason=(
+                    hunter_result.applicability_reason
+                    or "The requirement remains applicable; the issue is missing implementation evidence."
+                ),
+                missing_expected_evidence=list(hunter_result.missing_expected_evidence or []),
                 reasoning=(
                     "Critic auto-upheld: Hunter returned not_met with no "
                     "citations or evidence. No LLM call required."
@@ -284,6 +299,37 @@ class CriticAgent(BaseAgent):
 
         if decision == "uphold" and outcome in {OUTCOME_OVERTURN, OUTCOME_PARTIAL}:
             decision = "reject" if outcome == OUTCOME_OVERTURN else "challenge"
+        applicability_status = self._extract_applicability_status(parsed, verdict=revised_verdict)
+        applicability_reason = self._extract_applicability_reason(
+            parsed,
+            default="No applicability reasoning provided by the Critic agent.",
+        )
+        missing_expected_evidence = self._extract_missing_expected_evidence(parsed)
+        if revised_verdict == VERDICT_NA:
+            applicability_status = APPLICABILITY_NOT_ESTABLISHED
+        elif revised_verdict in {VERDICT_MET, VERDICT_NOT_MET}:
+            applicability_status = APPLICABILITY_ESTABLISHED
+        if (
+            hunter_result.verdict == VERDICT_NOT_MET
+            and revised_verdict == VERDICT_NA
+            and applicability_status != APPLICABILITY_NOT_ESTABLISHED
+        ):
+            self.logger.warning(
+                "CriticAgent.run: coerced revised_verdict na -> not_met because applicability remained established "
+                "for parameter '%s...'",
+                parameter_text[:60],
+            )
+            revised_verdict = VERDICT_NOT_MET
+            applicability_status = APPLICABILITY_ESTABLISHED
+            outcome = OUTCOME_PARTIAL if outcome == OUTCOME_OVERTURN else outcome
+            decision = "challenge" if decision == "reject" else decision
+        if revised_verdict == VERDICT_NOT_MET and not missing_expected_evidence:
+            fallback_missing = weak_evidence or missed_evidence or objections
+            missing_expected_evidence = list(fallback_missing[:5])
+            if not missing_expected_evidence and reasoning_fields["logic_summary"]:
+                missing_expected_evidence = [reasoning_fields["logic_summary"][:400]]
+        if revised_verdict != VERDICT_NOT_MET:
+            missing_expected_evidence = []
 
         # ------------------------------------------------------------------
         # 10. Log and return
@@ -317,6 +363,9 @@ class CriticAgent(BaseAgent):
             outcome=outcome,
             revised_verdict=revised_verdict,
             revised_confidence=revised_confidence,
+            applicability_status=applicability_status,
+            applicability_reason=applicability_reason,
+            missing_expected_evidence=missing_expected_evidence,
             reasoning=reasoning_fields["reasoning"],
             assumptions=reasoning_fields["assumptions"],
             logic_summary=reasoning_fields["logic_summary"],
@@ -365,6 +414,12 @@ class CriticAgent(BaseAgent):
                     outcome=OUTCOME_UPHOLD,
                     revised_verdict=VERDICT_NOT_MET,
                     revised_confidence=hunter_result.confidence,
+                    applicability_status=APPLICABILITY_ESTABLISHED,
+                    applicability_reason=(
+                        hunter_result.applicability_reason
+                        or "The requirement remains applicable; the issue is missing implementation evidence."
+                    ),
+                    missing_expected_evidence=list(hunter_result.missing_expected_evidence or []),
                     reasoning=(
                         "Critic auto-upheld: Hunter returned not_met with no "
                         "citations or evidence. No LLM call required."
@@ -456,10 +511,43 @@ class CriticAgent(BaseAgent):
                 decision = "challenge"
             if decision == "uphold" and outcome in {OUTCOME_OVERTURN, OUTCOME_PARTIAL}:
                 decision = "reject" if outcome == OUTCOME_OVERTURN else "challenge"
+            applicability_status = self._extract_applicability_status(item, verdict=revised_verdict)
+            applicability_reason = self._extract_applicability_reason(
+                item,
+                default="No applicability reasoning provided by the Critic agent.",
+            )
+            missing_expected_evidence = self._extract_missing_expected_evidence(item)
+            if revised_verdict == VERDICT_NA:
+                applicability_status = APPLICABILITY_NOT_ESTABLISHED
+            elif revised_verdict in {VERDICT_MET, VERDICT_NOT_MET}:
+                applicability_status = APPLICABILITY_ESTABLISHED
+            if (
+                hunter_result.verdict == VERDICT_NOT_MET
+                and revised_verdict == VERDICT_NA
+                and applicability_status != APPLICABILITY_NOT_ESTABLISHED
+            ):
+                revised_verdict = VERDICT_NOT_MET
+                applicability_status = APPLICABILITY_ESTABLISHED
+                outcome = OUTCOME_PARTIAL if outcome == OUTCOME_OVERTURN else outcome
+                decision = "challenge" if decision == "reject" else decision
+            if revised_verdict == VERDICT_NOT_MET and not missing_expected_evidence:
+                fallback_missing = (
+                    self._extract_string_list(item, "weak_evidence")
+                    or self._extract_string_list(item, "missed_evidence")
+                    or self._extract_string_list(item, "objections")
+                )
+                missing_expected_evidence = list(fallback_missing[:5])
+                if not missing_expected_evidence and reasoning_fields["logic_summary"]:
+                    missing_expected_evidence = [reasoning_fields["logic_summary"][:400]]
+            if revised_verdict != VERDICT_NOT_MET:
+                missing_expected_evidence = []
             results[child_id] = CriticResult(
                 outcome=outcome,
                 revised_verdict=revised_verdict,
                 revised_confidence=revised_confidence,
+                applicability_status=applicability_status,
+                applicability_reason=applicability_reason,
+                missing_expected_evidence=missing_expected_evidence,
                 reasoning=reasoning_fields["reasoning"],
                 assumptions=reasoning_fields["assumptions"],
                 logic_summary=reasoning_fields["logic_summary"],

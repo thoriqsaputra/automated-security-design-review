@@ -478,32 +478,80 @@ class RAPTORTreeBuilder:
             if not page_text:
                 continue
 
-            heading_key = page.section_heading or f"__page_{page.page_number}__"
-            page_block_ids = [
-                block.block_id
+            valid_blocks = [
+                block
                 for block in page.text_blocks
                 if block.is_valid() and block.block_id in allowed_block_ids
             ]
+            distinct_headings = {block.section_heading for block in valid_blocks}
 
-            page_entry = {
-                "text": page_text,
-                "block_ids": page_block_ids,
-                "page_number": page.page_number,
-            }
-
-            if (
-                section_groups
-                and section_groups[-1]["heading_key"] == heading_key
-                and not heading_key.startswith("__page_")
-            ):
-                section_groups[-1]["pages"].append(page_entry)
-            else:
-                section_groups.append(
+            if len(distinct_headings) <= 1:
+                # Common case: the whole page is one section — use the
+                # markdown-first page text as before (preserves image
+                # references and markdown fidelity).
+                heading_key = page.section_heading or f"__page_{page.page_number}__"
+                page_entries = [
                     {
                         "heading_key": heading_key,
-                        "pages": [page_entry],
+                        "text": page_text,
+                        "block_ids": [block.block_id for block in valid_blocks],
+                        "page_number": page.page_number,
                     }
-                )
+                ]
+            else:
+                # This page contains a heading transition partway down (e.g.
+                # one section ends and another begins on the same physical
+                # page). Splitting by each block's own section_heading avoids
+                # embedding both topics as one diluted leaf — see the
+                # per-block heading fix in ingestor.py::_process_page. This
+                # falls back to raw block text (not page-level markdown) for
+                # just these split runs.
+                page_entries = []
+                current_run: List[Any] = []
+                current_heading: Optional[str] = None
+                for block in valid_blocks:
+                    if current_run and block.section_heading != current_heading:
+                        page_entries.append(
+                            {
+                                "heading_key": current_heading or f"__page_{page.page_number}_run{len(page_entries)}__",
+                                "text": "\n".join(b.text for b in current_run),
+                                "block_ids": [b.block_id for b in current_run],
+                                "page_number": page.page_number,
+                            }
+                        )
+                        current_run = []
+                    current_heading = block.section_heading
+                    current_run.append(block)
+                if current_run:
+                    page_entries.append(
+                        {
+                            "heading_key": current_heading or f"__page_{page.page_number}_run{len(page_entries)}__",
+                            "text": "\n".join(b.text for b in current_run),
+                            "block_ids": [b.block_id for b in current_run],
+                            "page_number": page.page_number,
+                        }
+                    )
+
+            for entry in page_entries:
+                heading_key = entry["heading_key"]
+                page_entry = {
+                    "text": entry["text"],
+                    "block_ids": entry["block_ids"],
+                    "page_number": entry["page_number"],
+                }
+                if (
+                    section_groups
+                    and section_groups[-1]["heading_key"] == heading_key
+                    and not heading_key.startswith("__page_")
+                ):
+                    section_groups[-1]["pages"].append(page_entry)
+                else:
+                    section_groups.append(
+                        {
+                            "heading_key": heading_key,
+                            "pages": [page_entry],
+                        }
+                    )
 
         leaf_nodes: List[RAPTORNode] = []
         node_idx = 0
