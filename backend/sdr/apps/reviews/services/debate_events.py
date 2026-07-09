@@ -247,6 +247,7 @@ class ReviewDebateEventStore:
         execution_mode: str,
         content: str,
         progress_percent: int,
+        round_number: Optional[int] = None,
     ) -> None:
         debate_id = str(debate["debate_id"])
 
@@ -263,6 +264,7 @@ class ReviewDebateEventStore:
                 "started_at": now,
                 "completed_at": None,
                 "updated_at": now,
+                "round": round_number,
             }
             debate_state["status"] = "running"
             debate_state["active_agent"] = agent
@@ -321,6 +323,7 @@ class ReviewDebateEventStore:
         execution_mode: Optional[str] = None,
         critic_outcome: Optional[str] = None,
         requires_rebuttal: Optional[bool] = None,
+        round_number: Optional[int] = None,
     ) -> None:
         def mutate(snapshot: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             debate_state = (snapshot.get("debates") or {}).get(debate_id)
@@ -340,6 +343,7 @@ class ReviewDebateEventStore:
                     "started_at": now,
                     "completed_at": now,
                     "updated_at": now,
+                    "round": round_number,
                 }
                 debate_state.setdefault("transcript", []).append(message)
             else:
@@ -347,6 +351,8 @@ class ReviewDebateEventStore:
                 message["status"] = "completed"
                 message["completed_at"] = now
                 message["updated_at"] = now
+                if round_number is not None:
+                    message["round"] = round_number
             if critic_outcome is not None:
                 message["critic_outcome"] = critic_outcome
                 debate_state["critic_outcome"] = critic_outcome
@@ -482,31 +488,100 @@ class ReviewDebateEventStore:
             analysis_trace = requirement_metadata.get("analysis_trace") if isinstance(requirement_metadata, dict) else None
             critic_outcome = _extract_critic_outcome(analysis_trace, is_diagram=is_diagram)
 
+            started_at = getattr(finding, "created_at", None).isoformat() if getattr(finding, "created_at", None) else now
+            completed_at = getattr(finding, "updated_at", None).isoformat() if getattr(finding, "updated_at", None) else now
+            debate_history = analysis_trace.get("debate_history") if isinstance(analysis_trace, dict) else None
             transcript: List[Dict[str, Any]] = []
-            # Chain-of-thought first: prefer the *_thought_process columns (real
-            # per-agent reasoning trace) over the *_reasoning final-answer summary.
-            for agent, cot, reasoning in (
-                ("hunter", getattr(finding, "hunter_thought_process", None), getattr(finding, "hunter_reasoning", None)),
-                ("critic", getattr(finding, "critic_thought_process", None), getattr(finding, "critic_reasoning", None)),
-                ("mediator", getattr(finding, "mediator_thought_process", None), getattr(finding, "mediator_reasoning", None)),
-            ):
-                text = _clean_text(cot) or _clean_text(reasoning)
-                if not text:
-                    continue
-                message: Dict[str, Any] = {
-                    "message_id": f"{agent}:{len(transcript) + 1}",
-                    "agent": agent,
-                    "kind": "reasoning",
-                    "status": "completed",
-                    "content": text,
-                    "started_at": getattr(finding, "created_at", None).isoformat() if getattr(finding, "created_at", None) else now,
-                    "completed_at": getattr(finding, "updated_at", None).isoformat() if getattr(finding, "updated_at", None) else now,
-                    "updated_at": getattr(finding, "updated_at", None).isoformat() if getattr(finding, "updated_at", None) else now,
-                }
-                if agent == "critic" and critic_outcome:
-                    message["critic_outcome"] = critic_outcome
-                    message["requires_rebuttal"] = critic_outcome in ("OVERTURN", "PARTIAL")
-                transcript.append(message)
+
+            if not is_diagram and isinstance(debate_history, list) and debate_history:
+                # Replay every round (including rebuttals) instead of only the
+                # final round's *_thought_process columns, so completed reviews
+                # show the same back-and-forth conversation the live SSE view does.
+                for round_entry in debate_history:
+                    if not isinstance(round_entry, dict):
+                        continue
+                    round_number = round_entry.get("round")
+                    hunter_round = round_entry.get("hunter") if isinstance(round_entry.get("hunter"), dict) else {}
+                    critic_round = round_entry.get("critic") if isinstance(round_entry.get("critic"), dict) else {}
+
+                    hunter_text = _clean_text(hunter_round.get("reasoning"))
+                    if hunter_text:
+                        transcript.append(
+                            {
+                                "message_id": f"hunter:{len(transcript) + 1}",
+                                "agent": "hunter",
+                                "kind": "reasoning",
+                                "status": "completed",
+                                "content": hunter_text,
+                                "started_at": started_at,
+                                "completed_at": completed_at,
+                                "updated_at": completed_at,
+                                "round": round_number,
+                            }
+                        )
+
+                    critic_text = _clean_text(critic_round.get("reasoning"))
+                    if critic_text:
+                        round_outcome = str(critic_round.get("outcome") or "").strip().upper() or None
+                        critic_message: Dict[str, Any] = {
+                            "message_id": f"critic:{len(transcript) + 1}",
+                            "agent": "critic",
+                            "kind": "reasoning",
+                            "status": "completed",
+                            "content": critic_text,
+                            "started_at": started_at,
+                            "completed_at": completed_at,
+                            "updated_at": completed_at,
+                            "round": round_number,
+                        }
+                        if round_outcome:
+                            critic_message["critic_outcome"] = round_outcome
+                        if critic_round.get("requires_rebuttal") is not None:
+                            critic_message["requires_rebuttal"] = bool(critic_round.get("requires_rebuttal"))
+                        transcript.append(critic_message)
+
+                mediator_text = _clean_text(getattr(finding, "mediator_thought_process", None)) or _clean_text(
+                    getattr(finding, "mediator_reasoning", None)
+                )
+                if mediator_text:
+                    transcript.append(
+                        {
+                            "message_id": f"mediator:{len(transcript) + 1}",
+                            "agent": "mediator",
+                            "kind": "reasoning",
+                            "status": "completed",
+                            "content": mediator_text,
+                            "started_at": started_at,
+                            "completed_at": completed_at,
+                            "updated_at": completed_at,
+                            "round": None,
+                        }
+                    )
+            else:
+                # Fallback (e.g. diagram findings, which don't use text debate_history):
+                # one message per agent from the flat *_thought_process/*_reasoning columns.
+                for agent, cot, reasoning in (
+                    ("hunter", getattr(finding, "hunter_thought_process", None), getattr(finding, "hunter_reasoning", None)),
+                    ("critic", getattr(finding, "critic_thought_process", None), getattr(finding, "critic_reasoning", None)),
+                    ("mediator", getattr(finding, "mediator_thought_process", None), getattr(finding, "mediator_reasoning", None)),
+                ):
+                    text = _clean_text(cot) or _clean_text(reasoning)
+                    if not text:
+                        continue
+                    message = {
+                        "message_id": f"{agent}:{len(transcript) + 1}",
+                        "agent": agent,
+                        "kind": "reasoning",
+                        "status": "completed",
+                        "content": text,
+                        "started_at": started_at,
+                        "completed_at": completed_at,
+                        "updated_at": completed_at,
+                    }
+                    if agent == "critic" and critic_outcome:
+                        message["critic_outcome"] = critic_outcome
+                        message["requires_rebuttal"] = critic_outcome in ("OVERTURN", "PARTIAL")
+                    transcript.append(message)
 
             section_title = None
             if isinstance(requirement_metadata, dict):

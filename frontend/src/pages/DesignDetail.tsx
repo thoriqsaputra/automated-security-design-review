@@ -1,23 +1,31 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
-import { ArrowLeft, Check, ChevronDown, FileText, Play, Search } from 'lucide-react';
+import { ArrowLeft, Check, ChevronDown, FileText, Play, Search, Trash2 } from 'lucide-react';
 import type { JsonRecord, RetrievalVisualization } from '../api/reviews';
 import LoadingSpinner from '../components/ui/LoadingSpinner';
 import Card from '../components/ui/Card';
 import LlmUsageCard from '../components/ui/LlmUsageCard';
 import StatusBadge from '../components/ui/StatusBadge';
 import RaptorTreeView from '../components/flow/RaptorTreeView';
-import { getDesign, retryDesignPreparation, cancelDesignPreparation, type DesignDetail } from '../api/designs';
+import {
+  getDesign,
+  retryDesignPreparation,
+  cancelDesignPreparation,
+  reingestDesign,
+  type DesignDetail,
+} from '../api/designs';
 import { listCategories, type StandardCategory } from '../api/standards';
 import {
   cancelReview,
   createReview,
+  deleteReview,
   listReviews,
   triggerReview,
   type Review,
   type ReviewAnalysisMode,
 } from '../api/reviews';
 import CreateReviewModal from '../features/designs/components/CreateReviewModal';
+import DesignReingestModal from '../features/designs/components/DesignReingestModal';
 import ReviewWorkspace from '../features/reviews/components/ReviewWorkspace';
 import { useReviewDetail } from '../features/reviews/hooks/useReviewDetail';
 import { ANALYSIS_MODE_OPTIONS, formatAnalysisModeLabel } from '../features/reviews/utils/reviewPresentation';
@@ -68,9 +76,14 @@ export default function DesignDetailPage() {
   const [creating, setCreating] = useState(false);
   const [retryingPreparation, setRetryingPreparation] = useState(false);
   const [cancellingPreparation, setCancellingPreparation] = useState(false);
+  const [showReingestModal, setShowReingestModal] = useState(false);
+  const [reingestFile, setReingestFile] = useState<File | null>(null);
+  const [reingesting, setReingesting] = useState(false);
+  const [reingestError, setReingestError] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [reviewSearch, setReviewSearch] = useState('');
-  const [activeTab, setActiveTab] = useState<'prepared_retrieval' | 'review_details' | 'usage'>('review_details');
+  const [deletingReviewId, setDeletingReviewId] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<'prepared_retrieval' | 'review_details'>('review_details');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -146,6 +159,41 @@ export default function DesignDetailPage() {
     }
   };
 
+  const handleReingest = async () => {
+    if (!id || !reingestFile) return;
+    setReingesting(true);
+    setReingestError(null);
+    try {
+      await reingestDesign(Number(id), reingestFile);
+      maxSeenPercentRef.current = 0;
+      setShowReingestModal(false);
+      setReingestFile(null);
+      await load();
+    } catch (err) {
+      const detail =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        'Failed to reingest design document.';
+      setReingestError(detail);
+    } finally {
+      setReingesting(false);
+    }
+  };
+
+
+  const handleDeleteReview = async (e: React.MouseEvent, reviewId: number) => {
+    e.stopPropagation();
+    if (!confirm(`Delete Review #${reviewId}? This cannot be undone.`)) return;
+    setDeletingReviewId(reviewId);
+    try {
+      await deleteReview(reviewId);
+      if (selectedReview?.id === reviewId) {
+        setSearchParams({}, { replace: true });
+      }
+      await load();
+    } finally {
+      setDeletingReviewId(null);
+    }
+  };
 
   const requestedReviewId = searchParams.get('reviewId');
 
@@ -201,6 +249,31 @@ export default function DesignDetailPage() {
   };
 
   const selectedReviewState = useReviewDetail(selectedReview ? String(selectedReview.id) : undefined);
+
+  // `reviews` is only refetched on mount and after explicit user actions, so its
+  // entries go stale once a review finishes while the user is viewing it —
+  // `selectedReviewState.review` is the one object that's actively polled (every
+  // 8s while running, see useReviewDetail), so mirror its status back into the
+  // list/picker whenever it changes.
+  useEffect(() => {
+    const freshReview = selectedReviewState.review;
+    if (!freshReview) {
+      return;
+    }
+    setReviews((prev) => {
+      const index = prev.findIndex((review) => review.id === freshReview.id);
+      if (index === -1) {
+        return prev;
+      }
+      const current = prev[index];
+      if (current.status === freshReview.status && current.updated_at === freshReview.updated_at) {
+        return prev;
+      }
+      const next = [...prev];
+      next[index] = { ...current, ...freshReview };
+      return next;
+    });
+  }, [selectedReviewState.review]);
 
   const runningReview = useMemo(
     () => reviews.find((review) => review.status === 'running') || null,
@@ -535,6 +608,21 @@ export default function DesignDetailPage() {
                           </div>
                           <div className="mt-0.5 flex shrink-0 items-center gap-2">
                             {isActive && <Check size={16} className="text-flame" />}
+                            <span
+                              role="button"
+                              tabIndex={0}
+                              onClick={(e) => void handleDeleteReview(e, review.id)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' || e.key === ' ') {
+                                  e.preventDefault();
+                                  void handleDeleteReview(e as unknown as React.MouseEvent, review.id);
+                                }
+                              }}
+                              aria-disabled={deletingReviewId === review.id}
+                              className={`rounded-lg p-1.5 text-text-muted transition-colors hover:bg-crimson/15 hover:text-crimson ${deletingReviewId === review.id ? 'pointer-events-none opacity-40' : ''}`}
+                            >
+                              <Trash2 size={14} />
+                            </span>
                           </div>
                         </button>
                       );
@@ -565,6 +653,18 @@ export default function DesignDetailPage() {
               {retryingPreparation ? 'Retrying...' : 'Retry Preparation'}
             </button>
           )}
+          <button
+            onClick={() => {
+              setReingestError(null);
+              setReingestFile(null);
+              setShowReingestModal(true);
+            }}
+            disabled={hasRunningReview || ['queued', 'running'].includes(design.preparation_status)}
+            title={hasRunningReview ? 'Cannot reingest while a review is pending or running.' : undefined}
+            className="rounded-xl border border-surface-border px-4 py-2 text-sm font-semibold text-text-primary transition-colors hover:border-burgundy disabled:opacity-40"
+          >
+            Reingest
+          </button>
           {showToolbarCancelButton ? (
             <button
               onClick={() => void handleCancelRunningReview()}
@@ -610,18 +710,6 @@ export default function DesignDetailPage() {
         >
           Review Details
         </button>
-        {(preparationDurationLabel || preparationLlmUsage) && (
-          <button
-            onClick={() => setActiveTab('usage')}
-            className={`border-b-2 pb-3 text-sm font-semibold whitespace-nowrap transition-colors ${
-              activeTab === 'usage'
-                ? 'border-flame text-flame'
-                : 'border-transparent text-text-muted hover:text-text-primary'
-            }`}
-          >
-            Token & Time Usage
-          </button>
-        )}
       </div>
 
       {activeTab === 'prepared_retrieval' && design.preparation_status === 'ready' && preparationSnapshot && (
@@ -649,6 +737,21 @@ export default function DesignDetailPage() {
               </p>
             </Card>
           )}
+
+          {(preparationDurationLabel || preparationLlmUsage) && (
+            <div className="grid grid-cols-1 gap-4 xl:grid-cols-[240px_minmax(0,1fr)]">
+              {preparationDurationLabel && (
+                <Card>
+                  <p className="text-sm font-semibold text-text-primary">Preparation Duration</p>
+                  <p className="mt-1 text-xs text-text-muted">End-to-end TSD ingestion and indexing time</p>
+                  <div className="mt-4 text-2xl font-bold text-text-primary">{preparationDurationLabel}</div>
+                </Card>
+              )}
+              {preparationLlmUsage && (
+                <LlmUsageCard title="TSD Ingestion LLM Usage" usage={preparationLlmUsage} />
+              )}
+            </div>
+          )}
         </div>
       )}
 
@@ -667,30 +770,6 @@ export default function DesignDetailPage() {
           </Card>
         ))}
 
-      {activeTab === 'usage' && (preparationDurationLabel || preparationLlmUsage) && (
-        <div className="space-y-4">
-          <div>
-            <h2 className="text-lg font-semibold text-text-primary">Token and Time Usage</h2>
-            <p className="mt-1 text-sm text-text-muted">
-              Resource usage for TSD ingestion and preparation before review execution.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-4 xl:grid-cols-[240px_minmax(0,1fr)]">
-            {preparationDurationLabel && (
-              <Card>
-                <p className="text-sm font-semibold text-text-primary">Preparation Duration</p>
-                <p className="mt-1 text-xs text-text-muted">End-to-end TSD ingestion and indexing time</p>
-                <div className="mt-4 text-2xl font-bold text-text-primary">{preparationDurationLabel}</div>
-              </Card>
-            )}
-            {preparationLlmUsage && (
-              <LlmUsageCard title="TSD Ingestion LLM Usage" usage={preparationLlmUsage} />
-            )}
-          </div>
-        </div>
-      )}
-
       <CreateReviewModal
         open={showReviewModal}
         categories={categories}
@@ -701,6 +780,16 @@ export default function DesignDetailPage() {
         onCategoryChange={setSelectedCat}
         onAnalysisModeChange={setAnalysisMode}
         onSubmit={() => void handleCreateReview()}
+      />
+
+      <DesignReingestModal
+        open={showReingestModal}
+        file={reingestFile}
+        reingesting={reingesting}
+        error={reingestError}
+        onClose={() => setShowReingestModal(false)}
+        onFileChange={setReingestFile}
+        onSubmit={() => void handleReingest()}
       />
     </div>
   );

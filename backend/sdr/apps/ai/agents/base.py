@@ -401,6 +401,8 @@ class BaseAgent:
         raw = parsed.get(field_name)
         if raw is None:
             text = default
+        elif isinstance(raw, list):
+            text = "\n".join(str(item).strip() for item in raw if str(item).strip()) or default
         else:
             text = str(raw).strip() or default
         if max_chars is not None and len(text) > max_chars:

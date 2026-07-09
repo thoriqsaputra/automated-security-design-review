@@ -101,6 +101,28 @@ def test_run_keeps_met_when_citations_survive(monkeypatch):
     assert result.severity is None
 
 
+def test_fast_path_keeps_verified_met_with_lower_confidence():
+    agent = MediatorAgent()
+    hunter_result = HunterResult(verdict="met", confidence=0.62)
+    citation = Citation(block_id="p1_b1", page_number=1, quoted_text="uses TLS")
+    critic_result = CriticResult(
+        outcome="UPHOLD",
+        revised_verdict="met",
+        revised_confidence=0.61,
+        valid_citations=[citation],
+    )
+
+    fast_path_result = agent._try_fast_path(
+        parameter_text="Require TLS for all traffic",
+        hunter_result=hunter_result,
+        critic_result=critic_result,
+        debate_history=[],
+    )
+
+    assert fast_path_result is not None
+    assert fast_path_result.final_verdict == "met"
+
+
 def test_run_batch_downgrades_only_ungrounded_child(monkeypatch):
     agent = MediatorAgent()
     citation = Citation(block_id="p1_b1", page_number=1, quoted_text="uses TLS")

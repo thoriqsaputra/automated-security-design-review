@@ -1,4 +1,5 @@
 from .critic import CRITIC_SYSTEM_PROMPT, build_batch_critic_prompt, build_critic_prompt
+from .diagram_gatekeeper import DIAGRAM_GATEKEEPER_SYSTEM_PROMPT, build_diagram_gatekeeper_prompt
 from .hunter import HUNTER_SYSTEM_PROMPT, build_batch_hunter_prompt, build_hunter_prompt
 from .mediator import (
     MEDIATOR_RECOMMENDATION_SYSTEM_PROMPT,
@@ -14,6 +15,7 @@ from .vision_mediator import VISION_MEDIATOR_DEBATE_SYSTEM_PROMPT, build_vision_
 
 __all__ = [
     "CRITIC_SYSTEM_PROMPT",
+    "DIAGRAM_GATEKEEPER_SYSTEM_PROMPT",
     "HUNTER_SYSTEM_PROMPT",
     "MEDIATOR_RECOMMENDATION_SYSTEM_PROMPT",
     "MEDIATOR_SYSTEM_PROMPT",
@@ -25,6 +27,7 @@ __all__ = [
     "build_batch_hunter_prompt",
     "build_batch_mediator_prompt",
     "build_critic_prompt",
+    "build_diagram_gatekeeper_prompt",
     "build_hunter_prompt",
     "build_mediator_prompt",
     "build_mediator_recommendation_prompt",

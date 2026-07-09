@@ -1,6 +1,6 @@
 import { Filter, Search, X } from 'lucide-react';
 import { useMemo, useState } from 'react';
-import type { CitationAnchor, Finding, Review } from '../../../api/reviews';
+import type { CitationAnchor, DebateStreamState, Finding, Review } from '../../../api/reviews';
 import Card from '../../../components/ui/Card';
 import LoadingSpinner from '../../../components/ui/LoadingSpinner';
 import PaginationControls from '../../../components/ui/PaginationControls';
@@ -11,6 +11,7 @@ import { metStatusIcons, severityColors } from '../utils/reviewPresentation';
 interface ReviewFindingsPanelProps {
   review: Review;
   findings: Finding[];
+  debatesById: Record<string, DebateStreamState>;
   totalFindings: number;
   totalPages: number;
   loadingFindings: boolean;
@@ -47,6 +48,7 @@ export default function ReviewFindingsPanel(props: ReviewFindingsPanelProps) {
   const {
     review,
     findings,
+    debatesById,
     totalFindings,
     totalPages,
     loadingFindings,
@@ -239,6 +241,7 @@ export default function ReviewFindingsPanel(props: ReviewFindingsPanelProps) {
                       {expandedFinding === finding.id && (
                         <FindingDetails
                           finding={finding}
+                          debatesById={debatesById}
                           activeCitationId={activeCitation?.id ?? null}
                           onCitationSelect={(citation) => setActiveCitation(citation)}
                         />

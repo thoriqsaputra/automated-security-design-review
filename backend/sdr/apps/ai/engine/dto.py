@@ -52,7 +52,9 @@ class DebateInput(BaseModel):
     hunter_plan: Dict[str, Any] = Field(default_factory=dict)
     retrieval_query_details: Dict[str, Any] = Field(default_factory=dict)
     context_chunks: List[str]
+    original_context_chunks: List[str] = Field(default_factory=list)
     context_chunk_map: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    retrieval_refresh_callback: Optional[Any] = None
 
     class Config:
         arbitrary_types_allowed = True

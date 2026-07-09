@@ -49,6 +49,14 @@ export const createDesign = (name: string, file: File) => {
 
 export const deleteDesign = (id: number) => api.delete(`/designs/${id}`);
 
+export const reingestDesign = (id: number, file: File) => {
+  const form = new FormData();
+  form.append('document', file);
+  return api.put<DesignDetail>(`/designs/${id}`, form, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+
 export const retryDesignPreparation = (id: number) =>
   api.post<DesignDetail>(`/designs/${id}/prepare`);
 

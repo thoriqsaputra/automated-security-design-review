@@ -214,6 +214,15 @@ class TSDPage:
     def heading_blocks(self) -> List[TextBlock]:
         return [b for b in self.text_blocks if b.is_heading]
 
+    # Diagram bounding boxes aren't always pixel-perfect against the actually
+    # rendered image — a caption block can start slightly before the bbox's
+    # stated bottom edge (or end slightly after the top edge, above). Without
+    # tolerance, such a block satisfies neither the "below" nor "above" check
+    # and becomes invisible to caption/surrounding-text search entirely
+    # (confirmed on a real document: bbox declared bottom at y=342.1, the
+    # actual "Figure N." caption block started at y=335.7 — a 6.4pt overlap).
+    _BBOX_OVERLAP_TOLERANCE_PT = 15.0
+
     def get_blocks_near_bbox(
         self,
         bbox: Tuple[float, float, float, float],
@@ -223,10 +232,11 @@ class TSDPage:
         ref_x0, ref_y0, ref_x1, ref_y1 = bbox
         want_below = direction in ("below", "both")
         want_above = direction in ("above", "both")
+        tolerance = self._BBOX_OVERLAP_TOLERANCE_PT
         nearby = []
         for block in self.text_blocks:
-            is_below = ref_y1 <= block.bbox_y0 <= ref_y1 + radius_pt
-            is_above = ref_y0 - radius_pt <= block.bbox_y1 <= ref_y0
+            is_below = ref_y1 - tolerance <= block.bbox_y0 <= ref_y1 + radius_pt
+            is_above = ref_y0 - radius_pt <= block.bbox_y1 <= ref_y0 + tolerance
             if (want_below and is_below) or (want_above and is_above):
                 nearby.append(block)
         return sorted(nearby, key=lambda b: b.bbox_y0)

@@ -1351,7 +1351,7 @@ def test_should_continue_debate_grants_one_escalation_round_on_overturn():
     critic_result = CriticResult(outcome="OVERTURN", revised_verdict="not_met", revised_confidence=0.5)
 
     should_continue, escalation_round_granted = service._should_continue_debate(
-        hunter_result, critic_result, service.max_debate_rounds, False
+        "Use MFA for all admin access.", hunter_result, critic_result, service.max_debate_rounds, False
     )
 
     assert should_continue is True
@@ -1364,11 +1364,334 @@ def test_should_continue_debate_does_not_grant_escalation_twice():
     critic_result = CriticResult(outcome="OVERTURN", revised_verdict="not_met", revised_confidence=0.5)
 
     should_continue, escalation_round_granted = service._should_continue_debate(
-        hunter_result, critic_result, service.max_debate_rounds, True
+        "Use MFA for all admin access.", hunter_result, critic_result, service.max_debate_rounds, True
     )
 
     assert should_continue is False
     assert escalation_round_granted is True
+
+
+def test_mediator_evidence_policy_rejects_verified_met_consensus_for_adjacent_only_evidence():
+    debate = DebateService()
+    result = debate._apply_mediator_evidence_policy(
+        MediatorResult(final_verdict="met", raw_final_verdict="met", confidence=0.8, final_citations=[]),
+        CriticResult(
+            outcome="UPHOLD",
+            revised_verdict="met",
+            valid_citations=[
+                Citation(block_id="p1_b1", page_number=1, quoted_text="RATE_LIMIT_STANDARD_API 120 per minute"),
+            ],
+            invalid_citation_ids=[],
+        ),
+        {"in_scope": True, "specific_enough": True},
+        HunterResult(
+            verdict="met",
+            citations=[Citation(block_id="p1_b1", page_number=1, quoted_text="RATE_LIMIT_STANDARD_API 120 per minute")],
+            applicability_status="established",
+        ),
+        parameter_text="Verify the application can detect and alert on abnormal numbers of requests, such as by IP, user, total per hour or day.",
+    )
+
+    assert result.final_verdict == "not_met"
+    assert result.verdict_policy_source == "verified_met_adjacent_only"
+
+
+def test_mediator_evidence_policy_accepts_uniform_auth_strength_met_consensus():
+    debate = DebateService()
+    citations = [
+        Citation(
+            block_id="p1_b1",
+            page_number=1,
+            quoted_text="all system roles require mandatory multi factor authentication",
+        ),
+        Citation(
+            block_id="p1_b2",
+            page_number=1,
+            quoted_text="identity management apis are fully authenticated",
+        ),
+    ]
+    result = debate._apply_mediator_evidence_policy(
+        MediatorResult(final_verdict="met", raw_final_verdict="met", confidence=0.9, final_citations=[]),
+        CriticResult(
+            outcome="UPHOLD",
+            revised_verdict="met",
+            valid_citations=citations,
+            invalid_citation_ids=[],
+            objections=[],
+            missing_expected_evidence=[],
+        ),
+        {"in_scope": True, "specific_enough": True},
+        HunterResult(verdict="met", citations=citations, applicability_status="established"),
+        parameter_text="Verify that all authentication pathways and identity management APIs implement consistent authentication security control strength, such that there are no weaker alternatives per the risk of the application.",
+    )
+
+    assert result.final_verdict == "met"
+    assert result.verdict_policy_source == "verified_met_core_sufficient"
+
+
+def test_mediator_evidence_policy_accepts_detection_and_alerting_met_consensus():
+    debate = DebateService()
+    citations = [
+        Citation(
+            block_id="p1_b1",
+            page_number=1,
+            quoted_text="request velocities during every single navigation event",
+        ),
+        Citation(
+            block_id="p1_b2",
+            page_number=1,
+            quoted_text="locks the account pending formal administrative review",
+        ),
+    ]
+    result = debate._apply_mediator_evidence_policy(
+        MediatorResult(final_verdict="met", raw_final_verdict="met", confidence=0.9, final_citations=[]),
+        CriticResult(
+            outcome="UPHOLD",
+            revised_verdict="met",
+            valid_citations=citations,
+            invalid_citation_ids=[],
+            objections=[],
+            missing_expected_evidence=[],
+        ),
+        {"in_scope": True, "specific_enough": True},
+        HunterResult(verdict="met", citations=citations, applicability_status="established"),
+        parameter_text="Verify the application can detect and alert on abnormal numbers of requests, such as by IP, user, total per hour or day, or whatever makes sense for the application.",
+    )
+
+    assert result.final_verdict == "met"
+    assert result.verdict_policy_source == "verified_met_core_sufficient"
+
+
+def test_mediator_evidence_policy_rejects_weak_authenticator_met_from_strong_mfa_only():
+    debate = DebateService()
+    citations = [
+        Citation(
+            block_id="p1_b1",
+            page_number=1,
+            quoted_text="all system access requires mandatory multi factor authentication",
+        ),
+        Citation(
+            block_id="p1_b2",
+            page_number=1,
+            quoted_text="fido2 or webauthn cryptographic protocols for elevated roles",
+        ),
+    ]
+    result = debate._apply_mediator_evidence_policy(
+        MediatorResult(final_verdict="met", raw_final_verdict="met", confidence=0.95, final_citations=[]),
+        CriticResult(
+            outcome="UPHOLD",
+            revised_verdict="met",
+            valid_citations=citations,
+            invalid_citation_ids=[],
+            objections=[],
+            missing_expected_evidence=[],
+        ),
+        {"in_scope": True, "specific_enough": True},
+        HunterResult(verdict="met", citations=citations, applicability_status="established"),
+        parameter_text="Verify that the use of weak authenticators (such as SMS and email) is limited to secondary verification and transaction approval and not as a replacement for more secure authentication methods.",
+    )
+
+    assert result.final_verdict == "not_met"
+    assert result.verdict_policy_source == "met_without_verified_evidence"
+
+
+def test_mediator_evidence_policy_accepts_documentation_met_when_core_artifacts_are_explicit():
+    debate = DebateService()
+    citations = [
+        Citation(block_id="p1_b1", page_number=1, quoted_text="system architecture defines the application layer and service layer"),
+        Citation(block_id="p1_b2", page_number=1, quoted_text="data flow between components crosses the trust boundary to remote services"),
+    ]
+    result = debate._apply_mediator_evidence_policy(
+        MediatorResult(final_verdict="not_met", raw_final_verdict="not_met", confidence=0.8, final_citations=[]),
+        CriticResult(
+            outcome="UPHOLD",
+            revised_verdict="not_met",
+            valid_citations=citations,
+            invalid_citation_ids=[],
+            objections=[],
+            missing_expected_evidence=[],
+        ),
+        {"in_scope": True, "specific_enough": True},
+        HunterResult(verdict="not_met", citations=citations, applicability_status="established"),
+        parameter_text="Verify documentation and justification of all the application's trust boundaries, components, and significant data flows.",
+    )
+
+    assert result.final_verdict == "met"
+    assert result.verdict_policy_source == "verified_core_evidence_rescue"
+
+
+def test_mediator_evidence_policy_accepts_partial_met_when_core_claim_is_satisfied():
+    debate = DebateService()
+    citations = [
+        Citation(block_id="p1_b1", page_number=1, quoted_text="every API endpoint requires fully authenticated, cryptographically signed session tokens"),
+        Citation(block_id="p1_b2", page_number=1, quoted_text="all in-transit communication uses TLS 1.2 or TLS 1.3"),
+    ]
+    result = debate._apply_mediator_evidence_policy(
+        MediatorResult(final_verdict="partial", raw_final_verdict="partial", confidence=0.8, final_citations=[]),
+        CriticResult(
+            outcome="PARTIAL",
+            revised_verdict="met",
+            valid_citations=citations,
+            invalid_citation_ids=[],
+            objections=[],
+            weak_evidence=[],
+            missed_evidence=[],
+            missing_expected_evidence=[],
+        ),
+        {"in_scope": True, "specific_enough": True},
+        HunterResult(verdict="met", citations=citations, applicability_status="established"),
+        parameter_text="Verify that communications between application components, including APIs, middleware and data layers, are authenticated.",
+    )
+
+    assert result.final_verdict == "met"
+    assert result.verdict_policy_source == "partial_core_sufficient"
+
+
+def test_mediator_evidence_policy_rejects_met_for_at_rest_control_when_only_in_transit_evidence_exists():
+    debate = DebateService()
+    citations = [
+        Citation(block_id="p1_b1", page_number=1, quoted_text="all in-transit communication uses TLS 1.2 or TLS 1.3"),
+    ]
+    result = debate._apply_mediator_evidence_policy(
+        MediatorResult(final_verdict="met", raw_final_verdict="met", confidence=0.9, final_citations=[]),
+        CriticResult(
+            outcome="UPHOLD",
+            revised_verdict="met",
+            valid_citations=citations,
+            invalid_citation_ids=[],
+        ),
+        {"in_scope": True, "specific_enough": True},
+        HunterResult(verdict="met", citations=citations, applicability_status="established"),
+        parameter_text="Verify that regulated private data is stored encrypted while at rest.",
+    )
+
+    assert result.final_verdict == "not_met"
+    assert result.verdict_policy_source == "verified_met_adjacent_only"
+
+
+def test_mediator_evidence_policy_accepts_high_level_architecture_with_remote_services():
+    debate = DebateService()
+    citations = [
+        Citation(block_id="p1_b1", page_number=1, quoted_text="system architecture defines the application layer and service layer"),
+        Citation(block_id="p1_b2", page_number=1, quoted_text="trust boundary to the external dispatch gateway and partner api"),
+    ]
+    result = debate._apply_mediator_evidence_policy(
+        MediatorResult(final_verdict="met", raw_final_verdict="met", confidence=0.88, final_citations=[]),
+        CriticResult(
+            outcome="UPHOLD",
+            revised_verdict="met",
+            valid_citations=citations,
+            invalid_citation_ids=[],
+            objections=["the requirement text does not use the exact phrase remote services"],
+            missing_expected_evidence=[],
+        ),
+        {"in_scope": True, "specific_enough": True},
+        HunterResult(verdict="met", citations=citations, applicability_status="established"),
+        parameter_text="Verify definition and security analysis of the application's high-level architecture and all connected remote services.",
+    )
+
+    assert result.final_verdict == "met"
+    assert result.verdict_policy_source == "verified_met_core_sufficient"
+
+
+def test_mediator_evidence_policy_accepts_secure_oob_channel():
+    debate = DebateService()
+    citations = [
+        Citation(block_id="p1_b1", page_number=1, quoted_text="the sms gateway is a separate provider used for out of band verification"),
+        Citation(block_id="p1_b2", page_number=1, quoted_text="all gateway traffic uses mutual tls 1.3"),
+    ]
+    result = debate._apply_mediator_evidence_policy(
+        MediatorResult(final_verdict="met", raw_final_verdict="met", confidence=0.9, final_citations=[]),
+        CriticResult(
+            outcome="UPHOLD",
+            revised_verdict="met",
+            valid_citations=citations,
+            invalid_citation_ids=[],
+            objections=[],
+            missing_expected_evidence=[],
+        ),
+        {"in_scope": True, "specific_enough": True},
+        HunterResult(verdict="met", citations=citations, applicability_status="established"),
+        parameter_text="Verify that the out of band authenticator and verifier communicates over a secure independent channel.",
+    )
+
+    assert result.final_verdict == "met"
+    assert result.verdict_policy_source == "verified_met_core_sufficient"
+
+
+def test_mediator_evidence_policy_accepts_and_or_alternative_control():
+    debate = DebateService()
+    citations = [
+        Citation(block_id="p1_b1", page_number=1, quoted_text="role based access control enforces segregation of duties for privileged actions"),
+    ]
+    result = debate._apply_mediator_evidence_policy(
+        MediatorResult(final_verdict="met", raw_final_verdict="met", confidence=0.86, final_citations=[]),
+        CriticResult(
+            outcome="UPHOLD",
+            revised_verdict="met",
+            valid_citations=citations,
+            invalid_citation_ids=[],
+            objections=["step-up authentication is not explicitly named"],
+            missing_expected_evidence=[],
+        ),
+        {"in_scope": True, "specific_enough": True},
+        HunterResult(verdict="met", citations=citations, applicability_status="established"),
+        parameter_text="Verify the application has additional authorization (such as step up or adaptive authentication) for lower value systems, and / or segregation of duties for high value applications.",
+    )
+
+    assert result.final_verdict == "met"
+    assert result.verdict_policy_source == "verified_met_core_sufficient"
+
+
+def test_mediator_evidence_policy_accepts_sensitive_data_audit_with_one_invalid_citation():
+    debate = DebateService()
+    citations = [
+        Citation(block_id="p1_b1", page_number=1, quoted_text="every attempt to access a restricted resource is logged and generates an alert"),
+        Citation(block_id="p1_b2", page_number=1, quoted_text="redaction proxies scrub pii before logs are retained"),
+    ]
+    result = debate._apply_mediator_evidence_policy(
+        MediatorResult(final_verdict="met", raw_final_verdict="met", confidence=0.9, final_citations=[]),
+        CriticResult(
+            outcome="UPHOLD",
+            revised_verdict="met",
+            valid_citations=citations,
+            invalid_citation_ids=["p1_b3"],
+            objections=[],
+            missing_expected_evidence=[],
+        ),
+        {"in_scope": True, "specific_enough": True},
+        HunterResult(verdict="met", citations=citations, applicability_status="established"),
+        parameter_text="Verify accessing sensitive data is audited without logging the sensitive data itself.",
+    )
+
+    assert result.final_verdict == "met"
+    assert result.verdict_policy_source == "verified_met_core_sufficient"
+
+
+def test_mediator_evidence_policy_rejects_protection_level_mapping_from_scattered_controls():
+    debate = DebateService()
+    citations = [
+        Citation(block_id="p1_b1", page_number=1, quoted_text="all in-transit communication uses tls 1.3"),
+        Citation(block_id="p1_b2", page_number=1, quoted_text="data at rest uses aes 256 encryption"),
+        Citation(block_id="p1_b3", page_number=1, quoted_text="redaction proxies scrub pii before logs are retained"),
+    ]
+    result = debate._apply_mediator_evidence_policy(
+        MediatorResult(final_verdict="met", raw_final_verdict="met", confidence=0.84, final_citations=[]),
+        CriticResult(
+            outcome="UPHOLD",
+            revised_verdict="met",
+            valid_citations=citations,
+            invalid_citation_ids=[],
+            objections=[],
+            missing_expected_evidence=[],
+        ),
+        {"in_scope": True, "specific_enough": True},
+        HunterResult(verdict="met", citations=citations, applicability_status="established"),
+        parameter_text="Verify that all protection levels have an associated set of protection requirements.",
+    )
+
+    assert result.final_verdict == "not_met"
+    assert result.verdict_policy_source == "met_without_verified_evidence"
 
 
 def test_run_debate_executes_escalation_round_on_low_confidence_overturn(monkeypatch):

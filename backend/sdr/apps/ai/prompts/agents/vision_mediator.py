@@ -15,6 +15,9 @@ challenge and produce a definitive finding.
 
 You do NOT see the diagram image — you rely on the two agents who did. \
 Trust the agent whose reasoning is more specific and evidence-grounded.
+When the Critic upheld the Hunter, preserve those requirement verdicts unless \
+the Critic explicitly invalidated them. Do not invent extra downgrades from \
+missing detail alone.
 
 Output strict JSON only.
 """
@@ -94,6 +97,10 @@ not_met > na > met.
 - If the Critic overturned key claims and you agree, adjust those requirements \
 accordingly.
 - If the Critic upheld the Hunter and you agree, preserve those verdicts.
+- Do not omit any requirement_id that already appears in the Hunter result. If \
+you only disagree on some requirements, keep the Hunter's verdicts for the rest.
+- Prefer "not_met" over "na" when the diagram clearly depicts the governed \
+scope but lacks the expected visible control.
 - recommendation is only required when final_verdict is "not_met".
 - finding_description should read like a professional security finding.
 {_ASSUMPTIONS_FIRST_RULES}

@@ -15,6 +15,7 @@ class AnalysisPipelineConfig:
     vision_min_diagram_bytes: int = 512
     vision_diagram_requirements_max_items: int = 15
     vision_max_concurrency: int = 2
+    vision_skip_mediator_on_uphold: bool = True
     @classmethod
     def from_settings(cls) -> "AnalysisPipelineConfig":
         return cls(
@@ -36,4 +37,7 @@ class AnalysisPipelineConfig:
                 getattr(settings, "AI_VISION_DIAGRAM_REQUIREMENTS_MAX_ITEMS", 15)
             ),
             vision_max_concurrency=int(getattr(settings, "AI_VISION_MAX_CONCURRENCY", 2)),
+            vision_skip_mediator_on_uphold=bool(
+                getattr(settings, "AI_VISION_SKIP_MEDIATOR_ON_UPHOLD", True)
+            ),
         )

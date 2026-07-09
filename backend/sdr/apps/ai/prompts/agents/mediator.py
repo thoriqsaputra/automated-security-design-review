@@ -30,6 +30,10 @@ describes a server-only backend with no mobile client at all). If the \
 precondition clearly holds (the capability the control governs is part of this \
 design), the control is in scope and its absence is "not_met" regardless of how \
 little the TSD says about it.
+When Critic-verified citations name a concrete mechanism satisfying the \
+requirement's core security property, preserve "met" unless the Critic's \
+objections show an essential gap in that same core mechanism. Do not downgrade \
+to "not_met" for peripheral incompleteness alone.
 
 YOUR ROLE:
 - Receive the Hunter's initial finding and the Critic's challenge.
@@ -56,6 +60,10 @@ if no verified citations remain or if objections target the essential mechanism 
 itself (not peripheral completeness).
 4. Consistency: Do the Hunter and Critic agree? If they disagree, weigh the \
 evidence independently — do not default to either agent.
+5. Requirement shape: Distinguish positive-evidence controls from absence/prohibition \
+controls. For absence/prohibition controls, silence alone is not proof of compliance; \
+"met" requires explicit prohibition, explicit approved-only mechanisms, or another \
+closed-world statement excluding the disallowed option.
 
 STANDARD-SPECIFIC GUIDANCE:
 - Security standard requirements are verification controls. "met" means the TSD \
@@ -104,6 +112,7 @@ def build_mediator_prompt(
     critic_assumptions: List[dict] | None = None,
     critic_cot_trace: str | None = None,
     debate_history: List[dict] | None = None,
+    original_context_chunks: List[str] | None = None,
 ) -> str:
     citations_text = (
         json.dumps(critic_valid_citations, indent=2) if critic_valid_citations else "[]"
@@ -112,6 +121,7 @@ def build_mediator_prompt(
     weak_text = json.dumps(critic_weak_evidence or [], indent=2)
     missed_text = json.dumps(critic_missed_evidence or [], indent=2)
     debate_text = json.dumps(debate_history or [], indent=2)
+    context_text = "\n\n---\n\n".join(original_context_chunks or [])
 
     return f"""\
 ## SECURITY PARAMETER
@@ -152,6 +162,9 @@ Critic Valid Citation Count: {len(critic_valid_citations)} (non-zero means Criti
 
 ## DEBATE HISTORY
 {debate_text}
+
+## ORIGINAL TSD CONTEXT
+{context_text or "(none)"}
 
 ## YOUR TASK
 
@@ -194,10 +207,19 @@ Reasoning B -> The precondition (a mobile client) is not established by the TSD 
 	- applicability_reason → Name the prerequisite/capability basis. If returning "na", explicitly identify the absent prerequisite.
 	- recommendation → Specific, actionable remediation. Null if "met" or "na".
 	- final_citations → Only citations from the Critic's verified list above. The quoted_text in each citation MUST be a short verbatim excerpt (5–20 words) copied character-for-character from the source block — do NOT paraphrase or restate. Prefer short specific technical phrases (e.g. "TLS 1.3 with HSTS", "Fail-Closed policy") over long sentences.
-	- "met" requires verified evidence that clearly satisfies the requirement, not merely any valid citation.
-	- "not_met" applies whenever the requirement is applicable and expected evidence is missing, contradicted, or only partial after checked context and rebuttal — including when the TSD is entirely silent about the control, as long as the control's own precondition (the technology/capability it governs) is part of this design.
-	- "na" applies ONLY when the control's precondition itself is not established — the design clearly does not have the technology/component/capability this control governs (e.g. a mobile-specific control with no mobile client in the design at all). Do not use "na" merely because the TSD doesn't discuss the control; discuss-vs-silent is a "not_met" question, not an applicability question.
-	- If evidence is only partial for an applicable requirement, set final_verdict to "not_met" and explain partial satisfaction in reasoning and rejected_evidence.
+	- Use the ORIGINAL TSD CONTEXT section to independently verify whether the governed capability exists before returning "na".
+- "met" requires verified evidence that clearly satisfies the requirement, not merely any valid citation.
+- For absence/prohibition requirements (deprecated technology bans, password hints / secret questions, "no weaker path", limiting weak authenticators), "met" requires verified evidence that explicitly excludes or forbids the weaker/disallowed option. The mere presence of a stronger mechanism is not enough by itself.
+- Distinguish "uniform authentication strength across all pathways" from "weak authenticators are restricted to secondary-only use." The former can be satisfied by verified all-path/all-role MFA coverage. The latter still requires explicit evidence that SMS/email or other weak methods are only secondary, approval-only, or otherwise prohibited from acting as a primary replacement.
+- For "levels/classes/zones mapped to requirement sets" controls, do not treat a collection of strong controls as an implicit mapping. Keep "met" only when verified citations explicitly tie named protection levels, classifications, or zones to associated requirement bundles or control sets.
+- For positive/documentation requirements, do not stay at "not_met" when Critic-verified citations already name the core mechanism or architectural artifact that the requirement asks for. Verified TLS, authenticated session-token enforcement, mandatory MFA across all roles, rate/limit caps, explicit alerts, and clearly documented architecture/components are sufficient to support "met" at TSD level even when wording differs from the requirement.
+- If Hunter and Critic both support "met" with verified citations, preserve "met" unless the objections identify a missing essential property of the required control. Peripheral or documentation-completeness objections alone do not justify downgrading to "not_met".
+- If the requirement explicitly offers alternative satisfying controls, such as "step up or adaptive authentication, and / or segregation of duties", verified evidence of one allowed alternative can satisfy the core claim. Do not downgrade solely because a different optional alternative is not shown.
+- Do not discard an otherwise-supported "met" solely because one citation was invalidated. Use the surviving verified citations; downgrade only if the remaining evidence no longer proves the essential claim.
+- For "audit access to sensitive data without logging the sensitive data itself", require both halves in the surviving verified evidence: access/audit logging and redaction / no-sensitive-data-in-logs protection.
+- "not_met" applies whenever the requirement is applicable and expected evidence is missing, contradicted, or only partial after checked context and rebuttal — including when the TSD is entirely silent about the control, as long as the control's own precondition (the technology/capability it governs) is part of this design.
+	- "na" applies ONLY when the control's precondition itself is not established — the design clearly does not have the technology/component/capability this control governs (e.g. a mobile-specific control with no mobile client in the design at all). Do not use "na" merely because the TSD doesn't discuss the control; discuss-vs-silent is a "not_met" question, not an applicability question. If the requirement text says "or other", "such as", "or equivalent", or otherwise names a technology family, test applicability at that family level rather than at the first named technology only.
+	- If evidence is only partial for an applicable requirement, set final_verdict to "not_met" only when the missing portion affects the essential mechanism or core claim. If verified citations satisfy the core claim and the remaining objections are peripheral, keep "met" and describe the limitation.
 	- When Critic outcome is PARTIAL and Hunter's original verdict was "met": the Hunter found real evidence, Critic found it partially sufficient — keep "met" if Verified Citations is non-empty and addresses the core claim. Objections about completeness or peripheral aspects do NOT force a downgrade. Only set "not_met" if (a) Verified Citations is empty, or (b) objections target the essential named mechanism itself.
 	- When Critic outcome is PARTIAL and Hunter's original verdict was "not_met": the Critic found some evidence but not enough to reverse the verdict. Set final_verdict to "not_met". PARTIAL on a not_met base means the evidence gap is narrowed but not closed — do NOT upgrade to "met".
 	- Do not make agent agreement the justification. Avoid phrases such as "Hunter and Critic agree" or "both agents agree" as the main reason.

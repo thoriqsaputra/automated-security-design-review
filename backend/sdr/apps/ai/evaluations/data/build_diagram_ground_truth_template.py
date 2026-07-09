@@ -19,12 +19,21 @@ Usage:
     python build_diagram_ground_truth_template.py --review-id 12
     python build_diagram_ground_truth_template.py --review-id 12 --output my_gt.json
 
-After running, open each image under
+    # Auto-populate "relevant" via a vision LLM judge (component=eval_judge,
+    # a different model family from Hunter/Critic/Mediator) instead of manual
+    # review. Writes to diagram_ground_truth_review_<id>_llm_judged.json by
+    # default, so it never overwrites a hand-labeled file:
+    python build_diagram_ground_truth_template.py --review-id 12 --llm-judge
+
+Without --llm-judge, open each image under
 `evaluations/results/vision/ground_truth_images/review_<id>/` and, for every diagram's
 `candidate_requirements` entries in the output JSON:
   - set "relevant": true/false — is this requirement genuinely checkable from this diagram?
   - for "relevant": true rows only, set "label": "met" | "not_met" | "na"
   - optionally fill "notes" with your reasoning
+
+With --llm-judge, "relevant" (plus "judge_reasoning") is filled in automatically;
+"label" still requires manual review either way (out of scope for the judge).
 
 The filled-in file is then passed as --ground-truth to both:
     retrieval/diagram_retrieval_eval.py   (uses "relevant" flags)
@@ -51,6 +60,7 @@ from sdr.apps.ai.engine.persistence.workflow_repository import SqlAlchemyReviewW
 from sdr.apps.workspace.services.storage import storage_service
 
 from sdr.apps.ai.evaluations.shared import results_path, data_path
+from sdr.apps.ai.evaluations.shared.judges import judge_diagram_requirement_relevance
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -94,6 +104,14 @@ def main():
     )
     parser.add_argument("--review-id", type=int, required=True)
     parser.add_argument("--output", type=str, default=None)
+    parser.add_argument(
+        "--llm-judge",
+        action="store_true",
+        help="Auto-populate 'relevant' via a vision LLM judge (component=eval_judge) "
+             "instead of leaving it null for manual review. Costs one vision LLM call "
+             "per (diagram, candidate requirement) row. Does not touch 'label' "
+             "(met/not_met/na), which stays manual either way.",
+    )
     args = parser.parse_args()
 
     with SessionLocal() as db:
@@ -144,8 +162,15 @@ def main():
             image_filename = _download_diagram_image(finding, images_dir)
             image_path = f"vision/{images_subdir}/{image_filename}" if image_filename else None
 
-            candidate_requirements = [
-                {
+            image_bytes = None
+            if args.llm_judge and image_filename:
+                with open(os.path.join(images_dir, image_filename), "rb") as f:
+                    image_bytes = f.read()
+                image_format = os.path.splitext(image_filename)[1].lstrip(".") or "png"
+
+            candidate_requirements = []
+            for i, req in enumerate(candidate_pool):
+                row = {
                     "requirement_id": req.stable_key,
                     "requirement_text": req.requirement_text,
                     "verification_hint": req.verification_hint,
@@ -154,8 +179,22 @@ def main():
                     "label": None,
                     "notes": "",
                 }
-                for req in candidate_pool
-            ]
+                if args.llm_judge and image_bytes:
+                    logger.info(
+                        f"  [{i + 1}/{len(candidate_pool)}] judging diagram_id={finding.diagram_id} "
+                        f"requirement_id={req.stable_key}"
+                    )
+                    judged = judge_diagram_requirement_relevance(
+                        image_bytes=image_bytes,
+                        requirement_text=req.requirement_text,
+                        verification_hint=req.verification_hint,
+                        image_format=image_format,
+                    )
+                    row["relevant"] = judged.get("relevant")
+                    row["judge_reasoning"] = judged.get("reasoning", "")
+                    if judged.get("error"):
+                        row["judge_error"] = judged["error"]
+                candidate_requirements.append(row)
 
             items.append({
                 "diagram_id": finding.diagram_id,
@@ -175,7 +214,14 @@ def main():
         "items": items,
     }
 
-    output_filename = args.output or f"diagram_ground_truth_review_{args.review_id}.json"
+    if args.output:
+        output_filename = args.output
+    elif args.llm_judge:
+        # Never collide with (and silently overwrite) a hand-labeled file —
+        # LLM-judged output always goes to its own distinctly-named file.
+        output_filename = f"diagram_ground_truth_review_{args.review_id}_llm_judged.json"
+    else:
+        output_filename = f"diagram_ground_truth_review_{args.review_id}.json"
     output_path = data_path(output_filename)
     with open(output_path, "w") as f:
         json.dump(template, f, indent=2)

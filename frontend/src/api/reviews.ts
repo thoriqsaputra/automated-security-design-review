@@ -149,6 +149,7 @@ export interface DebateTranscriptMessage {
   updated_at: string | null;
   critic_outcome?: CriticOutcome | null;
   requires_rebuttal?: boolean | null;
+  round?: number | null;
 }
 
 export interface DebateStreamState {
@@ -226,6 +227,8 @@ export const triggerReview = (id: number, analysisMode?: ReviewAnalysisMode) =>
 
 export const cancelReview = (id: number) =>
   api.post<Review>(`/reviews/${id}/cancel`);
+
+export const deleteReview = (id: number) => api.delete(`/reviews/${id}`);
 
 export const getFindings = (
   reviewId: number, 

@@ -39,6 +39,57 @@ def _merge_nearby_blocks(blocks: Dict[int, Dict[str, Any]]) -> List[Dict[str, An
     return merged
 
 
+def _collect_ocr_blocks(image: "Image.Image") -> List[Dict[str, Any]]:
+    """Runs Tesseract over `image` and returns merged text blocks (bbox + text),
+    shared by `apply_visual_markers` (drawing) and `extract_diagram_text` (retrieval
+    query enrichment) so both consume the exact same OCR pass/config."""
+    data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+
+    blocks: Dict[int, Dict[str, Any]] = {}
+    n_boxes = len(data["level"])
+    for i in range(n_boxes):
+        conf = int(data["conf"][i])
+        text = data["text"][i].strip()
+        if conf < 30 or not text:
+            continue
+        block_num = data["block_num"][i]
+        x, y, w, h = data["left"][i], data["top"][i], data["width"][i], data["height"][i]
+        if block_num not in blocks:
+            blocks[block_num] = {"left": x, "top": y, "right": x + w, "bottom": y + h, "text": text}
+        else:
+            blocks[block_num]["left"] = min(blocks[block_num]["left"], x)
+            blocks[block_num]["top"] = min(blocks[block_num]["top"], y)
+            blocks[block_num]["right"] = max(blocks[block_num]["right"], x + w)
+            blocks[block_num]["bottom"] = max(blocks[block_num]["bottom"], y + h)
+            blocks[block_num]["text"] += " " + text
+
+    return _merge_nearby_blocks(blocks)
+
+
+def extract_diagram_text(image_bytes: bytes) -> str:
+    """OCR the diagram and return its visible text labels, space-joined.
+
+    Used to enrich retrieval query text with the diagram's actual component/
+    technology names (e.g. "DMZ", "MySQL Database") rather than relying only on
+    generic caption/surrounding-text prose, which often just describes the
+    diagram's type/topic without naming what's actually drawn in it. Fails open
+    (returns "") on any OCR error, matching `apply_visual_markers`'s behavior.
+    """
+    if not HAS_TESSERACT:
+        return ""
+    try:
+        image = Image.open(io.BytesIO(image_bytes))
+        if image.mode != "RGB":
+            image = image.convert("RGB")
+        merged_blocks = _collect_ocr_blocks(image)
+        return " ".join(b["text"] for b in merged_blocks).strip()
+    except pytesseract.TesseractNotFoundError:
+        return ""
+    except Exception:
+        logger.debug("extract_diagram_text: OCR failed — returning empty string.", exc_info=True)
+        return ""
+
+
 def apply_visual_markers(image_bytes: bytes) -> bytes:
     """
     Applies numbered markers (Set-of-Mark) to the image for Vision LLM grounding.
@@ -58,7 +109,7 @@ def apply_visual_markers(image_bytes: bytes) -> bytes:
             image = image.convert("RGB")
 
         try:
-            data = pytesseract.image_to_data(image, output_type=pytesseract.Output.DICT)
+            merged_blocks = _collect_ocr_blocks(image)
         except pytesseract.TesseractNotFoundError:
             logger.warning("Tesseract binary not found. Returning unmarked diagram.")
             return image_bytes
@@ -82,28 +133,6 @@ def apply_visual_markers(image_bytes: bytes) -> bytes:
                 font = ImageFont.load_default(size=16)
             except TypeError:
                 font = ImageFont.load_default()
-
-        # Collect OCR blocks grouped by block_num
-        blocks: Dict[int, Dict[str, Any]] = {}
-        n_boxes = len(data["level"])
-        for i in range(n_boxes):
-            conf = int(data["conf"][i])
-            text = data["text"][i].strip()
-            if conf < 30 or not text:
-                continue
-            block_num = data["block_num"][i]
-            x, y, w, h = data["left"][i], data["top"][i], data["width"][i], data["height"][i]
-            if block_num not in blocks:
-                blocks[block_num] = {"left": x, "top": y, "right": x + w, "bottom": y + h, "text": text}
-            else:
-                blocks[block_num]["left"] = min(blocks[block_num]["left"], x)
-                blocks[block_num]["top"] = min(blocks[block_num]["top"], y)
-                blocks[block_num]["right"] = max(blocks[block_num]["right"], x + w)
-                blocks[block_num]["bottom"] = max(blocks[block_num]["bottom"], y + h)
-                blocks[block_num]["text"] += " " + text
-
-        # Fix 2: merge spatially adjacent blocks (same box, multi-word labels)
-        merged_blocks = _merge_nearby_blocks(blocks)
 
         marker_id = 1
         # Track text bboxes for shape detection containment check

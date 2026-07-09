@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ChevronLeft, ChevronRight, Filter, ListFilter } from 'lucide-react';
-import type { ReviewAnalysisMode } from '../../../api/reviews';
+import type { DebateStreamState, ReviewAnalysisMode } from '../../../api/reviews';
 import Card from '../../../components/ui/Card';
 import Modal from '../../../components/ui/Modal';
-import { useReviewDebateStream } from '../hooks/useReviewDebateStream';
 import { isPresent } from '../utils/reviewPresentation';
 import ActiveDebateCard from './ActiveDebateCard';
 import DebateLiveStream from './DebateLiveStream';
@@ -21,9 +20,11 @@ const selectArrowStyle = {
 } as const;
 
 interface ReviewDebatePanelProps {
-  reviewId: number;
-  reviewStatus: string;
   analysisMode: ReviewAnalysisMode;
+  debates: DebateStreamState[];
+  connected: boolean;
+  streamError: string | null;
+  errorMessage: string | null;
   debatedTotal: number | null;
   debatedProcessed: number | null;
   debatedRemaining: number | null;
@@ -34,8 +35,10 @@ interface ReviewDebatePanelProps {
 
 export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
   const {
-    reviewId,
-    reviewStatus,
+    debates,
+    connected,
+    streamError,
+    errorMessage,
     debatedTotal,
     debatedProcessed,
     debatedRemaining,
@@ -43,7 +46,6 @@ export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
     persistenceProcessed,
     persistenceRemaining,
   } = props;
-  const { debates, connected, streamError, errorMessage } = useReviewDebateStream(reviewId, reviewStatus);
   const [selectedDebateId, setSelectedDebateId] = useState<string | null>(null);
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [findingTypeFilter, setFindingTypeFilter] = useState<FindingTypeFilter>('all');
@@ -55,10 +57,15 @@ export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
         if (findingTypeFilter !== 'all' && debate.finding_type !== findingTypeFilter) {
           return false;
         }
-        if (criticStatusFilter === 'needs_rebuttal' && !debate.requires_rebuttal) {
+        // A debate "needs rebuttal" if any round's critic pushed back, not just
+        // the final one — earlier rounds can be OVERTURN/PARTIAL even after the
+        // debate ultimately resolves to UPHOLD in a later round.
+        const everNeededRebuttal =
+          debate.requires_rebuttal || debate.transcript.some((message) => message.requires_rebuttal);
+        if (criticStatusFilter === 'needs_rebuttal' && !everNeededRebuttal) {
           return false;
         }
-        if (criticStatusFilter === 'upheld' && (debate.requires_rebuttal || !debate.critic_outcome)) {
+        if (criticStatusFilter === 'upheld' && (everNeededRebuttal || !debate.critic_outcome)) {
           return false;
         }
         return true;

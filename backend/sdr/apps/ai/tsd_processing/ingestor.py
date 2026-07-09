@@ -54,6 +54,16 @@ _MIN_DIAGRAM_BYTES = 512
 # PyMuPDF coordinate system: y increases downward.
 _CAPTION_SEARCH_RADIUS_PT = 60.0
 
+# An explicit "Figure N."/"Table N."/"Diagram N." label unambiguously IS the
+# caption, regardless of which side of the diagram it lands on — checked
+# before the generic proximity heuristic below, which otherwise can grab an
+# incidentally-short, non-heading sentence from unrelated body text on the
+# other side of the diagram (confirmed on a real document: the true caption
+# sat above the diagram, but a 13-word opening sentence of the next section's
+# body paragraph sat below and was picked instead, since "below" is checked
+# first and stops at the first qualifying block).
+_CAPTION_LABEL_RE = re.compile(r"^(figure|table|diagram)\s*\d+", re.IGNORECASE)
+
 # Heading detection: font size multiplier above page median to be a heading.
 _HEADING_FONT_SIZE_MULTIPLIER = 1.15
 
@@ -843,8 +853,24 @@ class TSDIngestor:
         tsd_page: TSDPage,
         bbox: Tuple[float, float, float, float],
     ) -> Optional[str]:
-        # Captions are usually below the figure, but some templates place
-        # them (or an introductory sentence) above instead — try below
+        # First pass: an explicit "Figure N."/"Table N." label unambiguously
+        # IS the caption regardless of which side of the diagram it lands on
+        # — check both directions before falling back to proximity guessing.
+        for direction in ("below", "above"):
+            nearby_blocks = tsd_page.get_blocks_near_bbox(
+                bbox=bbox,
+                radius_pt=self.caption_search_radius,
+                direction=direction,
+            )
+            for block in nearby_blocks:
+                if block.is_heading:
+                    continue
+                text = block.text.strip()
+                if text and _CAPTION_LABEL_RE.match(text):
+                    return text
+
+        # Fallback: captions are usually below the figure, but some templates
+        # place them (or an introductory sentence) above instead — try below
         # first since it's the dominant convention, then fall back to above.
         for direction in ("below", "above"):
             nearby_blocks = tsd_page.get_blocks_near_bbox(

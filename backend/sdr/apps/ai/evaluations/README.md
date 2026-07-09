@@ -349,6 +349,25 @@ entry set:
 - `"relevant": true/false` — is this requirement genuinely checkable from this diagram?
 - `"label": "met"|"not_met"|"na"` — only for `relevant: true` rows.
 
+**LLM-as-judge mode** — add `--llm-judge` to auto-populate `"relevant"` (plus a
+`"judge_reasoning"` field) via a vision LLM call (`component=eval_judge`, i.e.
+`AI_MODEL_EVAL_JUDGE` — deliberately a different model family from Hunter/Critic/
+Mediator, so this isn't the system grading its own homework) instead of manual review.
+Costs one vision LLM call per `(diagram, candidate requirement)` row — e.g. 3 diagrams
+× 41 candidates ≈ 123 calls for a typical review. Writes to
+`diagram_ground_truth_review_<id>_llm_judged.json` by default (not the plain
+`diagram_ground_truth_review_<id>.json` name) so it never collides with or overwrites
+a hand-labeled file:
+
+```bash
+docker exec automated-security-design-review-backend-1 \
+  python /app/sdr/apps/ai/evaluations/data/build_diagram_ground_truth_template.py \
+  --review-id 1 --llm-judge
+```
+
+`"label"` still requires manual review either way — the judge only covers relevance
+scoping, not met/not_met verdicts.
+
 This one labeled file feeds both evals below.
 
 ### Step 2a — Diagram requirement retrieval eval

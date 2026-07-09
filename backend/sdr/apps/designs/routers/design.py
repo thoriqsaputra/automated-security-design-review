@@ -101,11 +101,25 @@ def update_design(
         design.name = name
 
     if document is not None:
+        from sdr.apps.reviews.models import Review
+
+        active_review = db.execute(
+            select(Review.id).where(
+                Review.design_id == design.id,
+                Review.status.in_([Review.STATUS_PENDING, Review.STATUS_RUNNING]),
+            )
+        ).scalars().first()
+        if active_review:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Cannot reingest while a review is pending or running for this design.",
+            )
+
         try:
             validate_design_document_file(document)
         except ValueError as e:
             raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
-        
+
         content = document.file.read()
         document.file.seek(0)
         document_sha256 = compute_sha256_bytes(content)

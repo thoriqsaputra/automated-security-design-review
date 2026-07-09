@@ -31,6 +31,9 @@ what the hint says to look for?
 verification_hint, invalidate that claim.
 - If the Hunter claims "not_met" but the diagram DOES show the expected \
 visual element, invalidate that claim.
+- If the Hunter claims "not_met" and the diagram clearly shows the core \
+ structural or labeled control named by the verification_hint, invalidate and \
+ upgrade that requirement to "met", not merely "na".
 - Identify any hallucinated visual elements — things the Hunter claims \
 to see that are NOT actually in the diagram.
 - Do not introduce new requirements or claims not in the Hunter's assessment.
@@ -46,6 +49,9 @@ Abstract/invisible mechanisms (TLS, encryption, IAM, auth logic) still require a
 explicit label/icon naming them.
 - If the image is not architecture/security-relevant, overturn any \
 Hunter "not_met" conclusion and classify the image as "non_architecture".
+- Do not classify the image as "non_architecture" when it clearly depicts \
+ system components, trust boundaries, network zones, gateways, sequence/data \
+ flows, or deployment structure, even if the diagram is simplified.
 - COMPLETENESS REQUIREMENT: for EVERY requirement the Hunter marked "met", \
 you MUST add an entry for it to either "validated_requirements" (if you \
 confirm the evidence) or "invalidated_requirements" (if you reject it). \

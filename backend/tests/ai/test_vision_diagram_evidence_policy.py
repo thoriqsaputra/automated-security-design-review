@@ -27,7 +27,7 @@ def test_validated_met_requirement_stays_met():
     assert result.get("verdict_policy_source") != "diagram_requirement_not_corroborated"
 
 
-def test_unvalidated_met_requirement_downgrades_to_na():
+def test_unvalidated_met_requirement_stays_met_when_not_explicitly_invalidated():
     result = _apply_diagram_evidence_policy(
         {
             "final_verdict": "met",
@@ -44,9 +44,8 @@ def test_unvalidated_met_requirement_downgrades_to_na():
         },
     )
 
-    assert result["assessed_requirements"][0]["verdict"] == "na"
-    assert result["final_verdict"] == "na"
-    assert result["verdict_policy_source"] == "diagram_requirement_not_corroborated"
+    assert result["assessed_requirements"][0]["verdict"] == "met"
+    assert result["final_verdict"] == "met"
 
 
 def test_invalidated_met_requirement_downgrades_to_na():
@@ -94,10 +93,9 @@ def test_mixed_ungrounded_met_and_not_met_keeps_not_met_aggregate():
 
     by_id = {a["requirement_id"]: a["verdict"] for a in result["assessed_requirements"]}
     assert by_id["D-1"] == "met"
-    assert by_id["D-2"] == "na"
+    assert by_id["D-2"] == "met"
     assert by_id["D-3"] == "not_met"
     assert result["final_verdict"] == "not_met"
-    assert result["verdict_policy_source"] == "diagram_requirement_not_corroborated"
 
 
 def test_topline_verdict_disagreeing_with_assessments_is_corrected_to_aggregate():
@@ -236,6 +234,55 @@ def test_no_assessments_without_validated_requirements_downgrades_to_na():
 
     assert result["final_verdict"] == "na"
     assert result["verdict_policy_source"] == "diagram_met_without_validated_evidence"
+
+
+def test_single_critic_non_architecture_dissent_does_not_force_na_when_validated_requirements_exist():
+    result = _apply_diagram_evidence_policy(
+        {
+            "final_verdict": "met",
+            "assessed_requirements": [{"requirement_id": "D-1", "verdict": "met"}],
+            "diagram_scope_verdict": "architecture_relevant",
+        },
+        {
+            "outcome": "uphold",
+            "validated_requirements": [{"requirement_id": "D-1", "verdict": "met"}],
+            "diagram_scope_verdict": "non_architecture",
+            "diagram_scope_reasoning": "This may be a screenshot.",
+        },
+        {
+            "diagram_scope_verdict": "architecture_relevant",
+        },
+    )
+
+    assert result["final_verdict"] == "met"
+    assert result["diagram_scope_verdict"] == "architecture_relevant"
+
+
+def test_missing_mediator_requirement_entries_preserve_hunter_assessments():
+    result = _apply_diagram_evidence_policy(
+        {
+            "final_verdict": "met",
+            "assessed_requirements": [{"requirement_id": "D-1", "verdict": "met"}],
+        },
+        {
+            "outcome": "overturn",
+            "validated_requirements": [],
+            "invalidated_requirements": [],
+            "diagram_scope_verdict": "architecture_relevant",
+        },
+        {
+            "diagram_scope_verdict": "architecture_relevant",
+            "requirement_assessments": [
+                {"requirement_id": "D-1", "verdict": "met"},
+                {"requirement_id": "D-2", "verdict": "not_met"},
+            ],
+        },
+    )
+
+    by_id = {a["requirement_id"]: a["verdict"] for a in result["assessed_requirements"]}
+    assert by_id["D-1"] == "met"
+    assert by_id["D-2"] == "not_met"
+    assert result["final_verdict"] == "not_met"
 
 
 def test_confidence_boost_suppressed_when_hallucinated_claims_present():

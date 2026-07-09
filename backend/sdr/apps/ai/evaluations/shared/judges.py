@@ -116,6 +116,74 @@ def judge_context_recall(question: str, ground_truth: str, retrieved_context: st
         return {"context_recall_score": 0.0, "error": "parse_failed"}
 
 
+DIAGRAM_RELEVANCE_PROMPT = """You are an expert evaluator building ground truth \
+for a diagram-retrieval evaluation in an AI Security Auditor system.
+
+You will be shown a real architecture/security diagram (with numbered Set-of-Mark \
+markers burned into it) and a single candidate security requirement. Your only \
+job is to judge: is this requirement genuinely CHECKABLE from this diagram — i.e. \
+could a well-annotated version of this diagram plausibly show evidence that \
+would let a reviewer determine whether the requirement is met or not met?
+
+This is a scope/relevance judgment, NOT a met/not_met verdict — do not judge \
+whether the diagram shows the control correctly, only whether this diagram \
+TYPE and CONTENT is capable of depicting this kind of control at all. A \
+requirement about network segmentation is relevant to an architecture diagram \
+even if segmentation isn't actually drawn (that would be a "not_met" \
+judgment, made elsewhere) — it is NOT relevant if the requirement is about \
+something a diagram fundamentally cannot show regardless of quality (e.g. \
+process/documentation checks like "verify a security analysis was performed").
+
+Return ONLY a JSON object:
+{
+    "relevant": true/false,
+    "reasoning": "<one or two sentences explaining why, referencing what the diagram shows or what kind of diagram it is>"
+}
+"""
+
+
+def judge_diagram_requirement_relevance(
+    image_bytes: bytes,
+    requirement_text: str,
+    verification_hint: str,
+    image_format: str = "png",
+) -> Dict[str, Any]:
+    """Vision LLM judge for diagram ground-truth relevance labeling — replaces
+    manual human review of `build_diagram_ground_truth_template.py`'s output.
+    Uses component="eval_judge" (a different model family from Hunter/Critic/
+    Mediator) so this isn't the system grading its own homework."""
+    user_prompt = (
+        f"Candidate requirement: {requirement_text}\n\n"
+        f"Verification hint: {verification_hint}\n\n"
+        "Is this requirement checkable from the attached diagram?"
+    )
+
+    response = ai_service_manager.chat_completion_with_fallback(
+        messages=[
+            {"role": "system", "content": DIAGRAM_RELEVANCE_PROMPT},
+            {"role": "user", "content": user_prompt},
+        ],
+        component="eval_judge",
+        response_format={"type": "json_object"},
+        temperature=0.0,
+        image_bytes=image_bytes,
+        image_format=image_format,
+    )
+
+    if response.error:
+        logger.error(f"Diagram relevance judge failed: {response.error}")
+        return {"relevant": None, "reasoning": "", "error": response.error}
+
+    try:
+        result = json.loads(response.content)
+        result.setdefault("relevant", None)
+        result.setdefault("reasoning", "")
+        return result
+    except Exception as e:
+        logger.error(f"Failed to parse diagram relevance judge response: {e}")
+        return {"relevant": None, "reasoning": "", "error": "parse_failed"}
+
+
 def judge_faithfulness_deterministic(
     answer_quotes: List[str], retrieved_context_blocks: Dict[str, str]
 ) -> float:

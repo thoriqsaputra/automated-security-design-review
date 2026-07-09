@@ -272,12 +272,14 @@ class RetrievalService:
         not_sufficient = query_details.get("contract_not_sufficient") or []
         domain_keywords = query_details.get("domain_keywords") or []
         family_scope_terms = query_details.get("family_scope_terms") or []
+        retry_queries = query_details.get("retry_queries") or []
         parts = [
             parent_title,
             parent_description,
             child_requirement,
             contract_then,
             " ".join([x for x in not_sufficient[:2] if isinstance(x, str)]),
+            " ".join([x for x in retry_queries[:4] if isinstance(x, str)]),
             " ".join([x for x in family_scope_terms[:8] if isinstance(x, str)]),
             " ".join([x for x in domain_keywords if isinstance(x, str)]),
         ]
@@ -327,4 +329,3 @@ class RetrievalService:
                     }
                 )
             return None
-

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import type { CitationAnchor, Finding, FindingEvidenceSource, JsonRecord } from '../../../api/reviews';
+import type { CitationAnchor, DebateStreamState, Finding, FindingEvidenceSource, JsonRecord } from '../../../api/reviews';
 import {
   formatLabel,
   formatValue,
@@ -10,6 +10,21 @@ import {
   stringList,
 } from '../utils/reviewPresentation';
 import type { DetailItem } from '../utils/reviewPresentation';
+import AgentMessageBubble from './AgentMessageBubble';
+
+// Mirrors backend build_debate_id (debate_events.py) so a persisted Finding
+// can be matched against its live/replayed debate transcript client-side.
+function computeDebateId(finding: Finding): string {
+  if (finding.finding_type === 'diagram') {
+    const diagramId = (finding.diagram_id || '').trim();
+    return `diagram:${diagramId || 'unknown'}`;
+  }
+  if (finding.child_parameter_id != null) {
+    return `text:${finding.child_parameter_id}`;
+  }
+  const reference = (finding.requirement_reference || 'unknown').trim();
+  return `text:${reference || 'unknown'}`;
+}
 
 export function TextBlock({ title, children }: { title: string; children: ReactNode }) {
   if (!isPresent(children)) {
@@ -284,12 +299,15 @@ export function DiagramAssessedRequirementsList({ metadata }: { metadata: JsonRe
 
 interface FindingDetailsProps {
   finding: Finding;
+  debatesById?: Record<string, DebateStreamState>;
   activeCitationId?: number | null;
   onCitationSelect?: (citation: CitationAnchor) => void;
 }
 
-export function FindingDetails({ finding, activeCitationId = null, onCitationSelect }: FindingDetailsProps) {
+export function FindingDetails({ finding, debatesById, activeCitationId = null, onCitationSelect }: FindingDetailsProps) {
   const [activeAgentAudit, setActiveAgentAudit] = useState<string | null>('Hunter');
+  const debateTranscript = debatesById?.[computeDebateId(finding)]?.transcript ?? null;
+  const hasDebateTranscript = Boolean(debateTranscript && debateTranscript.length > 0);
   const evidenceSources = (finding.evidence_sources || []).filter(
     (source): source is FindingEvidenceSource => Boolean(source?.key && source?.label),
   );
@@ -396,42 +414,53 @@ export function FindingDetails({ finding, activeCitationId = null, onCitationSel
         </section>
       )}
 
-      {(finding.hunter_reasoning || finding.critic_reasoning || finding.mediator_reasoning || finding.hunter_thought_process || finding.critic_thought_process || finding.mediator_thought_process) && (
+      {hasDebateTranscript ? (
         <section className="space-y-3 rounded-xl border border-surface-border bg-surface-base/50 p-4">
           <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Agent Audit</p>
           <div className="flex flex-col gap-3">
-            {[
-              { role: 'Hunter', color: 'text-flame', reasoning: finding.hunter_reasoning, thought: finding.hunter_thought_process },
-              { role: 'Critic', color: 'text-burgundy-light', reasoning: finding.critic_reasoning, thought: finding.critic_thought_process },
-              { role: 'Mediator', color: 'text-emerald-400', reasoning: finding.mediator_reasoning, thought: finding.mediator_thought_process },
-            ].map((agent) => {
-              if (!agent.reasoning && !agent.thought) return null;
-              const isActive = activeAgentAudit === agent.role;
-              return (
-                <div key={agent.role} className="rounded-lg border border-surface-border bg-midnight">
-                  <button
-                    type="button"
-                    onClick={() => setActiveAgentAudit(isActive ? null : agent.role)}
-                    className="flex w-full items-center justify-between p-3 text-left transition-colors hover:bg-surface-border/30"
-                  >
-                    <p className={`text-[10px] font-bold uppercase tracking-wider ${agent.color}`}>{agent.role}</p>
-                    {isActive ? (
-                      <ChevronDown size={14} className="text-text-muted shrink-0" />
-                    ) : (
-                      <ChevronRight size={14} className="text-text-muted shrink-0" />
-                    )}
-                  </button>
-                  {isActive && (
-                    <div className="space-y-4 border-t border-surface-border p-3 animate-fade-in">
-                      <TextBlock title="Reasoning">{agent.reasoning}</TextBlock>
-                      <TextBlock title="Thought Process">{agent.thought}</TextBlock>
-                    </div>
-                  )}
-                </div>
-              );
-            })}
+            {debateTranscript!.map((message) => (
+              <AgentMessageBubble key={message.message_id} message={message} />
+            ))}
           </div>
         </section>
+      ) : (
+        (finding.hunter_reasoning || finding.critic_reasoning || finding.mediator_reasoning || finding.hunter_thought_process || finding.critic_thought_process || finding.mediator_thought_process) && (
+          <section className="space-y-3 rounded-xl border border-surface-border bg-surface-base/50 p-4">
+            <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Agent Audit</p>
+            <div className="flex flex-col gap-3">
+              {[
+                { role: 'Hunter', color: 'text-flame', reasoning: finding.hunter_reasoning, thought: finding.hunter_thought_process },
+                { role: 'Critic', color: 'text-burgundy-light', reasoning: finding.critic_reasoning, thought: finding.critic_thought_process },
+                { role: 'Mediator', color: 'text-emerald-400', reasoning: finding.mediator_reasoning, thought: finding.mediator_thought_process },
+              ].map((agent) => {
+                if (!agent.reasoning && !agent.thought) return null;
+                const isActive = activeAgentAudit === agent.role;
+                return (
+                  <div key={agent.role} className="rounded-lg border border-surface-border bg-midnight">
+                    <button
+                      type="button"
+                      onClick={() => setActiveAgentAudit(isActive ? null : agent.role)}
+                      className="flex w-full items-center justify-between p-3 text-left transition-colors hover:bg-surface-border/30"
+                    >
+                      <p className={`text-[10px] font-bold uppercase tracking-wider ${agent.color}`}>{agent.role}</p>
+                      {isActive ? (
+                        <ChevronDown size={14} className="text-text-muted shrink-0" />
+                      ) : (
+                        <ChevronRight size={14} className="text-text-muted shrink-0" />
+                      )}
+                    </button>
+                    {isActive && (
+                      <div className="space-y-4 border-t border-surface-border p-3 animate-fade-in">
+                        <TextBlock title="Reasoning">{agent.reasoning}</TextBlock>
+                        <TextBlock title="Thought Process">{agent.thought}</TextBlock>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </section>
+        )
       )}
 
       {visibleCitations.length > 0 && (

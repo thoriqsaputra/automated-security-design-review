@@ -164,6 +164,7 @@ class DebateInputFactory:
             retrieval_query_details=retrieval_query_details,
             killed_assumptions=list(killed_assumptions),
             context_chunks=debate_context_chunks,
+            original_context_chunks=list(debate_context_chunks),
             context_chunk_map=context_chunk_map,
         )
 

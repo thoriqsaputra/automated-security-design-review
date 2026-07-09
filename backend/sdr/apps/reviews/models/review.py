@@ -57,6 +57,13 @@ class Review(Base):
     summary_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict)
     retrieval_snapshot_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
 
+    # Snapshot of the design's document at the time this review was created, so
+    # that reingesting a design with a different PDF doesn't shift the document
+    # (and misalign citation bboxes) underneath already-completed reviews.
+    document_object_key: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
+    document_filename: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
+    document_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
+
     # Relationships
     design = relationship("Design", backref=backref("reviews", cascade="all, delete-orphan", passive_deletes=True))
     category = relationship("StandardCategory")

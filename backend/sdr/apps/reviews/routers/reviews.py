@@ -84,6 +84,9 @@ def create_review(payload: ReviewCreateSchema, db: Session = Depends(get_db)):
         ingestion_job_id=job.id,
         status=Review.STATUS_PENDING,
         analysis_mode=payload.analysis_mode.value,
+        document_object_key=design.document,
+        document_filename=design.original_filename,
+        document_sha256=design.document_sha256,
     )
     db.add(review)
     db.flush()
@@ -178,7 +181,7 @@ def get_review_document(review_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review not found")
 
     design = getattr(review, "design", None)
-    object_name = getattr(design, "document", None)
+    object_name = review.document_object_key or getattr(design, "document", None)
     if not object_name:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review document not found")
 
@@ -187,7 +190,7 @@ def get_review_document(review_id: int, db: Session = Depends(get_db)):
     except Exception:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review document not found")
 
-    filename = getattr(design, "original_filename", None) or f"review-{review.id}.pdf"
+    filename = review.document_filename or getattr(design, "original_filename", None) or f"review-{review.id}.pdf"
     return Response(
         content=content,
         media_type="application/pdf",
@@ -335,6 +338,25 @@ def cancel_review(review_id: int, db: Session = Depends(get_db)):
     db.refresh(review)
     review_debate_event_store.mark_debates_cancelled(review.id, error_message=review.error_message)
     return review
+
+
+@router.delete("/{review_id}", status_code=status.HTTP_200_OK)
+def delete_review(review_id: int, db: Session = Depends(get_db)):
+    """Delete a review and its findings. Does not touch the design's source document."""
+    from sdr.celery_app import celery_app
+
+    review = db.get(Review, review_id)
+    if not review:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Review not found.")
+
+    if review.status == ReviewStatus.RUNNING.value and review.celery_task_id:
+        celery_app.control.revoke(review.celery_task_id, terminate=True, signal="SIGTERM")
+
+    review_debate_event_store.reset_review(review.id)
+    db.delete(review)
+    db.commit()
+
+    return {"message": f"Review #{review_id} has been successfully deleted."}
 
 
 def _format_sse_event(event_type: str, payload: dict, *, event_id: Optional[str] = None) -> str:

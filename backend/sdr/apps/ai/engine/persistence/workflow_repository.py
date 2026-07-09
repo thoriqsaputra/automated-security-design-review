@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 from sqlalchemy import select, update
 from sqlalchemy.orm import joinedload
@@ -87,6 +87,16 @@ class ReviewWorkflowRepository(ABC):
         query_embedding: List[float],
         top_k: int,
     ) -> List[Any]:
+        raise NotImplementedError
+
+    @abstractmethod
+    def list_diagram_requirements_with_similarity(
+        self,
+        *,
+        category_id: Any,
+        ingestion_job_id: Any,
+        query_embedding: List[float],
+    ) -> List[Tuple[Any, float]]:
         raise NotImplementedError
 
 
@@ -234,3 +244,34 @@ class SqlAlchemyReviewWorkflowRepository(ReviewWorkflowRepository):
                 .limit(top_k)
             ).all()
             return [row[0] for row in rows]
+
+    def list_diagram_requirements_with_similarity(
+        self,
+        *,
+        category_id: Any,
+        ingestion_job_id: Any,
+        query_embedding: List[float],
+    ) -> List[Tuple[Any, float]]:
+        """Same join as search_diagram_requirements, but returns the entire pool
+        with its cosine distance — no top_k limit. Diagram-requirement pools are
+        small enough (tens of items) to score in full for hybrid rank fusion."""
+        with core_database.SessionLocal() as db:
+            distance_expr = (
+                CategoryDiagramRequirementEmbedding.embedding.cosine_distance(query_embedding)
+                .label("distance")
+            )
+            rows = db.execute(
+                select(CategoryDiagramRequirement, distance_expr)
+                .join(
+                    CategoryDiagramRequirementEmbedding,
+                    CategoryDiagramRequirementEmbedding.diagram_requirement_id
+                    == CategoryDiagramRequirement.id,
+                )
+                .where(
+                    CategoryDiagramRequirement.category_id == category_id,
+                    CategoryDiagramRequirement.ingestion_job_id == ingestion_job_id,
+                    CategoryDiagramRequirementEmbedding.is_active == True,
+                )
+                .order_by("distance", CategoryDiagramRequirement.ordinal)
+            ).all()
+            return [(row[0], float(row[1])) for row in rows]

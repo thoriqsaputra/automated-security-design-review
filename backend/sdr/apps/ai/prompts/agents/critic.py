@@ -77,30 +77,59 @@ IS specific enough despite different wording (do not treat these as \
 access a restricted resource is logged and generates an alert." → this \
 names a concrete logging+alerting mechanism for the exact access-control \
 event the requirement cares about; OVERTURN to met is warranted, not PARTIAL.\n\
-  - Requirement: "no weaker authentication pathway exists." TSD: "all \
-system roles (Admin, Driver, Hitchhiker) require mandatory Multi-Factor \
-Authentication." → this names a concrete, uniformly-applied control across \
-every role; it directly establishes no weaker path exists, even though the \
-TSD never uses the phrase "weaker alternative".\n\
+  - Requirement: "all authentication pathways implement consistent \
+authentication strength." TSD: "all system roles (Admin, Driver, Hitchhiker) \
+require mandatory Multi-Factor Authentication." → this names a concrete, \
+uniformly-applied control across every role; it directly establishes uniform \
+authentication strength even though the TSD never repeats the requirement's \
+own wording.\n\
+  - Requirement: "communications between components are authenticated." \
+TSD: "every API endpoint requires fully authenticated, cryptographically \
+signed session tokens" plus "all in-transit communication uses TLS 1.2 or \
+TLS 1.3." → this is concrete component authentication and transport \
+protection evidence; do not UPHOLD not_met from wording mismatch.\n\
+  - Requirement: "business logic limits protect against abuse." TSD: \
+"maximum number of requests permitted per minute by a signed user token." \
+→ this is a concrete abuse-limiting control; if it addresses the core risk, \
+use PARTIAL or OVERTURN rather than UPHOLD not_met from silence.\n\
 Contrast with genuinely generic evidence that should still be rejected: "the \
 system is secure," "access is controlled," or a heading/topic mention with \
 no named mechanism at all — those remain insufficient regardless of wording.
+
+FOR ABSENCE / PROHIBITION REQUIREMENTS — examples include deprecated or unsupported \
+technology bans, "no weaker authentication path", password hints / secret questions, \
+or limiting weak authenticators. Do NOT uphold a "met" verdict from silence alone. \
+"Met" requires explicit prohibition, explicit approved-only mechanism inventory, or \
+another closed-world architectural statement showing the disallowed option is not used. \
+If the TSD only names the stronger mechanism but never excludes weaker alternatives, use \
+PARTIAL or OVERTURN rather than UPHOLD.
+- Example: requirement says SMS/email weak authenticators must be limited to \
+secondary verification or transaction approval. Evidence that only shows FIDO2, \
+WebAuthn, MFA, or OTP use is NOT enough by itself. Unless the cited text also \
+states how SMS/email or other weak methods are restricted, treat the claim as \
+partial or unsupported rather than met.
+- Example: requirement says each protection level must have an associated set of \
+protection requirements. Evidence that only lists various controls (TLS, AES, \
+redaction, retention, network zoning) is NOT enough by itself. Uphold "met" only \
+if the cited text explicitly maps named levels / classes / zones to required \
+control sets or requirement bundles.
 
 FOR met VERDICTS — UPHOLD when the evidence is genuinely sufficient. \
 Issue UPHOLD when ALL of the following are true: \
   (1) at least one citation you personally verified contains text that specifically \
       names a security mechanism, algorithm, library, or architectural decision; \
-  (2) that mechanism directly satisfies the core of the requirement; \
-  (3) Hunter confidence ≥ 0.70. \
+  (2) that mechanism directly satisfies the core of the requirement. \
+Hunter confidence is a secondary calibration signal, not a reason to reject \
+otherwise valid evidence. Low confidence alone should NOT force PARTIAL when \
+the cited mechanism is concrete and verified. \
 Issue PARTIAL whenever any of the following is true: \
   (a) the cited block exists but the quoted text cannot be located verbatim \
       or by close paraphrase in the block raw text; \
   (b) the evidence names a generic concept without specifying the mechanism \
       (e.g., "secure communication" without naming TLS/mTLS/HTTPS); \
-  (c) Hunter confidence < 0.70; \
-  (d) evidence covers only one component when the requirement explicitly \
+  (c) evidence covers only one component when the requirement explicitly \
       requires multiple (e.g., MFA on login but not on API); \
-  (e) the cited evidence proves a related-but-not-identical property, or a \
+  (d) the cited evidence proves a related-but-not-identical property, or a \
       different verification level, than the one the requirement demands — \
       even if the citation is accurately quoted. Before UPHOLD, explicitly \
       check that the cited mechanism addresses the EXACT property named \
@@ -115,6 +144,13 @@ Issue PARTIAL whenever any of the following is true: \
 Only OVERTURN if the cited evidence clearly cannot support the verdict at all \
   (e.g., block content is unrelated, or the mechanism named is explicitly \
    out-of-scope for this TSD).
+- Respect explicit alternatives in the requirement text. If the requirement is \
+phrased as "such as X, and / or Y", verified evidence of either alternative can \
+satisfy the core claim when the text clearly uses an inclusive alternative. \
+Do not demand both when the requirement itself allows either path.
+- One invalid citation does not automatically defeat a met verdict. If the \
+remaining valid citations still cover the full core claim, keep the verdict \
+supported and mark only the bad citation invalid.
 
 EVIDENCE QUALITY CHECK:
 - Reject "met" claims supported only by section headings, requirement titles, \
@@ -297,11 +333,14 @@ architecturally absent, not merely that the named mechanism differs.
 	- invalid_citation_ids → block_ids cited by the Hunter that do NOT contain \
 	the claimed evidence.
 	- If revised_verdict is "met", valid_citations MUST contain at least one block_id you verified this way. Never output revised_verdict "met" (or an OVERTURN to "met") with an empty valid_citations list — if you cannot find a verified citation, the verdict must be "not_met" or "na" instead.
+	- If you verify a concrete mechanism that satisfies the requirement's core property, prefer OVERTURN -> "met" over PARTIAL. Use PARTIAL only when the evidence is genuinely incomplete, adjacent, or non-core.
 	- CRITICAL: When the Hunter's verdict is "met", never issue UPHOLD with an empty valid_citations list. "Met" requires at least one citation you personally verified in the context. If you cannot locate a verified citation confirming the Hunter's "met" finding, you MUST issue PARTIAL instead — even if you agree with the Hunter's reasoning. Reasoning without a citable block is not sufficient to UPHOLD a "met" verdict at the TSD review level. For "not_met" or "na" Hunter verdicts, UPHOLD with empty valid_citations is acceptable when no evidence exists to challenge the verdict.
 - Challenge generic missing-evidence findings unless Hunter identified both why the control applies and what implementation evidence is missing.
 - If the retrieved context is only headings, graph summaries, baseline requirements, or unrelated snippets and does not establish applicability, revise the verdict to "na".
 - Do not revise "not_met" to "na" merely because the exact named standard/mechanism is absent from the stack. If the design still has the governed capability (API, session, MFA, service boundary, business logic flow, integration, etc.), applicability remains established and silence is a "not_met" problem.
+- If the requirement text uses family language such as "or other", "such as", "or equivalent", or "or comparable", evaluate applicability at the family/capability level rather than the first named technology only.
 - Do not uphold "not_met" solely because evidence is absent; absent evidence is a failure only after applicability is established.
+	- In a rebuttal round, if the Hunter resolves your prior objections with new verified citations, remove those objections and upgrade the verdict accordingly rather than preserving PARTIAL by inertia.
 	- Use evidence-only reasoning; do not infer controls that are not explicitly stated.
 	- If YOUR PRIOR CHALLENGE is present above, this is a rebuttal round: explicitly check whether each prior objection/weak_evidence/missed_evidence item was resolved by the Hunter's new evidence. Carry forward any item that is still unresolved into this round's objections list — do not silently drop it just because the Hunter restated its position.
 {block_ids_block}

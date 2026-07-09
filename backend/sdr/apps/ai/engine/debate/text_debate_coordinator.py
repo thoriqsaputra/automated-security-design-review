@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
+from copy import deepcopy
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Optional, Tuple
@@ -220,7 +221,7 @@ class TextDebateCoordinator:
                 agent=agent,
                 chunk=chunk,
             ),
-            agent_started_handler=lambda agent: self.publish_live_agent_start(
+            agent_started_handler=lambda agent, round_number=None: self.publish_live_agent_start(
                 review=review,
                 parameter=parameter,
                 category_code=getattr(category, "code", None) or "unknown",
@@ -228,8 +229,9 @@ class TextDebateCoordinator:
                 execution_mode=execution_mode,
                 progress_percent=self.agent_progress_percent(agent, "started"),
                 content=f"{agent.title()} is analyzing this requirement.",
+                round_number=round_number,
             ),
-            agent_completed_handler=lambda agent, content, critic_outcome=None, requires_rebuttal=None: self.publish_live_agent_complete(
+            agent_completed_handler=lambda agent, content, critic_outcome=None, requires_rebuttal=None, round_number=None: self.publish_live_agent_complete(
                 review=review,
                 parameter=parameter,
                 agent=agent,
@@ -238,6 +240,7 @@ class TextDebateCoordinator:
                 execution_mode=execution_mode,
                 critic_outcome=critic_outcome,
                 requires_rebuttal=requires_rebuttal,
+                round_number=round_number,
             ),
         )
 
@@ -270,7 +273,7 @@ class TextDebateCoordinator:
                 agent=agent,
                 chunk=chunk,
             ),
-            agent_started_handler=lambda agent: self.publish_live_agent_start(
+            agent_started_handler=lambda agent, round_number=None: self.publish_live_agent_start(
                 review=review,
                 parameter=parameter,
                 category_code=getattr(category, "code", None) or "unknown",
@@ -278,8 +281,9 @@ class TextDebateCoordinator:
                 execution_mode=execution_mode,
                 progress_percent=self.agent_progress_percent(agent, "started"),
                 content=f"{agent.title()} is analyzing this requirement.",
+                round_number=round_number,
             ),
-            agent_completed_handler=lambda agent, content, critic_outcome=None, requires_rebuttal=None: self.publish_live_agent_complete(
+            agent_completed_handler=lambda agent, content, critic_outcome=None, requires_rebuttal=None, round_number=None: self.publish_live_agent_complete(
                 review=review,
                 parameter=parameter,
                 agent=agent,
@@ -288,6 +292,7 @@ class TextDebateCoordinator:
                 execution_mode=execution_mode,
                 critic_outcome=critic_outcome,
                 requires_rebuttal=requires_rebuttal,
+                round_number=round_number,
             ),
         )
 
@@ -318,9 +323,11 @@ class TextDebateCoordinator:
             query_details=retrieval_query_details,
         )
         return (
-            self.build_debate_input_for_parameter(
+            self._build_debate_input_with_refresh(
                 parameter=parameter,
                 category=category,
+                ingestion_job=ingestion_job,
+                indexes=indexes,
                 retrieval_result=retrieval_result,
                 tsd_document=tsd_document,
                 killed_assumptions=killed_assumptions,
@@ -329,6 +336,40 @@ class TextDebateCoordinator:
             ),
             retrieval_result,
         )
+
+    def _build_debate_input_with_refresh(
+        self,
+        *,
+        parameter,
+        category,
+        ingestion_job,
+        indexes,
+        retrieval_result,
+        tsd_document,
+        killed_assumptions: List[Dict[str, Any]],
+        contract: Optional[dict] = None,
+        retrieval_query_details: Optional[dict] = None,
+    ) -> DebateInput:
+        debate_input = self.debate_input_factory.build_debate_input(
+            parameter=parameter,
+            category=category,
+            retrieval_result=retrieval_result,
+            tsd_document=tsd_document,
+            killed_assumptions=killed_assumptions,
+            contract=contract,
+            retrieval_query_details=retrieval_query_details,
+        )
+        debate_input.retrieval_refresh_callback = self._build_retrieval_refresh_callback(
+            parameter=parameter,
+            category=category,
+            ingestion_job=ingestion_job,
+            indexes=indexes,
+            tsd_document=tsd_document,
+            killed_assumptions=killed_assumptions,
+            contract=contract or debate_input.contract,
+            retrieval_query_details=retrieval_query_details or debate_input.retrieval_query_details,
+        )
+        return debate_input
 
     def build_debate_input_for_parameter(
         self,
@@ -350,6 +391,75 @@ class TextDebateCoordinator:
             contract=contract,
             retrieval_query_details=retrieval_query_details,
         )
+
+    def _build_retrieval_refresh_callback(
+        self,
+        *,
+        parameter,
+        category,
+        ingestion_job,
+        indexes,
+        tsd_document,
+        killed_assumptions: List[Dict[str, Any]],
+        contract: Dict[str, Any],
+        retrieval_query_details: Dict[str, Any],
+    ):
+        if indexes is None:
+            return None
+
+        def _refresh(*, critic_result, hunter_result=None, round_number: int, refresh_reason: str = "missed_evidence") -> Dict[str, Any]:
+            retry_queries: List[str] = []
+            for values in (
+                list(getattr(critic_result, "missed_evidence", []) or []),
+                list(getattr(critic_result, "objections", []) or [])[:3],
+                list(getattr(critic_result, "weak_evidence", []) or [])[:2],
+            ):
+                for value in values:
+                    if isinstance(value, str) and value.strip():
+                        retry_queries.append(value.strip())
+            deduped_queries: List[str] = []
+            seen = set()
+            for value in retry_queries:
+                key = value.lower()
+                if key in seen:
+                    continue
+                seen.add(key)
+                deduped_queries.append(value)
+            updated_query_details = deepcopy(retrieval_query_details or {})
+            updated_query_details["retry_queries"] = deduped_queries[:6]
+            refreshed_result = self.retrieval.retrieve_for_parameter(
+                parameter=parameter,
+                category=category,
+                ingestion_job=ingestion_job,
+                indexes=indexes,
+                tsd_document=tsd_document,
+                query_details=updated_query_details,
+            )
+            refreshed_input = self.debate_input_factory.build_debate_input(
+                parameter=parameter,
+                category=category,
+                retrieval_result=refreshed_result,
+                tsd_document=tsd_document,
+                killed_assumptions=killed_assumptions,
+                contract=contract,
+                retrieval_query_details=updated_query_details,
+            )
+            refreshed_input.retrieval_refresh_callback = None
+            return {
+                "debate_input": refreshed_input,
+                "retrieval_result": refreshed_result,
+                "trace": {
+                    "round": round_number,
+                    "reason": refresh_reason,
+                    "retry_queries": deduped_queries[:6],
+                    "hunter_verdict": getattr(hunter_result, "verdict", None),
+                    "critic_invalid_citation_ids": list(getattr(critic_result, "invalid_citation_ids", []) or []),
+                    "refreshed_chunk_count": len(refreshed_input.context_chunks or []),
+                    "refreshed_chunk_ids": list(refreshed_input.context_chunk_map.keys()),
+                },
+            }
+
+        return _refresh
 
     def has_grounded_citations(self, output: DebateOutput) -> bool:
         allowed_ids = set(output.analysis_trace.get("retrieved_chunk_ids", []) or [])
@@ -702,6 +812,7 @@ class TextDebateCoordinator:
         execution_mode: str,
         progress_percent: int,
         content: str,
+        round_number: Optional[int] = None,
     ) -> None:
         review_debate_event_store.start_agent(
             review.id,
@@ -714,6 +825,7 @@ class TextDebateCoordinator:
             execution_mode=execution_mode,
             content=content,
             progress_percent=progress_percent,
+            round_number=round_number,
         )
 
     def publish_live_agent_chunk(
@@ -742,6 +854,7 @@ class TextDebateCoordinator:
         execution_mode: str,
         critic_outcome: Optional[str] = None,
         requires_rebuttal: Optional[bool] = None,
+        round_number: Optional[int] = None,
     ) -> None:
         review_debate_event_store.complete_agent(
             review.id,
@@ -752,6 +865,7 @@ class TextDebateCoordinator:
             execution_mode=execution_mode,
             critic_outcome=critic_outcome,
             requires_rebuttal=requires_rebuttal,
+            round_number=round_number,
         )
 
     def record_debate_progress(

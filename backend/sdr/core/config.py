@@ -84,8 +84,9 @@ class Settings(BaseSettings):
 
 
     AI_DEBATE_MAX_HUNTER_CALLS_PER_PARAMETER: int = Field(default=8)
-    AI_DEBATE_MAX_DEBATE_ROUNDS: int = Field(default=1)
+    AI_DEBATE_MAX_DEBATE_ROUNDS: int = Field(default=2)
     AI_DEBATE_CRITIC_AUTO_UPHOLD_STRONG_NOT_MET: bool = Field(default=False)
+    AI_DEBATE_MAX_COT_TRACE_CHARS_FOR_HANDOFF: int = Field(default=4000)
 
     AI_BATCH_DEBATE_MAX_CONCURRENCY: int = Field(default=3)
     AI_BATCH_DEBATE_UNGROUNDED_NOT_MET_POLICY: str = Field(default="preserve_not_met")
@@ -107,6 +108,7 @@ class Settings(BaseSettings):
     AI_VISION_MAX_CONCURRENCY: int = Field(default=2)
     AI_VISION_MIN_DIAGRAM_BYTES: int = Field(default=512)
     AI_VISION_DIAGRAM_REQUIREMENTS_MAX_ITEMS: int = Field(default=15)
+    AI_VISION_SKIP_MEDIATOR_ON_UPHOLD: bool = Field(default=True)
 
     AI_RAPTOR_SUMMARY_MAX_CONCURRENCY: int = Field(default=3)
     AI_RAPTOR_EMBED_MAX_CONCURRENCY: int = Field(default=4)

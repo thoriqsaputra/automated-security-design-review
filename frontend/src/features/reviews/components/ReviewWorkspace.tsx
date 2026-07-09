@@ -1,6 +1,8 @@
+import { useMemo } from 'react';
 import { Play, XCircle } from 'lucide-react';
 import ReviewPipeline from '../../../components/flow/ReviewPipeline';
 import LoadingSpinner from '../../../components/ui/LoadingSpinner';
+import { useReviewDebateStream } from '../hooks/useReviewDebateStream';
 import { useReviewDetail, type UseReviewDetailResult } from '../hooks/useReviewDetail';
 import { ANALYSIS_MODE_OPTIONS, REVIEW_TABS } from '../utils/reviewPresentation';
 import ReviewDebatePanel from './ReviewDebatePanel';
@@ -57,6 +59,15 @@ export default function ReviewWorkspace({ reviewId, reviewState, showControls = 
     handleTrigger,
     handleCancel,
   } = state;
+
+  const { debates, connected, streamError, errorMessage: debateStreamErrorMessage } = useReviewDebateStream(
+    review?.id ?? null,
+    review?.status ?? null,
+  );
+  const debatesById = useMemo(
+    () => Object.fromEntries(debates.map((debate) => [debate.debate_id, debate])),
+    [debates],
+  );
 
   if (loading || !review) {
     return <LoadingSpinner />;
@@ -138,9 +149,11 @@ export default function ReviewWorkspace({ reviewId, reviewState, showControls = 
 
       {activeTab === 'debate' && (
         <ReviewDebatePanel
-          reviewId={review.id}
-          reviewStatus={review.status}
           analysisMode={selectedAnalysisMode}
+          debates={debates}
+          connected={connected}
+          streamError={streamError}
+          errorMessage={debateStreamErrorMessage}
           debatedTotal={debatedTotal}
           debatedProcessed={debatedProcessed}
           debatedRemaining={debatedRemaining}
@@ -154,6 +167,7 @@ export default function ReviewWorkspace({ reviewId, reviewState, showControls = 
         <ReviewFindingsPanel
           review={review}
           findings={findings}
+          debatesById={debatesById}
           totalFindings={totalFindings}
           totalPages={totalPages}
           loadingFindings={loadingFindings}

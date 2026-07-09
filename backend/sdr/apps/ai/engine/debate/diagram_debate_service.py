@@ -39,6 +39,9 @@ class DiagramDebateService:
         self._hunter_agent = VisionHunterAgent()
         self._critic_agent = VisionCriticAgent()
         self._mediator_agent = VisionMediatorAgent()
+        self._skip_mediator_on_uphold = bool(
+            getattr(settings, "AI_VISION_SKIP_MEDIATOR_ON_UPHOLD", True)
+        )
 
     def run_diagram_debate(
         self,
@@ -52,6 +55,7 @@ class DiagramDebateService:
         agent_started_handler: Optional[Callable[[str], None]] = None,
         agent_completed_handler: Optional[Callable[..., None]] = None,
     ) -> DiagramDebateOutput:
+        skip_mediator_on_uphold = skip_mediator_on_uphold or self._skip_mediator_on_uphold
         output = DiagramDebateOutput(
             diagram=diagram,
             requirements=requirements,
@@ -242,15 +246,9 @@ class DiagramDebateService:
             diagram.diagram_id,
             critic_outcome,
         )
-        if agent_started_handler:
-            agent_started_handler("mediator")
-        mediator_prompt = build_vision_mediator_debate_prompt(
-            hunter_result=hunter_result,
-            critic_result=critic_result,
-        )
         if skip_mediator_on_uphold and critic_outcome != "overturn":
             self.logger.info(
-                "DiagramDebateService: skipping mediator LLM for diagram_id=%s because cheap mode is enabled and Critic upheld",
+                "DiagramDebateService: skipping mediator LLM for diagram_id=%s because Critic upheld",
                 diagram.diagram_id,
             )
             mediator_result = {
@@ -265,11 +263,19 @@ class DiagramDebateService:
                 ),
                 "diagram_scope_reasoning": critic_result.get("diagram_scope_reasoning")
                 or hunter_result.get("diagram_scope_reasoning"),
-                "verdict_policy_source": "cheap_mode_skip_mediator",
+                "verdict_policy_source": "critic_upheld_skip_mediator",
             }
-        # Give the Mediator the diagram image only when it needs to break a disagreement.
-        # This avoids paying the vision-token cost on every call.
-        elif critic_outcome == "overturn":
+            if agent_started_handler:
+                agent_started_handler("mediator")
+            if agent_completed_handler:
+                agent_completed_handler("mediator", self._reasoning_content(mediator_result))
+        else:
+            if agent_started_handler:
+                agent_started_handler("mediator")
+            mediator_prompt = build_vision_mediator_debate_prompt(
+                hunter_result=hunter_result,
+                critic_result=critic_result,
+            )
             self.logger.info(
                 "DiagramDebateService: Critic overturned Hunter — Mediator will see the diagram image diagram_id=%s",
                 diagram.diagram_id,
@@ -278,12 +284,6 @@ class DiagramDebateService:
                 user_prompt=mediator_prompt,
                 image_bytes=image_bytes,
                 image_format=image_format,
-                system_prompt=VISION_MEDIATOR_DEBATE_SYSTEM_PROMPT,
-                log_context=f"diagram_id={diagram.diagram_id} agent=mediator",
-            )
-        else:
-            mediator_result = self._mediator_agent.run_text(
-                user_prompt=mediator_prompt,
                 system_prompt=VISION_MEDIATOR_DEBATE_SYSTEM_PROMPT,
                 log_context=f"diagram_id={diagram.diagram_id} agent=mediator",
             )
@@ -341,7 +341,7 @@ class DiagramDebateService:
         )
 
         output.mediator_result = mediator_result
-        if agent_completed_handler:
+        if agent_completed_handler and not (skip_mediator_on_uphold and critic_outcome != "overturn"):
             agent_completed_handler("mediator", self._reasoning_content(mediator_result))
         self.logger.info(
             "DiagramDebateService: COMPLETE diagram_id=%s verdict=%s confidence=%.2f",

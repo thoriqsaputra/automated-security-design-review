@@ -31,6 +31,11 @@ export default function AgentMessageBubble({ message }: AgentMessageBubbleProps)
               Chain of thought
             </span>
           )}
+          {typeof message.round === 'number' && (
+            <span className="rounded-full border border-surface-border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-text-muted">
+              Round {message.round}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-2">
           {message.critic_outcome && (

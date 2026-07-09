@@ -168,11 +168,11 @@ def _apply_diagram_evidence_policy(
     hunter_result: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     hunter_result = dict(hunter_result or {})
+    mediator_result = dict(mediator_result or {})
     verdict = str(mediator_result.get("final_verdict", VERDICT_NA)).strip().lower()
-    assessments = list(
-        mediator_result.get("assessed_requirements")
-        or hunter_result.get("requirement_assessments")
-        or []
+    assessments = _merge_assessed_requirements(
+        hunter_result.get("requirement_assessments") or [],
+        mediator_result.get("assessed_requirements") or [],
     )
 
     hunter_scope = _normalize_diagram_scope_verdict(hunter_result.get("diagram_scope_verdict"))
@@ -193,7 +193,14 @@ def _apply_diagram_evidence_policy(
     if scope_reasoning:
         mediator_result["diagram_scope_reasoning"] = scope_reasoning
 
-    if hunter_scope == "non_architecture" or critic_scope == "non_architecture":
+    should_force_non_architecture = (
+        hunter_scope == "non_architecture" and critic_scope == "non_architecture"
+    ) or (
+        critic_scope == "non_architecture"
+        and not (critic_result.get("validated_requirements") or [])
+        and bool((critic_result.get("diagram_scope_reasoning") or "").strip())
+    )
+    if should_force_non_architecture:
         mediator_result["diagram_scope_verdict"] = "non_architecture"
         if scope_reasoning:
             mediator_result["diagram_scope_reasoning"] = scope_reasoning
@@ -309,33 +316,72 @@ def _ground_assessed_requirements_against_critic(
     assessments: List[Dict[str, Any]],
     critic_result: Dict[str, Any],
 ) -> tuple[List[Dict[str, Any]], bool]:
-    validated_ids = {
-        str(r.get("requirement_id")).strip()
-        for r in (critic_result.get("validated_requirements") or [])
-        if isinstance(r, dict) and r.get("requirement_id")
-    }
     invalidated_ids = {
-        str(r.get("requirement_id")).strip()
+        str(r.get("requirement_id")).strip().lower()
         for r in (critic_result.get("invalidated_requirements") or [])
         if isinstance(r, dict) and r.get("requirement_id")
     }
 
+    # Only an explicit Critic rejection (invalidated_requirements) downgrades a
+    # Hunter "met". Requiring the requirement_id to also appear in
+    # validated_requirements used to downgrade on any omission from that list —
+    # but a single Critic completion has to re-list every "met" requirement_id
+    # (often 20+ opaque composite IDs per diagram batch), so any completeness
+    # lapse there silently converted a correct "met" into a false "na" with no
+    # actual disagreement. The Critic prompt's completeness requirement is what
+    # populates invalidated_requirements reliably; treat that as the sole signal.
     grounded: List[Dict[str, Any]] = []
     downgraded = False
     for assessment in assessments:
         item = dict(assessment)
-        req_id = str(item.get("requirement_id", "")).strip()
+        req_id = str(item.get("requirement_id", "")).strip().lower()
         verdict = str(item.get("verdict", "")).strip().lower()
-        if verdict == VERDICT_MET and (req_id not in validated_ids or req_id in invalidated_ids):
+        if verdict not in {VERDICT_MET, VERDICT_NOT_MET, VERDICT_NA}:
+            item["verdict"] = VERDICT_NA
+            item.setdefault("summary", "Mediator omitted a stable verdict; preserving conservative applicability-only fallback.")
+            item.setdefault("reasoning", item["summary"])
+            verdict = VERDICT_NA
+        if verdict == VERDICT_MET and req_id in invalidated_ids:
             item["verdict"] = VERDICT_NA
             item["summary"] = (
-                "Downgraded: Critic did not confirm this requirement's evidence "
-                "(no corroborating validated_requirements entry)."
+                "Downgraded: Critic explicitly invalidated this requirement's evidence."
             )
             item["reasoning"] = item["summary"]
             downgraded = True
         grounded.append(item)
     return grounded, downgraded
+
+
+def _merge_assessed_requirements(
+    hunter_assessments: List[Dict[str, Any]],
+    mediator_assessments: List[Dict[str, Any]],
+) -> List[Dict[str, Any]]:
+    merged: Dict[str, Dict[str, Any]] = {}
+    ordered_ids: List[str] = []
+    for source in (hunter_assessments or []):
+        if not isinstance(source, dict):
+            continue
+        req_id = str(source.get("requirement_id", "")).strip()
+        if not req_id:
+            continue
+        ordered_ids.append(req_id)
+        merged[req_id] = dict(source)
+    for source in (mediator_assessments or []):
+        if not isinstance(source, dict):
+            continue
+        req_id = str(source.get("requirement_id", "")).strip()
+        if not req_id:
+            continue
+        if req_id not in merged:
+            ordered_ids.append(req_id)
+            merged[req_id] = {}
+        updated = dict(merged[req_id])
+        for key, value in source.items():
+            if value in (None, "", []):
+                continue
+            updated[key] = value
+        merged[req_id] = updated
+    return [merged[req_id] for req_id in ordered_ids if req_id in merged]
 
 
 def _worst_case_diagram_verdict(assessments: List[Dict[str, Any]]) -> str:

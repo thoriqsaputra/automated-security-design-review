@@ -49,6 +49,7 @@ class MediatorAgent(BaseAgent):
         hunter_result: HunterResult,
         critic_result: CriticResult,
         debate_history: Optional[List[dict]] = None,
+        original_context_chunks: Optional[List[str]] = None,
     ) -> str:
         """
         Delegates to build_mediator_prompt() from agent_prompts.py.
@@ -74,6 +75,7 @@ class MediatorAgent(BaseAgent):
             critic_assumptions=critic_result.assumptions,
             critic_cot_trace=critic_result.cot_trace,
             debate_history=debate_history or [],
+            original_context_chunks=original_context_chunks or [],
         )
 
     def run(
@@ -84,6 +86,7 @@ class MediatorAgent(BaseAgent):
         hunter_result: HunterResult,
         critic_result: CriticResult,
         debate_history: Optional[List[dict]] = None,
+        original_context_chunks: Optional[List[str]] = None,
         stream_handler: Optional[Callable[[str], None]] = None,
     ) -> MediatorResult:
         # ------------------------------------------------------------------
@@ -126,6 +129,7 @@ class MediatorAgent(BaseAgent):
             hunter_result=hunter_result,
             critic_result=critic_result,
             debate_history=debate_history,
+            original_context_chunks=original_context_chunks,
         )
 
         self.logger.info(
@@ -585,27 +589,34 @@ class MediatorAgent(BaseAgent):
         if critic_result.outcome != OUTCOME_UPHOLD:
             return None
 
-        if debate_history and len(debate_history) > 1:
-            return None
+        final_rebuttal_converged = (
+            bool(debate_history)
+            and len(debate_history) > 1
+            and critic_result.outcome == OUTCOME_UPHOLD
+            and hunter_result.verdict == critic_result.revised_verdict
+            and bool(critic_result.valid_citations)
+        )
 
-        if critic_result.requires_rebuttal or critic_result.objections:
+        if critic_result.requires_rebuttal or (
+            critic_result.objections and not final_rebuttal_converged
+        ):
             return None
 
         if hunter_result.verdict != critic_result.revised_verdict:
             return None
 
-        if (
+        agreed_verdict = hunter_result.verdict
+        if agreed_verdict == VERDICT_NOT_MET and not critic_result.valid_citations:
+            return None
+        if agreed_verdict == VERDICT_MET and not critic_result.valid_citations:
+            return None
+        if agreed_verdict != VERDICT_MET and (
             hunter_result.confidence < _FAST_PATH_CONFIDENCE_THRESHOLD
             or critic_result.revised_confidence < _FAST_PATH_CONFIDENCE_THRESHOLD
         ):
             return None
 
         # All conditions met — produce a fast-path result
-        agreed_verdict = hunter_result.verdict
-        if agreed_verdict == VERDICT_NOT_MET and not critic_result.valid_citations:
-            return None
-        if agreed_verdict == VERDICT_MET and not critic_result.valid_citations:
-            return None
 
         averaged_confidence = (
             hunter_result.confidence + critic_result.revised_confidence
