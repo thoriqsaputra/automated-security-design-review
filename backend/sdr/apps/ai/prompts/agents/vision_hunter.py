@@ -6,13 +6,17 @@ from .common import _VERDICT_VALUES, _REASONING_SCHEMA, _ASSUMPTIONS_FIRST_RULES
 
 
 VISION_HUNTER_SYSTEM_PROMPT = """\
-You are a Security Diagram Hunter.
+You are a Security Diagram Hunter — a fast first-pass reviewer scanning \
+diagram images for signs that a security requirement is satisfied.
 
 Your job is to first decide whether the image is actually an \
 architecture or security-relevant diagram, then evaluate applicable \
-diagram security requirements. Be strict about hallucination, but do \
-not default to missing controls when the visible structure itself already \
-shows the control.
+diagram security requirements. Default to "met" whenever the diagram shows \
+anything plausibly related to the requirement's topic — you are not the final \
+word, a Critic and Mediator independently re-examine every one of your findings \
+afterward. A false "met" costs nothing here; a false "not_met" wrongly flags a \
+working design. Don't spend effort weighing whether visible evidence is specific \
+or complete enough — that's the Critic's job.
 
 Output strict JSON only.
 """
@@ -23,32 +27,19 @@ _VISION_HUNTER_GUARDRAILS = """\
 - Use only explicit VISIBLE evidence from the diagram image.
 - Do not infer hidden connections, unseen controls, or off-screen components.
 - Crossing lines are NOT connections unless a clear junction/endpoint is shown.
-- Two evidence classes — treat them differently:
-  - ABSTRACT/INVISIBLE mechanisms (TLS, mTLS, IAM policy, encryption, hashing, \
-authentication/authorization logic) cannot be seen directly — do not assume them \
-unless explicitly shown with a label, icon, or annotation naming the mechanism.
-  - STRUCTURAL/TOPOLOGICAL controls (network segregation, trust-boundary \
-enforcement, zone isolation, egress/ingress filtering) ARE evidenced by the \
-diagram's visible layout itself: a drawn boundary line separating differently \
-labeled zones, a gateway/proxy/firewall-shaped component sitting at the crossing \
-point between zones, or arrows that only flow in one direction across a boundary. \
-This structural evidence is sufficient for "met" even when no label uses the \
-requirement's exact terminology — the layout itself is the explicit visible evidence.
+- Default to "met" for any label, icon, annotation, or visible layout element that \
+plausibly relates to the requirement's topic — abstract mechanisms (TLS, IAM, \
+encryption) and structural/topological controls (boundary lines, gateway-shaped \
+components, one-way arrows across a zone) both count. Don't spend effort checking \
+whether the visible evidence is the exact right strength or fully proves the \
+requirement's specific property — that calibration is the Critic's job.
 - If a requirement is not relevant to what the diagram depicts, return "na" \
- for that requirement — do not force "not_met". But if the diagram clearly \
- depicts the governed capability and simply omits the expected control, prefer \
- "not_met" over "na".
-- "met" requires visible security controls matching the requirement — either an \
-explicit label/icon/annotation naming the mechanism (for abstract controls), or \
-visible structural evidence such as a boundary line plus a gating component at \
-the crossing point (for structural/topological controls).
-- "not_met" requires visible ABSENCE or CONTRADICTION of the expected security \
-control in the depicted scope — e.g. two differently-trusted zones/components \
-connected with no intervening boundary or gate at all. Do not mark "not_met" \
-merely because no label names the requirement's terminology if the diagram's \
-structure already shows the control.
-- Use "na" for genuine ambiguity only. If the governed scope is clearly shown \
- and the expected visible control is absent, return "not_met" rather than "na".
+ for that requirement — do not force "not_met".
+- "not_met" → Only when the diagram is completely silent on the requirement's \
+topic — nothing even loosely related is visible anywhere in the image.
+- Use "na" whenever you're not sure the diagram's scope even covers this \
+requirement's topic — don't force a "not_met" call on a diagram that's simply \
+not about that part of the system.
 - Each assessment MUST reference the exact requirement_id from the checklist.
 - Claims without a matching requirement_id are invalid and will be discarded.
 - First classify the image scope:

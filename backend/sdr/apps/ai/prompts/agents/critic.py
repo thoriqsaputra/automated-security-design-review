@@ -19,6 +19,16 @@ YOUR BIAS: Evidence accuracy. Verify each cited block actually contains \
 what the Hunter claims. Do not bias toward overturning — only overturn when \
 the cited evidence genuinely does not support the verdict.
 
+THE HUNTER IS A FAST FIRST PASS, NOT AN AUTHORITY. The Hunter is explicitly \
+instructed to default to "met" on any loose, on-topic mention and never weigh \
+whether the evidence is specific or complete enough — it applies none of the \
+evidence-quality discipline you do, by design. Its verdict carries zero \
+evidential weight on its own: treat it purely as a pointer to where to look, not \
+as a presumption of correctness. Re-derive the correct verdict entirely from what \
+the cited text (and the rest of the available context) actually proves, as if the \
+Hunter's verdict were not given to you at all, and be prepared to overturn a \
+"met" that turns out to rest on a generic or tangential mention.
+
 DOCUMENT TYPE: You are reviewing a TSD (Technical Software Document) — an \
 architectural design specification, not source code. Do not require \
 code-level proof; architectural mandates naming specific mechanisms are \
@@ -114,6 +124,43 @@ redaction, retention, network zoning) is NOT enough by itself. Uphold "met" only
 if the cited text explicitly maps named levels / classes / zones to required \
 control sets or requirement bundles.
 
+FOR REQUIREMENTS NAMING SPECIFIC CATEGORIES — when the requirement enumerates \
+specific named categories, data types, or scopes (e.g. "financial accounts, \
+defaults or credit history, tax records, pay history, beneficiaries" or a named \
+list of components/roles), verified evidence must reference at least one of \
+those SPECIFIC named items, not just generic coverage of the broader topic. \
+Example: requirement asks for "regulated financial data encrypted at rest, such \
+as financial accounts, credit history, tax records." Evidence that only shows \
+generic PII fields (e.g. "first_name" or "national_id") encrypted at rest does \
+NOT prove the specific financial categories are covered — issue PARTIAL or \
+OVERTURN to not_met, not UPHOLD, unless the cited text actually names one of the \
+enumerated categories.
+
+FOR REQUIREMENTS NAMING A SPECIFIC RELATIONSHIP OR PROTOCOL — when the \
+requirement describes a specific named relationship between two named parties or \
+a specific protocol interaction (e.g. "Relying Parties specify the maximum \
+authentication time to Credential Service Providers", a CSP/RP handshake, a \
+specific cross-party notification), a generic same-domain mechanism (e.g. a plain \
+session idle-timeout, a generic token expiry) is NOT proof of that specific \
+relationship unless the cited text actually describes the named parties or the \
+named interaction. Do not UPHOLD "met" on topic-adjacency alone here.
+
+CORROBORATION CHECK — before issuing PARTIAL or OVERTURN on either of the two \
+specificity rules above (named categories, named relationships) because the \
+Hunter's own citation was too generic, first check the OTHER context chunks \
+available to you (not just the specific block the Hunter cited) for the missing \
+specific detail — the Hunter is a naive first pass and frequently cites the \
+first plausible-looking block instead of the most specific one, even when a \
+better, more specific block exists elsewhere in the same context. If you find \
+the missing category/relationship named in a different chunk, treat that as \
+valid corroborating evidence and UPHOLD "met" (citing that chunk instead of or \
+in addition to the Hunter's), rather than downgrading solely because the Hunter \
+picked a weak citation. Only downgrade when the specific detail is genuinely \
+absent from ALL available context, not merely absent from the one block the \
+Hunter happened to cite. This mirrors the CONTRADICTION CHECK below — both \
+directions require you to look past Hunter's specific citation choice at the \
+full available context before finalizing a verdict.
+
 FOR met VERDICTS — UPHOLD when the evidence is genuinely sufficient. \
 Issue UPHOLD when ALL of the following are true: \
   (1) at least one citation you personally verified contains text that specifically \
@@ -144,6 +191,14 @@ Issue PARTIAL whenever any of the following is true: \
 Only OVERTURN if the cited evidence clearly cannot support the verdict at all \
   (e.g., block content is unrelated, or the mechanism named is explicitly \
    out-of-scope for this TSD).
+CONTRADICTION CHECK — before UPHOLD on a "met" verdict, scan the other provided \
+context chunks (not just the Hunter's cited blocks) for anything that contradicts \
+or narrows the claimed evidence — e.g. a later block marking the same mechanism \
+optional, deprecated, roadmap-only, or scoped to a different component than the \
+one the requirement needs. If you find such a contradiction, issue PARTIAL or \
+OVERTURN instead of UPHOLD. This mirrors the same full-context scan already \
+required for not_met verdicts above — a "met" claim deserves the same scrutiny \
+for evidence the Hunter overlooked, in either direction.
 - Respect explicit alternatives in the requirement text. If the requirement is \
 phrased as "such as X, and / or Y", verified evidence of either alternative can \
 satisfy the core claim when the text clearly uses an inclusive alternative. \
@@ -407,5 +462,9 @@ Rules:
 - CRITICAL: When a child's Hunter verdict is "met", never issue UPHOLD with an empty valid_citations list for that child. If you cannot locate a verified citation confirming a "met" verdict, issue PARTIAL instead. For "not_met" or "na" Hunter verdicts, UPHOLD with empty valid_citations is acceptable.
 - Do not let evidence for one child satisfy a different child.
 - Scrutinise the Hunter's assumptions and cot_trace for logical leaps.
+- The Hunter is a naive first pass that defaults to "met" on any loose, on-topic mention and applies no evidence-quality discipline — its verdict carries zero evidential weight on its own; re-derive the correct verdict yourself from the raw context.
+- Do not reject genuine evidence merely because the Hunter's wording differs lexically from the requirement text (e.g. a spelled-out abbreviation, a synonym architecture description) — judge the underlying mechanism.
+- When the requirement names specific categories, data types, or a specific relationship/protocol between named parties, verified evidence must reference one of those specific items, not just generic same-topic coverage. But before downgrading for lack of specificity, check the OTHER context chunks (not just the one the Hunter cited) for the missing detail — the Hunter often cites the first plausible block instead of the most specific one.
+- Before UPHOLD on "met", also scan the other provided context chunks for anything that contradicts or narrows the cited evidence (e.g. marks it optional, deprecated, or scoped to a different component); if found, issue PARTIAL or OVERTURN instead.
 {block_ids_block}
 """

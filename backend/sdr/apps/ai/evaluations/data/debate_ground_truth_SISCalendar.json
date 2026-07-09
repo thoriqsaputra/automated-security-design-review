@@ -1,5 +1,5 @@
 {
-  "design_id": 9,
+  "design_id": 18,
   "items": [
     {
       "requirement_id": "39c0ed17abf94da14821b28e-53-000004",
@@ -118,14 +118,14 @@
     {
       "requirement_id": "0d77f16bfb792cabe87b8de8-53-000039",
       "requirement_text": "V1.14 - 1.14.6 Verify the application does not use unsupported, insecure, or deprecated client-side technologies such as NSAPI plugins, Flash, Shockwave, ActiveX, Silverlight, NACL, or client-side Java applets.",
-      "label": "EMPTY",
-      "notes": ""
+      "label": "met",
+      "notes": "The TSD explicitly defines the complete client-side technical stack for the presentation tier, which consists exclusively of Java Server Pages (JSP) for page rendering, jQuery (v2.0.3) for DOM manipulation and AJAX, Bootstrap for layout and styling, and normalize.css for cross-browser consistency. Because the technical stack is comprehensively enumerated and strictly limits the client-side technologies to these standard web frameworks, it effectively verifies that the application does not utilize unsupported, insecure, or deprecated client-side technologies such as Flash, Shockwave, ActiveX, Silverlight, NACL, or client-side Java applets."
     },
     {
       "requirement_id": "0c59e32afb8d65eb6f438e9d-53-000014",
       "requirement_text": "2.2.2 Verify that the use of weak authenticators (such as SMS and email) is limited to secondary verification and transaction approval and not as a replacement for more secure authentication methods. Verify that stronger methods are offered before weak methods, users are aware of the risks, or that proper measures are in place to limit the risks of account compromise.",
-      "label": "EMPTY",
-      "notes": ""
+      "label": "na",
+      "notes": "The TSD explicitly delegates all user identity verification to an external enterprise identity provider (the RIT ITS Shibboleth Authentication System) and states that engineering a proprietary authentication framework is out of scope. Because the application relies on consuming external Single Sign-On (SSO) assertions rather than implementing or managing the authentication mechanisms directly, the types of authenticators used (such as SMS, email, or stronger methods) are governed by the upstream infrastructure. Therefore, this requirement cannot be verified by reviewing this design document alone and fundamentally does not apply to the internal scope of the SISCalendar application."
     },
     {
       "requirement_id": "2b55a7e6cac00b67355f85ad-53-000016",
@@ -148,19 +148,19 @@
     {
       "requirement_id": "f44dc5c1123b7cb0b9654041-53-000029",
       "requirement_text": "2.5.2 Verify password hints or knowledge-based authentication (so-called \"secret questions\") are not present.",
-      "label": "EMPTY",
+      "label": "na",
       "notes": ""
     },
     {
       "requirement_id": "d5110f8ad341c4f5f9667dbf-53-000031",
       "requirement_text": "2.5.4 Verify shared or default accounts are not present (e.g. \"root\", \"admin\", or \"sa\").",
-      "label": "EMPTY",
+      "label": "na",
       "notes": ""
     },
     {
       "requirement_id": "539f828693e282c3a6f6791c-53-000032",
       "requirement_text": "2.5.5 Verify that if an authentication factor is changed or replaced, that the user is notified of this event.",
-      "label": "EMPTY",
+      "label": "na",
       "notes": ""
     },
     {
@@ -172,7 +172,7 @@
     {
       "requirement_id": "ba95f0b17565c7c8bc0e8e50-53-000037",
       "requirement_text": "2.6.3 Verify that lookup secrets are resistant to offline attacks, such as predictable values.",
-      "label": "EMPTY",
+      "label": "na",
       "notes": ""
     },
     {
@@ -196,7 +196,7 @@
     {
       "requirement_id": "d5e6be22be8f0499d9b184f8-53-000049",
       "requirement_text": "2.8.6 Verify physical single-factor OTP generator can be revoked in case of theft or other loss. Ensure that revocation is immediately effective across logged in sessions, regardless of location.",
-      "label": "EMPTY",
+      "label": "na",
       "notes": ""
     },
     {
@@ -214,13 +214,13 @@
     {
       "requirement_id": "65241fcf5f2d3be893aec59e-53-000018",
       "requirement_text": "3.6.1 Verify that Relying Parties (RPs) specify the maximum authentication time to Credential Service Providers (CSPs) and that CSPs re-authenticate the user if they haven't used a session within that period.",
-      "label": "EMPTY",
+      "label": "not_met",
       "notes": ""
     },
     {
       "requirement_id": "8fe7f4f644a032dbdf712cf4-53-000019",
       "requirement_text": "3.6.2 Verify that Credential Service Providers (CSPs) inform Relying Parties (RPs) of the last authentication event, to allow RPs to determine if they need to re-authenticate the user.",
-      "label": "EMPTY",
+      "label": "not_met",
       "notes": ""
     },
     {
@@ -244,7 +244,7 @@
     {
       "requirement_id": "eda3ecc79f34b9f22c1a129a-53-000009",
       "requirement_text": "4.3.3 Verify the application has additional authorization (such as step up or adaptive authentication) for lower value systems, and / or segregation of duties for high value applications to enforce anti-fraud controls as per the risk of application and past fraud.",
-      "label": "EMPTY",
+      "label": "na",
       "notes": ""
     },
     {
@@ -268,7 +268,7 @@
     {
       "requirement_id": "1f76286ad4e6c390639fbd51-53-000005",
       "requirement_text": "6.2.2 Verify that industry proven or government approved cryptographic algorithms, modes, and libraries are used, instead of custom coded cryptography. (C8)",
-      "label": "EMPTY",
+      "label": "met",
       "notes": ""
     },
     {
@@ -280,7 +280,7 @@
     {
       "requirement_id": "2dd97abee925fb64e6c3afb5-53-000008",
       "requirement_text": "6.2.5 Verify that known insecure block modes (i.e. ECB, etc.), padding modes (i.e. PKCS#1 v1.5, etc.), ciphers with small block sizes (i.e. Triple-DES, Blowfish, etc.), and weak hashing algorithms (i.e. MD5, SHA1, etc.) are not used unless required for backwards compatibility.",
-      "label": "EMPTY",
+      "label": "not_met",
       "notes": ""
     },
     {
@@ -316,7 +316,7 @@
     {
       "requirement_id": "52ddfd9e3592a32bfbf8ae76-53-000006",
       "requirement_text": "9.2.3 Verify that all encrypted connections to external systems that involve sensitive information or functions are authenticated.",
-      "label": "EMPTY",
+      "label": "met",
       "notes": ""
     },
     {

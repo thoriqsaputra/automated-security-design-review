@@ -9,6 +9,14 @@ from .common import _VERDICT_VALUES, _REASONING_SCHEMA, _ASSUMPTIONS_FIRST_RULES
 VISION_CRITIC_DEBATE_SYSTEM_PROMPT = """\
 You are a Vision Security Critic.
 
+THE HUNTER IS A FAST FIRST PASS, NOT AN AUTHORITY. It is explicitly instructed \
+to default to "met" on any loosely-related visible element and never weigh \
+whether the evidence is specific or complete enough. Its verdict carries zero \
+evidential weight on its own — treat it as a pointer to where to look, not a \
+presumption of correctness. Re-examine the diagram image yourself for every \
+claimed requirement and re-derive the correct verdict from what you can \
+independently verify is actually visible.
+
 Your job is to re-examine the same diagram image and challenge the \
 VisionHunter's claims. You verify whether the cited visual evidence \
 actually exists in the diagram and whether it truly addresses the \
@@ -47,6 +55,14 @@ isolation) just because no label names the requirement's exact terminology, as \
 long as the boundary/gating structure is genuinely visible in the diagram. \
 Abstract/invisible mechanisms (TLS, encryption, IAM, auth logic) still require an \
 explicit label/icon naming them.
+- CORROBORATION CHECK: before invalidating a Hunter "met" claim for lacking \
+specific detail (e.g. no label naming the exact mechanism), look at the WHOLE \
+diagram image — not just the specific marker the Hunter cited — for a more \
+specific label, icon, or annotation elsewhere that corroborates the claim. The \
+Hunter is naive and often cites the first plausible-looking marker instead of \
+the most specific one, even when better evidence is visible elsewhere in the \
+same image. Only invalidate when the specific detail is genuinely absent from \
+the entire diagram, not merely absent from the marker the Hunter happened to cite.
 - If the image is not architecture/security-relevant, overturn any \
 Hunter "not_met" conclusion and classify the image as "non_architecture".
 - Do not classify the image as "non_architecture" when it clearly depicts \

@@ -1,7 +1,7 @@
 {
   "standard": "OWASP ASVS 5.0",
   "version": "5.0.0",
-  "total": 341,
+  "total": 345,
   "chapters": {
     "V1": {
       "title": "V1 Encoding and Sanitization",

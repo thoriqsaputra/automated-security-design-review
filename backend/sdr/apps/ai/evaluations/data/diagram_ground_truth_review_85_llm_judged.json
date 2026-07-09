@@ -1,0 +1,1777 @@
+{
+  "review_id": 85,
+  "design_id": 18,
+  "category_id": 1,
+  "ingestion_job_id": 53,
+  "items": [
+    {
+      "diagram_id": "p12_d0",
+      "finding_id": 3317,
+      "page_number": 12,
+      "caption": "Figure 1 Sequence Diagram for Student Schedule Preloading During Login",
+      "image_path": "vision/ground_truth_images/review_85/p12_d0.png",
+      "system_assessed_requirement_ids": [
+        "job53-D-0b309de7950edbfb5e56d372",
+        "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+        "job53-D-4aa8734f54de242cbb68b789",
+        "job53-D-9d7c842b8eeeb6f4244a6be9",
+        "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+        "job53-D-composite-0914062a97936d78c1a65e74",
+        "job53-D-composite-137ee8430adb220056a6773d-53-000001",
+        "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
+        "job53-D-composite-4596dd8573f228bd18ecd33a-53-000001",
+        "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
+        "job53-D-composite-50463b4a59309f108755fa85-53-000015",
+        "job53-D-composite-65241fcf5f2d3be893aec59e-53-000018",
+        "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+        "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
+        "job53-D-composite-6bcdb4ad3f3fa4ee0d6cf733-53-000005",
+        "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+        "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
+        "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+        "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
+        "job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006",
+        "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
+        "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+        "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+        "job53-D-f9150a032d65c4d7d13987af-53-000038"
+      ],
+      "candidate_requirements": [
+        {
+          "requirement_id": "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
+          "requirement_text": "Verify documentation and justification of all the application's trust boundaries, components, and significant data flows.",
+          "verification_hint": "Examine the DFD for clearly defined trust boundaries (dashed lines), labeled components (processes, data stores), and data flow arrows with descriptive labels.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram, which typically shows interactions between components over time, not trust boundaries or data flows as a DFD would. It lacks the necessary elements like trust boundaries and labeled data flows required to check this requirement."
+        },
+        {
+          "requirement_id": "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
+          "requirement_text": "Verify definition and security analysis of the application's high-level architecture and all connected remote services.",
+          "verification_hint": "Look for a high-level architecture diagram showing all major components, their connections, and external services. Ensure components are labeled and connections indicate protocols.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram, which focuses on interactions between components rather than a high-level architecture overview. It does not show all major components, their connections, or external services in a way that supports a security analysis of the architecture."
+        },
+        {
+          "requirement_id": "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+          "requirement_text": "Verify that communications between application components, including APIs, middleware and data layers, are authenticated.",
+          "verification_hint": "Check connections between components for annotations indicating authentication mechanisms (e.g., 'authenticated API call', 'mTLS').",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows interactions between application components, such as the Schedule Service Gateway and JSON Parser, which could include annotations for authentication mechanisms. This makes it possible to check if communications are authenticated."
+        },
+        {
+          "requirement_id": "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+          "requirement_text": "Verify that trusted enforcement points, such as access control gateways, enforce access controls.",
+          "verification_hint": "Identify processes or components within trusted zones (inside trust boundaries) that are explicitly labeled as 'Access Control Gateway' or similar, mediating access to sensitive data stores or processes.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components but does not depict trust boundaries or explicitly labeled access control gateways, which are necessary to check the requirement."
+        },
+        {
+          "requirement_id": "job53-D-f795ad19b9018b705f38ee07-53-000017",
+          "requirement_text": "Verify that input validation is enforced on a trusted service layer.",
+          "verification_hint": "Locate data flows from untrusted sources entering a trusted process labeled 'Input Validation' or 'Service Layer' before proceeding to other internal components or data stores.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components but does not explicitly depict a trusted service layer or input validation processes. It focuses on data flow and interactions rather than security controls like input validation."
+        },
+        {
+          "requirement_id": "job53-D-composite-6224cdc4224b15cc055e4d98-53-000023",
+          "requirement_text": "Logging system: logs securely transmitted to a remote system",
+          "verification_hint": "Look for a dedicated logging component or service, and data flows indicating secure transmission (e.g., TLS) to an external or remote logging system.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram focused on user login and schedule retrieval processes. It does not depict any logging components or data flows related to secure transmission to a remote logging system."
+        },
+        {
+          "requirement_id": "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+          "requirement_text": "Secure communication: encryption and authenticity verification between components",
+          "verification_hint": "Examine connections between components, especially across network zones. Look for annotations like HTTPS, TLS, or VPN, and indications of mutual authentication.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components, but it lacks network details or annotations about secure communication protocols like HTTPS, TLS, or VPN, which are necessary to check encryption and authenticity verification."
+        },
+        {
+          "requirement_id": "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+          "requirement_text": "Component segregation: trust levels separated by security controls",
+          "verification_hint": "Identify components with differing trust levels and verify the presence of explicit security controls (e.g., firewalls, API gateways, security groups) between them.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components, but it does not depict trust levels or security controls like firewalls or API gateways. It focuses on process flow rather than architectural security elements."
+        },
+        {
+          "requirement_id": "job53-D-f9150a032d65c4d7d13987af-53-000038",
+          "requirement_text": "Application isolation: sandboxing, containerization, or network-level isolation",
+          "verification_hint": "Look for deployment boundaries, container orchestration platforms, or network segmentation that indicates isolation between applications or services.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components, but it does not depict deployment boundaries, container orchestration platforms, or network segmentation necessary to check application isolation."
+        },
+        {
+          "requirement_id": "job53-D-composite-ef72f311ee57ad5d1f39d412",
+          "requirement_text": "Verify external API calls for breached password checks are shown.",
+          "verification_hint": "Look for data flow arrows from an internal process to an external entity labeled 'Breached Password API' or similar, indicating an external check.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing internal processes and data flows related to user login and schedule retrieval. It does not depict external API calls or interactions with external entities like a 'Breached Password API'."
+        },
+        {
+          "requirement_id": "job53-D-0b309de7950edbfb5e56d372",
+          "requirement_text": "Verify anti-automation controls (e.g., CAPTCHA, rate limiting) are depicted.",
+          "verification_hint": "Look for components like 'Rate Limiter', 'CAPTCHA Service', or 'WAF' placed before authentication services.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components for scheduling and JSON parsing. It does not depict network components or security controls like 'Rate Limiter', 'CAPTCHA Service', or 'WAF', which are necessary to verify anti-automation controls."
+        },
+        {
+          "requirement_id": "job53-D-b7e28781ff521b69f12383e6",
+          "requirement_text": "Verify secure notifications are sent to users after authentication detail updates.",
+          "verification_hint": "Look for messages from the application to a 'Notification Service' or 'User' lifeline after actions like 'credential reset' or 'email change'.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram focused on user login and schedule retrieval processes. It does not show any interactions related to notifications or updates to authentication details."
+        },
+        {
+          "requirement_id": "job53-D-85169068a4a72321d8b315e6",
+          "requirement_text": "Verify mutual TLS is used between CSP and application.",
+          "verification_hint": "Look for data flow arrows between the 'Credential Service Provider' and the 'Application' labeled with 'mTLS' or 'Mutual TLS'.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components, but it does not depict network protocols or security measures like mutual TLS. It lacks data flow arrows labeled with 'mTLS' or 'Mutual TLS'."
+        },
+        {
+          "requirement_id": "job53-D-composite-0914062a97936d78c1a65e74",
+          "requirement_text": "Sensitive secrets (e.g., initial activation, recovery secrets) are not sent in clear text.",
+          "verification_hint": "Examine data flow arrows carrying sensitive secrets. They must be labeled with encryption (e.g., TLS, HTTPS) or indicate a secure channel.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing data flow between components. It can potentially depict whether sensitive secrets are sent securely by labeling data flow arrows with encryption methods like TLS or HTTPS."
+        },
+        {
+          "requirement_id": "job53-D-composite-293a1c8ed0c3bb4df31cc936",
+          "requirement_text": "Out-of-band authentication communication uses a secure, independent channel.",
+          "verification_hint": "Identify data flows for out-of-band authentication. These flows must be labeled as secure (e.g., TLS, HTTPS) and distinct from the primary application channel.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components for schedule retrieval and parsing. It does not depict data flows for out-of-band authentication or indicate secure channels, which are necessary to check the requirement."
+        },
+        {
+          "requirement_id": "job53-D-composite-ad70cace67ce58c0b04f96e",
+          "requirement_text": "Verify that intra-service secrets and API keys are managed securely and not included in the source code.",
+          "verification_hint": "Look for dedicated secret management services (e.g., Vault, AWS Secrets Manager) and connections to them from services that require secrets. Ensure no secrets are depicted directly within service components.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components, but it does not depict secret management services or connections to them. It is not suitable for verifying secure management of secrets and API keys."
+        },
+        {
+          "requirement_id": "job53-D-9d7c842b8eeeb6f4244a6be9",
+          "requirement_text": "Verify the application never reveals session tokens in URL parameters.",
+          "verification_hint": "Examine message flows between client and server. Ensure that session tokens are not shown as part of the URL in any request messages.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows message flows between client and server components, which could potentially include URL parameters. This makes it possible to check if session tokens are revealed in URLs."
+        },
+        {
+          "requirement_id": "job53-D-4aa8734f54de242cbb68b789",
+          "requirement_text": "Verify the application generates a new session token on user authentication.",
+          "verification_hint": "After a successful authentication message, look for a subsequent message from the server to the client that explicitly indicates the issuance of a new session token.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components for schedule retrieval and parsing. It does not depict session management or token generation processes, which are necessary to check the requirement."
+        },
+        {
+          "requirement_id": "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
+          "requirement_text": "Session tokens are protected during transmission and storage.",
+          "verification_hint": "Look for data flows carrying session tokens to be encrypted (e.g., HTTPS/TLS) and data stores holding session tokens to be marked as encrypted.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components but does not depict encryption of data flows or storage, which are necessary to check the protection of session tokens during transmission and storage."
+        },
+        {
+          "requirement_id": "job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006",
+          "requirement_text": "Session invalidation and re-authentication flows are present.",
+          "verification_hint": "Examine sequence diagrams for explicit 'logout' or 'invalidate session' messages, and re-authentication flows after idle periods or specific actions.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram, which can depict session invalidation and re-authentication flows through messages like 'logout' or 'invalidate session'. It shows interactions between components, making it suitable for checking these flows."
+        },
+        {
+          "requirement_id": "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
+          "requirement_text": "Cookie-based session tokens are transmitted securely.",
+          "verification_hint": "Verify that data flows carrying cookie-based session tokens are labeled with secure protocols like HTTPS/TLS.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flows between components, which could potentially be labeled with secure protocols like HTTPS/TLS to verify secure transmission of cookie-based session tokens."
+        },
+        {
+          "requirement_id": "job53-D-composite-50463b4a59309f108755fa85-53-000015",
+          "requirement_text": "OAuth token revocation and session token usage are depicted.",
+          "verification_hint": "Look for sequence diagrams showing messages for OAuth token revocation and the use of dynamic session tokens instead of static API keys in interactions.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions for schedule retrieval and JSON parsing. It does not depict OAuth token revocation or session token usage, which would require specific messages related to token handling."
+        },
+        {
+          "requirement_id": "job53-D-composite-65241fcf5f2d3be893aec59e-53-000018",
+          "requirement_text": "Authentication time limits and re-authentication events are communicated between CSPs and RPs.",
+          "verification_hint": "Check sequence diagrams for messages between CSP and RP lifelines indicating authentication time limits and last authentication events.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions related to schedule retrieval and JSON parsing, but it does not depict authentication time limits or re-authentication events between CSPs and RPs."
+        },
+        {
+          "requirement_id": "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+          "requirement_text": "Access control enforcement is located within trusted service layers.",
+          "verification_hint": "Identify trusted service components within the architecture diagram and verify that access control logic is depicted within or directly associated with them, not solely on client-side components.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components like the Schedule Service Gateway and JSON Parser. It can depict where access control logic is implemented, allowing verification of whether it is within trusted service layers."
+        },
+        {
+          "requirement_id": "job53-D-composite-6bcdb4ad3f3fa4ee0d6cf733-53-000005",
+          "requirement_text": "Verify that sensitive data and APIs are protected against IDOR, CSRF, and unauthorized access.",
+          "verification_hint": "Examine message flows between user and system, and between internal components. Look for explicit authorization checks or tokens in messages for sensitive operations. Check for anti-CSRF tokens in requests.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows message flows between users and system components, which can be used to check for authorization checks and tokens in messages. This is relevant for verifying protection against IDOR, CSRF, and unauthorized access."
+        },
+        {
+          "requirement_id": "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
+          "requirement_text": "Verify that all external inputs are validated and sanitized before processing.",
+          "verification_hint": "Look for a 'Validation' or 'Sanitization' process immediately following data ingress from external entities or across trust boundaries. Data flows into these processes should be clearly labeled.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flows and processes, including JSON parsing, which could involve validation and sanitization. It is possible to check for validation processes following data ingress from external entities."
+        },
+        {
+          "requirement_id": "job53-D-composite-3dc6f67a223cf26e26edfebf",
+          "requirement_text": "Sensitive data stores must be labeled as encrypted at rest.",
+          "verification_hint": "Examine data stores (open rectangles) in the DFD. Any data store holding PII, health, or financial data must have an annotation indicating encryption at rest.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram, not a data flow diagram (DFD), and does not depict data stores or their encryption status. It focuses on interactions and processes rather than data storage details."
+        },
+        {
+          "requirement_id": "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
+          "requirement_text": "Secrets management solution (e.g., key vault) is used for secure secret handling.",
+          "verification_hint": "Look for a dedicated component labeled as a 'Key Vault', 'Secrets Manager', or similar, connected to application components.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram focused on user login and data retrieval processes. It does not depict infrastructure components like a 'Key Vault' or 'Secrets Manager', which are necessary to check the requirement for secrets management."
+        },
+        {
+          "requirement_id": "job53-D-composite-4596dd8573f228bd18ecd33a-53-000001",
+          "requirement_text": "Sensitive data is not logged to data stores accessible by unauthorized parties.",
+          "verification_hint": "Examine data flows to logging data stores. Ensure sensitive data (credentials, PII) is not shown flowing into these stores, especially across trust boundaries.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components, but it does not depict data flows to logging data stores or trust boundaries, which are necessary to check if sensitive data is logged improperly."
+        },
+        {
+          "requirement_id": "job53-D-composite-137ee8430adb220056a6773d-53-000001",
+          "requirement_text": "Sensitive data caching protection in server components.",
+          "verification_hint": "Examine architecture diagrams for load balancers, caches, and other server components. Verify that sensitive data is not shown flowing into or being stored in these components without explicit protection mechanisms.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components but does not depict server components, load balancers, or caching mechanisms where sensitive data caching protection would be illustrated."
+        },
+        {
+          "requirement_id": "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+          "requirement_text": "All data flows across trust boundaries must be labeled with secure protocols (e.g., TLS, HTTPS).",
+          "verification_hint": "Examine all data-flow arrows crossing trust boundaries. Each must be explicitly labeled with a secure protocol like TLS or HTTPS.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flows between components, which can cross trust boundaries. It is possible to check if these flows are labeled with secure protocols like TLS or HTTPS."
+        },
+        {
+          "requirement_id": "job53-D-composite-9454a8814d51e3209de88a23-53-000008",
+          "requirement_text": "Update mechanisms must show secure channels and digital signature validation.",
+          "verification_hint": "Look for components responsible for updates. Their connections to update sources must be labeled as secure (e.g., HTTPS), and a validation step for digital signatures should be indicated.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram focused on user login and data retrieval processes. It does not depict update mechanisms, secure channels, or digital signature validation, which are necessary to check the requirement."
+        },
+        {
+          "requirement_id": "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
+          "requirement_text": "Anti-automation and business logic controls are deployed.",
+          "verification_hint": "Look for components like WAFs, API gateways, or dedicated rate-limiting/anti-bot services positioned to protect application components.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components but does not depict infrastructure elements like WAFs, API gateways, or anti-bot services that are relevant for anti-automation and business logic controls."
+        },
+        {
+          "requirement_id": "job53-D-composite-bede99b5e5f325a33e768fce-53-000001",
+          "requirement_text": "File storage components are configured with size and quota limits.",
+          "verification_hint": "Identify data stores or file storage services and look for annotations indicating size limits, quotas, or dedicated file validation services.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram focused on user login and data retrieval processes. It does not depict file storage components or configurations related to size and quota limits."
+        },
+        {
+          "requirement_id": "job53-D-composite-fbb3a72ceae2857088a8d4c2-53-000004",
+          "requirement_text": "Untrusted file processing includes validation and scanning components.",
+          "verification_hint": "Look for dedicated services or components (e.g., file validation service, antivirus scanner) in the data flow path for untrusted file uploads.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram focused on user login and JSON parsing processes. It does not depict components or services related to file validation or antivirus scanning, which are necessary to check the requirement about untrusted file processing."
+        },
+        {
+          "requirement_id": "job53-D-d416547723579cd22fbd0779-53-000011",
+          "requirement_text": "Untrusted files are stored outside the web root with limited permissions.",
+          "verification_hint": "Identify the storage location for untrusted files and ensure it's a separate, non-web-accessible component or zone.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components, not storage locations or permissions. It cannot depict file storage locations or access controls needed to verify the requirement."
+        },
+        {
+          "requirement_id": "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
+          "requirement_text": "Verify that the application server only sends requests to or loads data/files from allowed resources/systems.",
+          "verification_hint": "Examine connections from the application server component to other components or external systems. Ensure these connections are explicitly defined and limited to expected targets.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows interactions between the application server and other components, such as the Schedule Service Gateway and JSON Parser. It can potentially depict whether connections are explicitly defined and limited to expected targets."
+        },
+        {
+          "requirement_id": "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+          "requirement_text": "Verify that message headers and payload are protected in transit using strong encryption (TLS).",
+          "verification_hint": "Inspect data flow arrows between processes, data stores, and external entities. Look for annotations indicating TLS or HTTPS for all sensitive data in transit.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flow arrows between processes and external entities, which could be annotated to indicate the use of TLS or HTTPS for protecting message headers and payloads in transit."
+        },
+        {
+          "requirement_id": "job53-D-composite-700fbe6b2db199ae12159350-53-000008",
+          "requirement_text": "External asset hosting uses integrity checks (SRI) and trusted sources.",
+          "verification_hint": "Identify external CDN or third-party integrations. Look for annotations indicating SRI usage or trusted repository sourcing.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components, but it does not depict external asset hosting, CDN usage, or integrity checks like SRI. These elements are typically shown in architecture diagrams with network or data flow annotations."
+        },
+        {
+          "requirement_id": "job53-D-composite-c2bc34e911d53b529699c749-53-000016",
+          "requirement_text": "HTTP responses include security headers (CSP, HSTS, X-Content-Type-Options, Referrer-Policy, X-Frame-Options).",
+          "verification_hint": "Examine message arrows representing HTTP responses. Look for annotations or labels on these messages indicating the presence and content of security-related HTTP headers.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components, but it does not include annotations or labels on message arrows that would indicate the presence of security-related HTTP headers."
+        },
+        {
+          "requirement_id": "job53-D-composite-c4bb57eb009543d5ad0c32ef-53-000023",
+          "requirement_text": "CORS Access-Control-Allow-Origin uses a strict allow list; trusted proxy headers are authenticated.",
+          "verification_hint": "For CORS, check message arrows for `Access-Control-Allow-Origin` headers and verify if the allowed origins are explicitly listed. For proxy headers, look for messages from proxies to the application and subsequent authentication steps.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components, but it does not depict HTTP headers or proxy authentication details necessary to verify CORS configurations or trusted proxy headers."
+        }
+      ]
+    },
+    {
+      "diagram_id": "p13_d0",
+      "finding_id": 3318,
+      "page_number": 13,
+      "caption": "Figure 2 Sequence Diagram for iCalendar Download Generation",
+      "image_path": "vision/ground_truth_images/review_85/p13_d0.png",
+      "system_assessed_requirement_ids": [
+        "17. [job53-D-9d7c842b8eeeb6f4244a6be9] Verify the application never reveals session tokens in URL parameters.",
+        "18. [job53-D-4aa8734f54de242cbb68b789] Verify the application generates a new session token on user authentication.",
+        "19. [job53-D-composite-49e7ed47705f61175f86f7ac-53-000005] Session tokens are protected during transmission and storage.",
+        "20. [job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006] Session invalidation and re-authentication flows are present.",
+        "21. [job53-D-composite-c5081ec9a0b0d16209b83571-53-000010] Cookie-based session tokens are transmitted securely.",
+        "22. [job53-D-composite-50463b4a59309f108755fa85-53-000015] OAuth token revocation and session token usage are depicted.",
+        "23. [job53-D-composite-65241fcf5f2d3be893aec59e-53-000018] Authentication time limits and re-authentication events are communicated between CSPs and RPs.",
+        "24. [job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001] Access control enforcement is located within trusted service layers.",
+        "25. [job53-D-composite-6bcdb4ad3f3fa4ee0d6cf733-53-000005] Verify that sensitive data and APIs are protected against IDOR, CSRF, and unauthorized access.",
+        "26. [job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001] Verify that all external inputs are validated and sanitized before processing.",
+        "31. [job53-D-composite-807bca2da85437284139bdbb-53-000001] All data flows across trust boundaries must be labeled with secure protocols (e.g., TLS, HTTPS).",
+        "37. [job53-D-composite-6ba2549d229c305b232ba4c0-53-000015] Verify that the application server only sends requests to or loads data/files from allowed resources/systems.",
+        "38. [job53-D-composite-f380c16e0fc09b7f301f1416-53-000009] Verify that message headers and payload are protected in transit using strong encryption (TLS)."
+      ],
+      "candidate_requirements": [
+        {
+          "requirement_id": "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
+          "requirement_text": "Verify documentation and justification of all the application's trust boundaries, components, and significant data flows.",
+          "verification_hint": "Examine the DFD for clearly defined trust boundaries (dashed lines), labeled components (processes, data stores), and data flow arrows with descriptive labels.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram, which shows interactions between components over time. It does not depict trust boundaries, components, or data flows in a way that a DFD would, making it unsuitable for verifying documentation and justification of trust boundaries and data flows."
+        },
+        {
+          "requirement_id": "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
+          "requirement_text": "Verify definition and security analysis of the application's high-level architecture and all connected remote services.",
+          "verification_hint": "Look for a high-level architecture diagram showing all major components, their connections, and external services. Ensure components are labeled and connections indicate protocols.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram, which shows interactions between components over time, not a high-level architecture diagram. It does not depict all major components, their connections, or external services as required."
+        },
+        {
+          "requirement_id": "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+          "requirement_text": "Verify that communications between application components, including APIs, middleware and data layers, are authenticated.",
+          "verification_hint": "Check connections between components for annotations indicating authentication mechanisms (e.g., 'authenticated API call', 'mTLS').",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between application components. It can potentially depict authentication mechanisms for communications between components, such as annotations indicating 'authenticated API call' or 'mTLS'."
+        },
+        {
+          "requirement_id": "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+          "requirement_text": "Verify that trusted enforcement points, such as access control gateways, enforce access controls.",
+          "verification_hint": "Identify processes or components within trusted zones (inside trust boundaries) that are explicitly labeled as 'Access Control Gateway' or similar, mediating access to sensitive data stores or processes.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components for iCalendar export. It does not depict trust boundaries or access control gateways, which are necessary to check the requirement."
+        },
+        {
+          "requirement_id": "job53-D-f795ad19b9018b705f38ee07-53-000017",
+          "requirement_text": "Verify that input validation is enforced on a trusted service layer.",
+          "verification_hint": "Locate data flows from untrusted sources entering a trusted process labeled 'Input Validation' or 'Service Layer' before proceeding to other internal components or data stores.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components but does not explicitly depict data flows from untrusted sources or a specific 'Input Validation' or 'Service Layer'. It lacks the detail needed to verify input validation enforcement."
+        },
+        {
+          "requirement_id": "job53-D-composite-6224cdc4224b15cc055e4d98-53-000023",
+          "requirement_text": "Logging system: logs securely transmitted to a remote system",
+          "verification_hint": "Look for a dedicated logging component or service, and data flows indicating secure transmission (e.g., TLS) to an external or remote logging system.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram focused on iCalendar export functionality, showing interactions between components. It does not depict logging components or data flows related to secure transmission of logs to a remote system."
+        },
+        {
+          "requirement_id": "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+          "requirement_text": "Secure communication: encryption and authenticity verification between components",
+          "verification_hint": "Examine connections between components, especially across network zones. Look for annotations like HTTPS, TLS, or VPN, and indications of mutual authentication.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components, but it does not depict network connections or zones where encryption and authenticity verification would be annotated. It lacks the necessary detail to check for secure communication protocols like HTTPS, TLS, or VPN."
+        },
+        {
+          "requirement_id": "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+          "requirement_text": "Component segregation: trust levels separated by security controls",
+          "verification_hint": "Identify components with differing trust levels and verify the presence of explicit security controls (e.g., firewalls, API gateways, security groups) between them.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram, which shows interactions between components over time. It does not depict trust levels or security controls like firewalls or API gateways, which are necessary to check component segregation by trust levels."
+        },
+        {
+          "requirement_id": "job53-D-f9150a032d65c4d7d13987af-53-000038",
+          "requirement_text": "Application isolation: sandboxing, containerization, or network-level isolation",
+          "verification_hint": "Look for deployment boundaries, container orchestration platforms, or network segmentation that indicates isolation between applications or services.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram, which shows interactions between components over time. It does not depict deployment boundaries, container orchestration platforms, or network segmentation necessary to check application isolation."
+        },
+        {
+          "requirement_id": "job53-D-composite-ef72f311ee57ad5d1f39d412",
+          "requirement_text": "Verify external API calls for breached password checks are shown.",
+          "verification_hint": "Look for data flow arrows from an internal process to an external entity labeled 'Breached Password API' or similar, indicating an external check.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram focused on iCalendar export processes, showing interactions between internal components. It does not depict external API calls or data flows to external entities like a 'Breached Password API'."
+        },
+        {
+          "requirement_id": "job53-D-0b309de7950edbfb5e56d372",
+          "requirement_text": "Verify anti-automation controls (e.g., CAPTCHA, rate limiting) are depicted.",
+          "verification_hint": "Look for components like 'Rate Limiter', 'CAPTCHA Service', or 'WAF' placed before authentication services.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram focused on process flow for iCalendar export, not on network or security components like 'Rate Limiter' or 'CAPTCHA Service'."
+        },
+        {
+          "requirement_id": "job53-D-b7e28781ff521b69f12383e6",
+          "requirement_text": "Verify secure notifications are sent to users after authentication detail updates.",
+          "verification_hint": "Look for messages from the application to a 'Notification Service' or 'User' lifeline after actions like 'credential reset' or 'email change'.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is focused on iCalendar export processes and does not depict any notification services or user interactions related to authentication detail updates."
+        },
+        {
+          "requirement_id": "job53-D-85169068a4a72321d8b315e6",
+          "requirement_text": "Verify mutual TLS is used between CSP and application.",
+          "verification_hint": "Look for data flow arrows between the 'Credential Service Provider' and the 'Application' labeled with 'mTLS' or 'Mutual TLS'.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components like JSP Interface, Main Action Controller, and Calendar Builder. It does not depict network connections or data flow arrows between a Credential Service Provider and an Application, which are necessary to verify mutual TLS."
+        },
+        {
+          "requirement_id": "job53-D-composite-0914062a97936d78c1a65e74",
+          "requirement_text": "Sensitive secrets (e.g., initial activation, recovery secrets) are not sent in clear text.",
+          "verification_hint": "Examine data flow arrows carrying sensitive secrets. They must be labeled with encryption (e.g., TLS, HTTPS) or indicate a secure channel.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components, but it does not depict data flow arrows or indicate encryption methods for data transmission, which are necessary to check if sensitive secrets are sent securely."
+        },
+        {
+          "requirement_id": "job53-D-composite-293a1c8ed0c3bb4df31cc936",
+          "requirement_text": "Out-of-band authentication communication uses a secure, independent channel.",
+          "verification_hint": "Identify data flows for out-of-band authentication. These flows must be labeled as secure (e.g., TLS, HTTPS) and distinct from the primary application channel.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components for iCalendar export. It does not depict data flows or channels for out-of-band authentication, nor does it label any communication as secure or independent."
+        },
+        {
+          "requirement_id": "job53-D-composite-ad70cace67ce58c0b04f96e",
+          "requirement_text": "Verify that intra-service secrets and API keys are managed securely and not included in the source code.",
+          "verification_hint": "Look for dedicated secret management services (e.g., Vault, AWS Secrets Manager) and connections to them from services that require secrets. Ensure no secrets are depicted directly within service components.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components, but it does not depict infrastructure elements like secret management services or connections to them. It cannot show whether secrets are managed securely or included in source code."
+        },
+        {
+          "requirement_id": "job53-D-9d7c842b8eeeb6f4244a6be9",
+          "requirement_text": "Verify the application never reveals session tokens in URL parameters.",
+          "verification_hint": "Examine message flows between client and server. Ensure that session tokens are not shown as part of the URL in any request messages.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows message flows between client and server components, which could potentially include URL parameters. It is possible to check if session tokens are included in these flows."
+        },
+        {
+          "requirement_id": "job53-D-4aa8734f54de242cbb68b789",
+          "requirement_text": "Verify the application generates a new session token on user authentication.",
+          "verification_hint": "After a successful authentication message, look for a subsequent message from the server to the client that explicitly indicates the issuance of a new session token.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram focused on iCalendar export functionality, not user authentication or session management. It does not depict authentication processes or session token issuance."
+        },
+        {
+          "requirement_id": "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
+          "requirement_text": "Session tokens are protected during transmission and storage.",
+          "verification_hint": "Look for data flows carrying session tokens to be encrypted (e.g., HTTPS/TLS) and data stores holding session tokens to be marked as encrypted.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components but does not depict data flows or storage details necessary to verify encryption of session tokens during transmission and storage."
+        },
+        {
+          "requirement_id": "job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006",
+          "requirement_text": "Session invalidation and re-authentication flows are present.",
+          "verification_hint": "Examine sequence diagrams for explicit 'logout' or 'invalidate session' messages, and re-authentication flows after idle periods or specific actions.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram focused on iCalendar export functionality, showing interactions between components. It does not depict session management, logout, or re-authentication flows."
+        },
+        {
+          "requirement_id": "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
+          "requirement_text": "Cookie-based session tokens are transmitted securely.",
+          "verification_hint": "Verify that data flows carrying cookie-based session tokens are labeled with secure protocols like HTTPS/TLS.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components, but it does not depict data flows or protocols used for transmitting data, such as HTTPS/TLS, which are necessary to check the secure transmission of cookie-based session tokens."
+        },
+        {
+          "requirement_id": "job53-D-composite-50463b4a59309f108755fa85-53-000015",
+          "requirement_text": "OAuth token revocation and session token usage are depicted.",
+          "verification_hint": "Look for sequence diagrams showing messages for OAuth token revocation and the use of dynamic session tokens instead of static API keys in interactions.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram focused on iCalendar export processes, not on OAuth token revocation or session token usage. It does not depict any authentication or token management interactions."
+        },
+        {
+          "requirement_id": "job53-D-composite-65241fcf5f2d3be893aec59e-53-000018",
+          "requirement_text": "Authentication time limits and re-authentication events are communicated between CSPs and RPs.",
+          "verification_hint": "Check sequence diagrams for messages between CSP and RP lifelines indicating authentication time limits and last authentication events.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram related to iCalendar export processes, not authentication. It does not show CSP or RP lifelines or messages related to authentication time limits or re-authentication events."
+        },
+        {
+          "requirement_id": "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+          "requirement_text": "Access control enforcement is located within trusted service layers.",
+          "verification_hint": "Identify trusted service components within the architecture diagram and verify that access control logic is depicted within or directly associated with them, not solely on client-side components.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram, which shows interactions between components over time. It does not depict architectural layers or trusted service components where access control logic could be located."
+        },
+        {
+          "requirement_id": "job53-D-composite-6bcdb4ad3f3fa4ee0d6cf733-53-000005",
+          "requirement_text": "Verify that sensitive data and APIs are protected against IDOR, CSRF, and unauthorized access.",
+          "verification_hint": "Examine message flows between user and system, and between internal components. Look for explicit authorization checks or tokens in messages for sensitive operations. Check for anti-CSRF tokens in requests.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing message flows between user interfaces and system components. It can potentially depict authorization checks or tokens in messages, which are relevant for verifying protection against IDOR, CSRF, and unauthorized access."
+        },
+        {
+          "requirement_id": "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
+          "requirement_text": "Verify that all external inputs are validated and sanitized before processing.",
+          "verification_hint": "Look for a 'Validation' or 'Sanitization' process immediately following data ingress from external entities or across trust boundaries. Data flows into these processes should be clearly labeled.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components but does not depict processes for input validation or sanitization. It lacks details on data flows or trust boundaries necessary to check this requirement."
+        },
+        {
+          "requirement_id": "job53-D-composite-3dc6f67a223cf26e26edfebf",
+          "requirement_text": "Sensitive data stores must be labeled as encrypted at rest.",
+          "verification_hint": "Examine data stores (open rectangles) in the DFD. Any data store holding PII, health, or financial data must have an annotation indicating encryption at rest.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram, which focuses on interactions between components over time. It does not depict data stores or their properties, such as encryption status, which would be shown in a data flow diagram (DFD)."
+        },
+        {
+          "requirement_id": "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
+          "requirement_text": "Secrets management solution (e.g., key vault) is used for secure secret handling.",
+          "verification_hint": "Look for a dedicated component labeled as a 'Key Vault', 'Secrets Manager', or similar, connected to application components.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram focused on process flow and interactions between components, not on infrastructure or component details like a secrets management solution."
+        },
+        {
+          "requirement_id": "job53-D-composite-4596dd8573f228bd18ecd33a-53-000001",
+          "requirement_text": "Sensitive data is not logged to data stores accessible by unauthorized parties.",
+          "verification_hint": "Examine data flows to logging data stores. Ensure sensitive data (credentials, PII) is not shown flowing into these stores, especially across trust boundaries.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components for iCalendar export. It does not depict data flows to logging data stores or trust boundaries, which are necessary to check if sensitive data is logged improperly."
+        },
+        {
+          "requirement_id": "job53-D-composite-137ee8430adb220056a6773d-53-000001",
+          "requirement_text": "Sensitive data caching protection in server components.",
+          "verification_hint": "Examine architecture diagrams for load balancers, caches, and other server components. Verify that sensitive data is not shown flowing into or being stored in these components without explicit protection mechanisms.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components, not an architecture diagram with server components like load balancers or caches. It does not depict data flows or storage mechanisms necessary to check sensitive data caching protection."
+        },
+        {
+          "requirement_id": "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+          "requirement_text": "All data flows across trust boundaries must be labeled with secure protocols (e.g., TLS, HTTPS).",
+          "verification_hint": "Examine all data-flow arrows crossing trust boundaries. Each must be explicitly labeled with a secure protocol like TLS or HTTPS.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram, which typically shows interactions between components over time, not data flows across trust boundaries or protocol labels. It does not depict trust boundaries or protocol details necessary to check the requirement."
+        },
+        {
+          "requirement_id": "job53-D-composite-9454a8814d51e3209de88a23-53-000008",
+          "requirement_text": "Update mechanisms must show secure channels and digital signature validation.",
+          "verification_hint": "Look for components responsible for updates. Their connections to update sources must be labeled as secure (e.g., HTTPS), and a validation step for digital signatures should be indicated.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram focused on iCalendar export processes, not on update mechanisms or secure channels. It does not depict update components, secure connections, or digital signature validation steps."
+        },
+        {
+          "requirement_id": "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
+          "requirement_text": "Anti-automation and business logic controls are deployed.",
+          "verification_hint": "Look for components like WAFs, API gateways, or dedicated rate-limiting/anti-bot services positioned to protect application components.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components for iCalendar export. It does not depict network components like WAFs, API gateways, or anti-bot services, which are necessary to check for anti-automation and business logic controls."
+        },
+        {
+          "requirement_id": "job53-D-composite-bede99b5e5f325a33e768fce-53-000001",
+          "requirement_text": "File storage components are configured with size and quota limits.",
+          "verification_hint": "Identify data stores or file storage services and look for annotations indicating size limits, quotas, or dedicated file validation services.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram focused on process flow and interactions between components, not on configuration details like size and quota limits for file storage."
+        },
+        {
+          "requirement_id": "job53-D-composite-fbb3a72ceae2857088a8d4c2-53-000004",
+          "requirement_text": "Untrusted file processing includes validation and scanning components.",
+          "verification_hint": "Look for dedicated services or components (e.g., file validation service, antivirus scanner) in the data flow path for untrusted file uploads.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram focused on iCalendar export functionality, showing interactions between components. It does not depict file processing, validation, or scanning components for untrusted file uploads."
+        },
+        {
+          "requirement_id": "job53-D-d416547723579cd22fbd0779-53-000011",
+          "requirement_text": "Untrusted files are stored outside the web root with limited permissions.",
+          "verification_hint": "Identify the storage location for untrusted files and ensure it's a separate, non-web-accessible component or zone.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components for iCalendar export. It does not depict storage locations or file permissions, which are necessary to check the requirement about storing untrusted files outside the web root."
+        },
+        {
+          "requirement_id": "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
+          "requirement_text": "Verify that the application server only sends requests to or loads data/files from allowed resources/systems.",
+          "verification_hint": "Examine connections from the application server component to other components or external systems. Ensure these connections are explicitly defined and limited to expected targets.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components like the JSP Interface, Main Action Controller, and Calendar Builder. It can depict connections and data flows from the application server to other components, which is relevant for checking if requests are sent to allowed resources."
+        },
+        {
+          "requirement_id": "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+          "requirement_text": "Verify that message headers and payload are protected in transit using strong encryption (TLS).",
+          "verification_hint": "Inspect data flow arrows between processes, data stores, and external entities. Look for annotations indicating TLS or HTTPS for all sensitive data in transit.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components but does not depict data flow arrows with annotations for encryption protocols like TLS or HTTPS."
+        },
+        {
+          "requirement_id": "job53-D-composite-700fbe6b2db199ae12159350-53-000008",
+          "requirement_text": "External asset hosting uses integrity checks (SRI) and trusted sources.",
+          "verification_hint": "Identify external CDN or third-party integrations. Look for annotations indicating SRI usage or trusted repository sourcing.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components for iCalendar generation. It does not depict external asset hosting, CDN usage, or annotations for SRI or trusted sources."
+        },
+        {
+          "requirement_id": "job53-D-composite-c2bc34e911d53b529699c749-53-000016",
+          "requirement_text": "HTTP responses include security headers (CSP, HSTS, X-Content-Type-Options, Referrer-Policy, X-Frame-Options).",
+          "verification_hint": "Examine message arrows representing HTTP responses. Look for annotations or labels on these messages indicating the presence and content of security-related HTTP headers.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components, but it does not include detailed annotations or labels on message arrows that would indicate the presence of security-related HTTP headers."
+        },
+        {
+          "requirement_id": "job53-D-composite-c4bb57eb009543d5ad0c32ef-53-000023",
+          "requirement_text": "CORS Access-Control-Allow-Origin uses a strict allow list; trusted proxy headers are authenticated.",
+          "verification_hint": "For CORS, check message arrows for `Access-Control-Allow-Origin` headers and verify if the allowed origins are explicitly listed. For proxy headers, look for messages from proxies to the application and subsequent authentication steps.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a sequence diagram showing interactions between components for iCalendar export. It does not depict HTTP headers or proxy authentication, which are necessary to check CORS and proxy header requirements."
+        }
+      ]
+    },
+    {
+      "diagram_id": "p25_d0",
+      "finding_id": 3320,
+      "page_number": 25,
+      "caption": "Figure 3 SIS Calendar Enterprise Architecture and Integration Flow Diagram",
+      "image_path": "vision/ground_truth_images/review_85/p25_d0.png",
+      "system_assessed_requirement_ids": [
+        "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+        "job53-D-4aa8734f54de242cbb68b789",
+        "job53-D-85169068a4a72321d8b315e6",
+        "job53-D-9d7c842b8eeeb6f4244a6be9",
+        "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+        "job53-D-composite-0914062a97936d78c1a65e74",
+        "job53-D-composite-137ee8430adb220056a6773d-53-000001",
+        "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
+        "job53-D-composite-3dc6f67a223cf26e26edfebf",
+        "job53-D-composite-4596dd8573f228bd18ecd33a-53-000001",
+        "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
+        "job53-D-composite-50463b4a59309f108755fa85-53-000015",
+        "job53-D-composite-65241fcf5f2d3be893aec59e-53-000018",
+        "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+        "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
+        "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
+        "job53-D-composite-6bcdb4ad3f3fa4ee0d6cf733-53-000005",
+        "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+        "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
+        "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+        "job53-D-composite-ad70cace67ce58c0b04f96e",
+        "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
+        "job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006",
+        "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
+        "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+        "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+        "job53-D-f795ad19b9018b705f38ee07-53-000017"
+      ],
+      "candidate_requirements": [
+        {
+          "requirement_id": "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
+          "requirement_text": "Verify documentation and justification of all the application's trust boundaries, components, and significant data flows.",
+          "verification_hint": "Examine the DFD for clearly defined trust boundaries (dashed lines), labeled components (processes, data stores), and data flow arrows with descriptive labels.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a Data Flow Diagram (DFD) showing components, data flows, and trust boundaries. It includes labeled components, data flow arrows, and dashed lines indicating trust boundaries, making it suitable for checking the requirement."
+        },
+        {
+          "requirement_id": "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
+          "requirement_text": "Verify definition and security analysis of the application's high-level architecture and all connected remote services.",
+          "verification_hint": "Look for a high-level architecture diagram showing all major components, their connections, and external services. Ensure components are labeled and connections indicate protocols.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a high-level architecture diagram showing major components, their connections, and external services. Components are labeled, and connections indicate interactions, making it suitable for verifying the requirement."
+        },
+        {
+          "requirement_id": "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+          "requirement_text": "Verify that communications between application components, including APIs, middleware and data layers, are authenticated.",
+          "verification_hint": "Check connections between components for annotations indicating authentication mechanisms (e.g., 'authenticated API call', 'mTLS').",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows connections between application components, such as APIs and subsystems, with annotations indicating authentication exchanges (e.g., 'OAuth authorization exchange', 'Federated authentication'). This suggests it can depict authentication mechanisms between components."
+        },
+        {
+          "requirement_id": "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+          "requirement_text": "Verify that trusted enforcement points, such as access control gateways, enforce access controls.",
+          "verification_hint": "Identify processes or components within trusted zones (inside trust boundaries) that are explicitly labeled as 'Access Control Gateway' or similar, mediating access to sensitive data stores or processes.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows components and processes within trust boundaries, such as the 'SIS Gateway API' and 'Shibboleth Authentication System', which could be considered access control gateways. This makes it possible to check if access controls are enforced at these points."
+        },
+        {
+          "requirement_id": "job53-D-f795ad19b9018b705f38ee07-53-000017",
+          "requirement_text": "Verify that input validation is enforced on a trusted service layer.",
+          "verification_hint": "Locate data flows from untrusted sources entering a trusted process labeled 'Input Validation' or 'Service Layer' before proceeding to other internal components or data stores.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flows from external sources like 'External Upstream Services' and 'Client Environments' into internal components such as 'JSON Parser' and 'Schedule Management Subsystem'. This setup could potentially depict input validation at a trusted service layer."
+        },
+        {
+          "requirement_id": "job53-D-composite-6224cdc4224b15cc055e4d98-53-000023",
+          "requirement_text": "Logging system: logs securely transmitted to a remote system",
+          "verification_hint": "Look for a dedicated logging component or service, and data flows indicating secure transmission (e.g., TLS) to an external or remote logging system.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram does not show any dedicated logging component or service, nor does it depict data flows indicating secure transmission to a remote logging system."
+        },
+        {
+          "requirement_id": "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+          "requirement_text": "Secure communication: encryption and authenticity verification between components",
+          "verification_hint": "Examine connections between components, especially across network zones. Look for annotations like HTTPS, TLS, or VPN, and indications of mutual authentication.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows connections between components and network zones, which can be annotated with encryption protocols like HTTPS, TLS, or VPN. It also includes authentication exchanges, which could indicate mutual authentication."
+        },
+        {
+          "requirement_id": "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+          "requirement_text": "Component segregation: trust levels separated by security controls",
+          "verification_hint": "Identify components with differing trust levels and verify the presence of explicit security controls (e.g., firewalls, API gateways, security groups) between them.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows various components and their interactions, which can depict differing trust levels. It also includes elements like APIs and authentication systems where security controls such as firewalls or gateways could be illustrated."
+        },
+        {
+          "requirement_id": "job53-D-f9150a032d65c4d7d13987af-53-000038",
+          "requirement_text": "Application isolation: sandboxing, containerization, or network-level isolation",
+          "verification_hint": "Look for deployment boundaries, container orchestration platforms, or network segmentation that indicates isolation between applications or services.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows deployment boundaries and interactions between different subsystems and services, which could indicate application isolation through sandboxing, containerization, or network-level isolation."
+        },
+        {
+          "requirement_id": "job53-D-composite-ef72f311ee57ad5d1f39d412",
+          "requirement_text": "Verify external API calls for breached password checks are shown.",
+          "verification_hint": "Look for data flow arrows from an internal process to an external entity labeled 'Breached Password API' or similar, indicating an external check.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram does not show any data flow arrows or entities related to external API calls for breached password checks. It focuses on authentication and calendar management subsystems."
+        },
+        {
+          "requirement_id": "job53-D-0b309de7950edbfb5e56d372",
+          "requirement_text": "Verify anti-automation controls (e.g., CAPTCHA, rate limiting) are depicted.",
+          "verification_hint": "Look for components like 'Rate Limiter', 'CAPTCHA Service', or 'WAF' placed before authentication services.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is an architecture diagram showing components and their interactions, which can depict anti-automation controls like 'Rate Limiter', 'CAPTCHA Service', or 'WAF' placed before authentication services."
+        },
+        {
+          "requirement_id": "job53-D-b7e28781ff521b69f12383e6",
+          "requirement_text": "Verify secure notifications are sent to users after authentication detail updates.",
+          "verification_hint": "Look for messages from the application to a 'Notification Service' or 'User' lifeline after actions like 'credential reset' or 'email change'.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram focuses on authentication and calendar management systems, but it does not show any components or interactions related to a 'Notification Service' or user notifications after authentication updates."
+        },
+        {
+          "requirement_id": "job53-D-85169068a4a72321d8b315e6",
+          "requirement_text": "Verify mutual TLS is used between CSP and application.",
+          "verification_hint": "Look for data flow arrows between the 'Credential Service Provider' and the 'Application' labeled with 'mTLS' or 'Mutual TLS'.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flow arrows between components, which could potentially be labeled with 'mTLS' or 'Mutual TLS' to verify the use of mutual TLS between the Credential Service Provider and the Application."
+        },
+        {
+          "requirement_id": "job53-D-composite-0914062a97936d78c1a65e74",
+          "requirement_text": "Sensitive secrets (e.g., initial activation, recovery secrets) are not sent in clear text.",
+          "verification_hint": "Examine data flow arrows carrying sensitive secrets. They must be labeled with encryption (e.g., TLS, HTTPS) or indicate a secure channel.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flow arrows between components, which could be labeled to indicate encryption or secure channels, making it possible to check if sensitive secrets are sent securely."
+        },
+        {
+          "requirement_id": "job53-D-composite-293a1c8ed0c3bb4df31cc936",
+          "requirement_text": "Out-of-band authentication communication uses a secure, independent channel.",
+          "verification_hint": "Identify data flows for out-of-band authentication. These flows must be labeled as secure (e.g., TLS, HTTPS) and distinct from the primary application channel.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flows related to authentication and external services, which could potentially include out-of-band authentication channels. It is possible to check if these flows are labeled as secure and distinct from the primary application channel."
+        },
+        {
+          "requirement_id": "job53-D-composite-ad70cace67ce58c0b04f96e",
+          "requirement_text": "Verify that intra-service secrets and API keys are managed securely and not included in the source code.",
+          "verification_hint": "Look for dedicated secret management services (e.g., Vault, AWS Secrets Manager) and connections to them from services that require secrets. Ensure no secrets are depicted directly within service components.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram does not depict any secret management services or connections to them. It focuses on service interactions and data flows, not on how secrets or API keys are managed."
+        },
+        {
+          "requirement_id": "job53-D-9d7c842b8eeeb6f4244a6be9",
+          "requirement_text": "Verify the application never reveals session tokens in URL parameters.",
+          "verification_hint": "Examine message flows between client and server. Ensure that session tokens are not shown as part of the URL in any request messages.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows system components and data flows but does not detail URL structures or message contents, which are necessary to verify if session tokens are revealed in URL parameters."
+        },
+        {
+          "requirement_id": "job53-D-4aa8734f54de242cbb68b789",
+          "requirement_text": "Verify the application generates a new session token on user authentication.",
+          "verification_hint": "After a successful authentication message, look for a subsequent message from the server to the client that explicitly indicates the issuance of a new session token.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a high-level architecture diagram showing system components and data flows, but it does not detail specific message exchanges or session token handling, which are necessary to verify session token generation on authentication."
+        },
+        {
+          "requirement_id": "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
+          "requirement_text": "Session tokens are protected during transmission and storage.",
+          "verification_hint": "Look for data flows carrying session tokens to be encrypted (e.g., HTTPS/TLS) and data stores holding session tokens to be marked as encrypted.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flows and components involved in authentication and data exchange, which could depict encryption methods like HTTPS/TLS for session tokens during transmission. It also shows data stores where encryption of stored session tokens could be indicated."
+        },
+        {
+          "requirement_id": "job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006",
+          "requirement_text": "Session invalidation and re-authentication flows are present.",
+          "verification_hint": "Examine sequence diagrams for explicit 'logout' or 'invalidate session' messages, and re-authentication flows after idle periods or specific actions.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is an architecture diagram showing system components and data flows, not a sequence diagram. It does not depict specific session invalidation or re-authentication flows."
+        },
+        {
+          "requirement_id": "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
+          "requirement_text": "Cookie-based session tokens are transmitted securely.",
+          "verification_hint": "Verify that data flows carrying cookie-based session tokens are labeled with secure protocols like HTTPS/TLS.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flows between components, which could be labeled with protocols like HTTPS/TLS to verify secure transmission of cookie-based session tokens."
+        },
+        {
+          "requirement_id": "job53-D-composite-50463b4a59309f108755fa85-53-000015",
+          "requirement_text": "OAuth token revocation and session token usage are depicted.",
+          "verification_hint": "Look for sequence diagrams showing messages for OAuth token revocation and the use of dynamic session tokens instead of static API keys in interactions.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is an architecture diagram showing system components and interactions, but it does not include sequence diagrams or detailed message flows necessary to depict OAuth token revocation and session token usage."
+        },
+        {
+          "requirement_id": "job53-D-composite-65241fcf5f2d3be893aec59e-53-000018",
+          "requirement_text": "Authentication time limits and re-authentication events are communicated between CSPs and RPs.",
+          "verification_hint": "Check sequence diagrams for messages between CSP and RP lifelines indicating authentication time limits and last authentication events.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is an architecture diagram showing system components and data flows, not a sequence diagram. It does not depict message exchanges or events between CSPs and RPs, which are necessary to check authentication time limits and re-authentication events."
+        },
+        {
+          "requirement_id": "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+          "requirement_text": "Access control enforcement is located within trusted service layers.",
+          "verification_hint": "Identify trusted service components within the architecture diagram and verify that access control logic is depicted within or directly associated with them, not solely on client-side components.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows various service components such as the Authentication Subsystem and Schedule Management Subsystem, which could be considered trusted service layers. It is possible to check if access control logic is associated with these components rather than client-side components."
+        },
+        {
+          "requirement_id": "job53-D-composite-6bcdb4ad3f3fa4ee0d6cf733-53-000005",
+          "requirement_text": "Verify that sensitive data and APIs are protected against IDOR, CSRF, and unauthorized access.",
+          "verification_hint": "Examine message flows between user and system, and between internal components. Look for explicit authorization checks or tokens in messages for sensitive operations. Check for anti-CSRF tokens in requests.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows message flows between users and the system, as well as between internal components. It includes authentication subsystems and API interactions, which are relevant for checking authorization and anti-CSRF measures."
+        },
+        {
+          "requirement_id": "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
+          "requirement_text": "Verify that all external inputs are validated and sanitized before processing.",
+          "verification_hint": "Look for a 'Validation' or 'Sanitization' process immediately following data ingress from external entities or across trust boundaries. Data flows into these processes should be clearly labeled.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flows from external entities and includes components like a 'JSON Parser' which could be involved in validation and sanitization processes. This makes it possible to check if external inputs are validated and sanitized."
+        },
+        {
+          "requirement_id": "job53-D-composite-3dc6f67a223cf26e26edfebf",
+          "requirement_text": "Sensitive data stores must be labeled as encrypted at rest.",
+          "verification_hint": "Examine data stores (open rectangles) in the DFD. Any data store holding PII, health, or financial data must have an annotation indicating encryption at rest.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a Data Flow Diagram (DFD) that includes data stores represented as open rectangles. It is capable of showing annotations indicating encryption at rest for sensitive data stores."
+        },
+        {
+          "requirement_id": "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
+          "requirement_text": "Secrets management solution (e.g., key vault) is used for secure secret handling.",
+          "verification_hint": "Look for a dedicated component labeled as a 'Key Vault', 'Secrets Manager', or similar, connected to application components.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram does not show any components labeled as 'Key Vault', 'Secrets Manager', or similar, nor does it depict connections specifically related to secret handling. It focuses on authentication and calendar management subsystems."
+        },
+        {
+          "requirement_id": "job53-D-composite-4596dd8573f228bd18ecd33a-53-000001",
+          "requirement_text": "Sensitive data is not logged to data stores accessible by unauthorized parties.",
+          "verification_hint": "Examine data flows to logging data stores. Ensure sensitive data (credentials, PII) is not shown flowing into these stores, especially across trust boundaries.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flows between various components, including logging data stores and trust boundaries. This allows for checking if sensitive data is flowing into unauthorized data stores."
+        },
+        {
+          "requirement_id": "job53-D-composite-137ee8430adb220056a6773d-53-000001",
+          "requirement_text": "Sensitive data caching protection in server components.",
+          "verification_hint": "Examine architecture diagrams for load balancers, caches, and other server components. Verify that sensitive data is not shown flowing into or being stored in these components without explicit protection mechanisms.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows server components such as the JSON Parser and various APIs, which could potentially cache sensitive data. It is possible to check for data flow and protection mechanisms related to caching in these components."
+        },
+        {
+          "requirement_id": "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+          "requirement_text": "All data flows across trust boundaries must be labeled with secure protocols (e.g., TLS, HTTPS).",
+          "verification_hint": "Examine all data-flow arrows crossing trust boundaries. Each must be explicitly labeled with a secure protocol like TLS or HTTPS.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data-flow arrows crossing trust boundaries, which can be labeled with secure protocols like TLS or HTTPS to meet the requirement."
+        },
+        {
+          "requirement_id": "job53-D-composite-9454a8814d51e3209de88a23-53-000008",
+          "requirement_text": "Update mechanisms must show secure channels and digital signature validation.",
+          "verification_hint": "Look for components responsible for updates. Their connections to update sources must be labeled as secure (e.g., HTTPS), and a validation step for digital signatures should be indicated.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram focuses on authentication and calendar management subsystems, showing data flows and interactions with external services. It does not specifically depict update mechanisms, secure channels for updates, or digital signature validation processes."
+        },
+        {
+          "requirement_id": "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
+          "requirement_text": "Anti-automation and business logic controls are deployed.",
+          "verification_hint": "Look for components like WAFs, API gateways, or dedicated rate-limiting/anti-bot services positioned to protect application components.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows components like APIs and authentication systems, which could be protected by WAFs, API gateways, or rate-limiting services. These elements are relevant for checking anti-automation and business logic controls."
+        },
+        {
+          "requirement_id": "job53-D-composite-bede99b5e5f325a33e768fce-53-000001",
+          "requirement_text": "File storage components are configured with size and quota limits.",
+          "verification_hint": "Identify data stores or file storage services and look for annotations indicating size limits, quotas, or dedicated file validation services.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram primarily shows authentication and calendar management components, but does not depict file storage components or annotations related to size limits or quotas."
+        },
+        {
+          "requirement_id": "job53-D-composite-fbb3a72ceae2857088a8d4c2-53-000004",
+          "requirement_text": "Untrusted file processing includes validation and scanning components.",
+          "verification_hint": "Look for dedicated services or components (e.g., file validation service, antivirus scanner) in the data flow path for untrusted file uploads.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows various components and data flows, including parsers and builders, which could potentially include file validation and scanning components. This makes it possible to check for untrusted file processing mechanisms."
+        },
+        {
+          "requirement_id": "job53-D-d416547723579cd22fbd0779-53-000011",
+          "requirement_text": "Untrusted files are stored outside the web root with limited permissions.",
+          "verification_hint": "Identify the storage location for untrusted files and ensure it's a separate, non-web-accessible component or zone.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram does not show specific storage locations or permissions for files, nor does it indicate whether any storage is outside the web root. It focuses on system components and data flows, not file storage configurations."
+        },
+        {
+          "requirement_id": "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
+          "requirement_text": "Verify that the application server only sends requests to or loads data/files from allowed resources/systems.",
+          "verification_hint": "Examine connections from the application server component to other components or external systems. Ensure these connections are explicitly defined and limited to expected targets.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows connections from the application server to other components and external systems, which can be used to verify if requests are sent only to allowed resources."
+        },
+        {
+          "requirement_id": "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+          "requirement_text": "Verify that message headers and payload are protected in transit using strong encryption (TLS).",
+          "verification_hint": "Inspect data flow arrows between processes, data stores, and external entities. Look for annotations indicating TLS or HTTPS for all sensitive data in transit.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flow arrows between processes, data stores, and external entities, which could be annotated to indicate the use of TLS or HTTPS for protecting message headers and payloads in transit."
+        },
+        {
+          "requirement_id": "job53-D-composite-700fbe6b2db199ae12159350-53-000008",
+          "requirement_text": "External asset hosting uses integrity checks (SRI) and trusted sources.",
+          "verification_hint": "Identify external CDN or third-party integrations. Look for annotations indicating SRI usage or trusted repository sourcing.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows external services and APIs but does not provide details on integrity checks like SRI or trusted source annotations, which are typically not depicted in architecture diagrams."
+        },
+        {
+          "requirement_id": "job53-D-composite-c2bc34e911d53b529699c749-53-000016",
+          "requirement_text": "HTTP responses include security headers (CSP, HSTS, X-Content-Type-Options, Referrer-Policy, X-Frame-Options).",
+          "verification_hint": "Examine message arrows representing HTTP responses. Look for annotations or labels on these messages indicating the presence and content of security-related HTTP headers.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows system components and data flows but does not include detailed annotations or labels on HTTP messages that would indicate the presence of security-related HTTP headers."
+        },
+        {
+          "requirement_id": "job53-D-composite-c4bb57eb009543d5ad0c32ef-53-000023",
+          "requirement_text": "CORS Access-Control-Allow-Origin uses a strict allow list; trusted proxy headers are authenticated.",
+          "verification_hint": "For CORS, check message arrows for `Access-Control-Allow-Origin` headers and verify if the allowed origins are explicitly listed. For proxy headers, look for messages from proxies to the application and subsequent authentication steps.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows system components and data flows but does not depict HTTP headers or specific CORS configurations, nor does it show proxy header authentication steps. These details are typically not visible in architecture diagrams."
+        }
+      ]
+    },
+    {
+      "diagram_id": "p33_d0",
+      "finding_id": 3319,
+      "page_number": 33,
+      "caption": "Figure 4 SIS Calendar Deployment and Runtime Integration Architecture",
+      "image_path": "vision/ground_truth_images/review_85/p33_d0.png",
+      "system_assessed_requirement_ids": [
+        "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+        "job53-D-85169068a4a72321d8b315e6",
+        "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+        "job53-D-composite-0914062a97936d78c1a65e74",
+        "job53-D-composite-137ee8430adb220056a6773d-53-000001",
+        "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
+        "job53-D-composite-3dc6f67a223cf26e26edfebf",
+        "job53-D-composite-4596dd8573f228bd18ecd33a-53-000001",
+        "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
+        "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+        "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
+        "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
+        "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+        "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
+        "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+        "job53-D-composite-9454a8814d51e3209de88a23-53-000008",
+        "job53-D-composite-ad70cace67ce58c0b04f96e",
+        "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
+        "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+        "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+        "job53-D-f9150a032d65c4d7d13987af-53-000038"
+      ],
+      "candidate_requirements": [
+        {
+          "requirement_id": "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
+          "requirement_text": "Verify documentation and justification of all the application's trust boundaries, components, and significant data flows.",
+          "verification_hint": "Examine the DFD for clearly defined trust boundaries (dashed lines), labeled components (processes, data stores), and data flow arrows with descriptive labels.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a Data Flow Diagram (DFD) showing components, data flows, and trust boundaries. It includes labeled processes, data stores, and data flow arrows, which are necessary to check the requirement."
+        },
+        {
+          "requirement_id": "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
+          "requirement_text": "Verify definition and security analysis of the application's high-level architecture and all connected remote services.",
+          "verification_hint": "Look for a high-level architecture diagram showing all major components, their connections, and external services. Ensure components are labeled and connections indicate protocols.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a high-level architecture diagram showing major components, their connections, and external services. It includes labeled components and indicates protocols, which aligns with the requirement for verifying the application's architecture and connected services."
+        },
+        {
+          "requirement_id": "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+          "requirement_text": "Verify that communications between application components, including APIs, middleware and data layers, are authenticated.",
+          "verification_hint": "Check connections between components for annotations indicating authentication mechanisms (e.g., 'authenticated API call', 'mTLS').",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows connections between application components, including APIs and data layers, which could be annotated to indicate authentication mechanisms. This makes it possible to check if communications are authenticated."
+        },
+        {
+          "requirement_id": "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+          "requirement_text": "Verify that trusted enforcement points, such as access control gateways, enforce access controls.",
+          "verification_hint": "Identify processes or components within trusted zones (inside trust boundaries) that are explicitly labeled as 'Access Control Gateway' or similar, mediating access to sensitive data stores or processes.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows components such as 'Enterprise Firewall' and various network tiers, which could potentially include access control gateways. These elements are within trust boundaries and could be annotated to show enforcement of access controls."
+        },
+        {
+          "requirement_id": "job53-D-f795ad19b9018b705f38ee07-53-000017",
+          "requirement_text": "Verify that input validation is enforced on a trusted service layer.",
+          "verification_hint": "Locate data flows from untrusted sources entering a trusted process labeled 'Input Validation' or 'Service Layer' before proceeding to other internal components or data stores.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram primarily depicts deployment and network architecture, focusing on data flow and server interactions. It does not show specific processes or components labeled 'Input Validation' or 'Service Layer,' which are necessary to check input validation enforcement."
+        },
+        {
+          "requirement_id": "job53-D-composite-6224cdc4224b15cc055e4d98-53-000023",
+          "requirement_text": "Logging system: logs securely transmitted to a remote system",
+          "verification_hint": "Look for a dedicated logging component or service, and data flows indicating secure transmission (e.g., TLS) to an external or remote logging system.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram does not show any dedicated logging components or services, nor does it depict data flows indicating secure transmission to a remote logging system. It focuses on application deployment and integration with external services."
+        },
+        {
+          "requirement_id": "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+          "requirement_text": "Secure communication: encryption and authenticity verification between components",
+          "verification_hint": "Examine connections between components, especially across network zones. Look for annotations like HTTPS, TLS, or VPN, and indications of mutual authentication.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows connections between components, including network zones and protocols like SSH/SCP, which are relevant for checking secure communication through encryption and authenticity verification."
+        },
+        {
+          "requirement_id": "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+          "requirement_text": "Component segregation: trust levels separated by security controls",
+          "verification_hint": "Identify components with differing trust levels and verify the presence of explicit security controls (e.g., firewalls, API gateways, security groups) between them.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows various components such as the Engineering Environment, Perimeter Network, and Application Tier, along with security controls like an Enterprise Firewall. This setup allows for checking component segregation and the presence of security controls between different trust levels."
+        },
+        {
+          "requirement_id": "job53-D-f9150a032d65c4d7d13987af-53-000038",
+          "requirement_text": "Application isolation: sandboxing, containerization, or network-level isolation",
+          "verification_hint": "Look for deployment boundaries, container orchestration platforms, or network segmentation that indicates isolation between applications or services.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows deployment boundaries, network components, and server clusters, which can indicate application isolation through network-level isolation or containerization platforms."
+        },
+        {
+          "requirement_id": "job53-D-composite-ef72f311ee57ad5d1f39d412",
+          "requirement_text": "Verify external API calls for breached password checks are shown.",
+          "verification_hint": "Look for data flow arrows from an internal process to an external entity labeled 'Breached Password API' or similar, indicating an external check.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flows between internal and external services, but there is no indication of a 'Breached Password API' or similar external entity for password checks. It focuses on deployment and service interactions, not specific security checks."
+        },
+        {
+          "requirement_id": "job53-D-0b309de7950edbfb5e56d372",
+          "requirement_text": "Verify anti-automation controls (e.g., CAPTCHA, rate limiting) are depicted.",
+          "verification_hint": "Look for components like 'Rate Limiter', 'CAPTCHA Service', or 'WAF' placed before authentication services.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram focuses on deployment and network architecture, showing components like servers and APIs. It does not depict specific anti-automation controls such as CAPTCHA or rate limiting mechanisms."
+        },
+        {
+          "requirement_id": "job53-D-b7e28781ff521b69f12383e6",
+          "requirement_text": "Verify secure notifications are sent to users after authentication detail updates.",
+          "verification_hint": "Look for messages from the application to a 'Notification Service' or 'User' lifeline after actions like 'credential reset' or 'email change'.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram focuses on deployment and server architecture, showing components like build tools, servers, and APIs. It does not depict user interactions or notification services, which are necessary to check secure notifications after authentication updates."
+        },
+        {
+          "requirement_id": "job53-D-85169068a4a72321d8b315e6",
+          "requirement_text": "Verify mutual TLS is used between CSP and application.",
+          "verification_hint": "Look for data flow arrows between the 'Credential Service Provider' and the 'Application' labeled with 'mTLS' or 'Mutual TLS'.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flow arrows between components, such as between the Apache Tomcat Server Cluster and external/internal services. It could potentially depict mTLS if labeled accordingly."
+        },
+        {
+          "requirement_id": "job53-D-composite-0914062a97936d78c1a65e74",
+          "requirement_text": "Sensitive secrets (e.g., initial activation, recovery secrets) are not sent in clear text.",
+          "verification_hint": "Examine data flow arrows carrying sensitive secrets. They must be labeled with encryption (e.g., TLS, HTTPS) or indicate a secure channel.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flow arrows and labels indicating protocols like SSH/SCP, which can be used to verify if sensitive secrets are sent securely. This makes it possible to check if encryption is used for sensitive data transmission."
+        },
+        {
+          "requirement_id": "job53-D-composite-293a1c8ed0c3bb4df31cc936",
+          "requirement_text": "Out-of-band authentication communication uses a secure, independent channel.",
+          "verification_hint": "Identify data flows for out-of-band authentication. These flows must be labeled as secure (e.g., TLS, HTTPS) and distinct from the primary application channel.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows application deployment and data flows but does not specifically depict out-of-band authentication channels or their security measures. It lacks details on distinct communication channels for authentication."
+        },
+        {
+          "requirement_id": "job53-D-composite-ad70cace67ce58c0b04f96e",
+          "requirement_text": "Verify that intra-service secrets and API keys are managed securely and not included in the source code.",
+          "verification_hint": "Look for dedicated secret management services (e.g., Vault, AWS Secrets Manager) and connections to them from services that require secrets. Ensure no secrets are depicted directly within service components.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows an architecture with components and data flows but does not depict secret management services or connections to them. It cannot verify if secrets are managed securely or not included in source code."
+        },
+        {
+          "requirement_id": "job53-D-9d7c842b8eeeb6f4244a6be9",
+          "requirement_text": "Verify the application never reveals session tokens in URL parameters.",
+          "verification_hint": "Examine message flows between client and server. Ensure that session tokens are not shown as part of the URL in any request messages.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows system architecture and deployment processes but does not detail message flows or URL structures between client and server, which are necessary to verify session tokens in URL parameters."
+        },
+        {
+          "requirement_id": "job53-D-4aa8734f54de242cbb68b789",
+          "requirement_text": "Verify the application generates a new session token on user authentication.",
+          "verification_hint": "After a successful authentication message, look for a subsequent message from the server to the client that explicitly indicates the issuance of a new session token.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is an architecture diagram showing deployment and network components, but it does not depict message flows or session management details necessary to verify session token generation on authentication."
+        },
+        {
+          "requirement_id": "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
+          "requirement_text": "Session tokens are protected during transmission and storage.",
+          "verification_hint": "Look for data flows carrying session tokens to be encrypted (e.g., HTTPS/TLS) and data stores holding session tokens to be marked as encrypted.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flows and components such as APIs and server clusters, which could potentially depict encryption methods for session tokens during transmission and storage."
+        },
+        {
+          "requirement_id": "job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006",
+          "requirement_text": "Session invalidation and re-authentication flows are present.",
+          "verification_hint": "Examine sequence diagrams for explicit 'logout' or 'invalidate session' messages, and re-authentication flows after idle periods or specific actions.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is an architecture diagram showing system components and interactions, not a sequence diagram. It does not depict session invalidation or re-authentication flows, which require sequence diagrams to show specific message exchanges."
+        },
+        {
+          "requirement_id": "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
+          "requirement_text": "Cookie-based session tokens are transmitted securely.",
+          "verification_hint": "Verify that data flows carrying cookie-based session tokens are labeled with secure protocols like HTTPS/TLS.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flows and network connections, which can be annotated to indicate secure protocols like HTTPS/TLS for transmitting session tokens securely."
+        },
+        {
+          "requirement_id": "job53-D-composite-50463b4a59309f108755fa85-53-000015",
+          "requirement_text": "OAuth token revocation and session token usage are depicted.",
+          "verification_hint": "Look for sequence diagrams showing messages for OAuth token revocation and the use of dynamic session tokens instead of static API keys in interactions.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is an architecture diagram showing system components and data flows, not a sequence diagram. It does not depict OAuth token revocation or session token usage, which require detailed message exchanges typically shown in sequence diagrams."
+        },
+        {
+          "requirement_id": "job53-D-composite-65241fcf5f2d3be893aec59e-53-000018",
+          "requirement_text": "Authentication time limits and re-authentication events are communicated between CSPs and RPs.",
+          "verification_hint": "Check sequence diagrams for messages between CSP and RP lifelines indicating authentication time limits and last authentication events.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is an architecture diagram showing system components and data flows, not a sequence diagram. It does not depict message exchanges or events between CSPs and RPs, which are necessary to check authentication time limits and re-authentication events."
+        },
+        {
+          "requirement_id": "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+          "requirement_text": "Access control enforcement is located within trusted service layers.",
+          "verification_hint": "Identify trusted service components within the architecture diagram and verify that access control logic is depicted within or directly associated with them, not solely on client-side components.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows various service layers, including application tiers and server clusters, which could depict trusted service components. It is possible to check if access control logic is associated with these components rather than client-side components."
+        },
+        {
+          "requirement_id": "job53-D-composite-6bcdb4ad3f3fa4ee0d6cf733-53-000005",
+          "requirement_text": "Verify that sensitive data and APIs are protected against IDOR, CSRF, and unauthorized access.",
+          "verification_hint": "Examine message flows between user and system, and between internal components. Look for explicit authorization checks or tokens in messages for sensitive operations. Check for anti-CSRF tokens in requests.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows message flows between user systems, internal components, and external services, which could be annotated to show authorization checks or tokens for sensitive operations, making it relevant for verifying protection against IDOR, CSRF, and unauthorized access."
+        },
+        {
+          "requirement_id": "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
+          "requirement_text": "Verify that all external inputs are validated and sanitized before processing.",
+          "verification_hint": "Look for a 'Validation' or 'Sanitization' process immediately following data ingress from external entities or across trust boundaries. Data flows into these processes should be clearly labeled.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flows from external entities like Google Calendar API and SIS Gateway API into the system. It is capable of depicting validation and sanitization processes if they are included, as it shows data ingress points and could potentially show processes following these points."
+        },
+        {
+          "requirement_id": "job53-D-composite-3dc6f67a223cf26e26edfebf",
+          "requirement_text": "Sensitive data stores must be labeled as encrypted at rest.",
+          "verification_hint": "Examine data stores (open rectangles) in the DFD. Any data store holding PII, health, or financial data must have an annotation indicating encryption at rest.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a Data Flow Diagram (DFD) that includes data stores represented as open rectangles. It is capable of showing annotations for encryption at rest, making the requirement checkable."
+        },
+        {
+          "requirement_id": "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
+          "requirement_text": "Secrets management solution (e.g., key vault) is used for secure secret handling.",
+          "verification_hint": "Look for a dedicated component labeled as a 'Key Vault', 'Secrets Manager', or similar, connected to application components.",
+          "was_assessed_by_system": true,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram does not show any components related to secrets management, such as a 'Key Vault' or 'Secrets Manager'. It focuses on application deployment and network flow, not on secret handling solutions."
+        },
+        {
+          "requirement_id": "job53-D-composite-4596dd8573f228bd18ecd33a-53-000001",
+          "requirement_text": "Sensitive data is not logged to data stores accessible by unauthorized parties.",
+          "verification_hint": "Examine data flows to logging data stores. Ensure sensitive data (credentials, PII) is not shown flowing into these stores, especially across trust boundaries.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flows between various components, including external and internal services. It is possible to check if sensitive data is flowing into logging data stores across trust boundaries, which is relevant to the requirement."
+        },
+        {
+          "requirement_id": "job53-D-composite-137ee8430adb220056a6773d-53-000001",
+          "requirement_text": "Sensitive data caching protection in server components.",
+          "verification_hint": "Examine architecture diagrams for load balancers, caches, and other server components. Verify that sensitive data is not shown flowing into or being stored in these components without explicit protection mechanisms.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows server components such as the Apache Tomcat Server Cluster and interactions with external and internal services. It is capable of depicting data flows and could potentially show caching mechanisms and data protection measures."
+        },
+        {
+          "requirement_id": "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+          "requirement_text": "All data flows across trust boundaries must be labeled with secure protocols (e.g., TLS, HTTPS).",
+          "verification_hint": "Examine all data-flow arrows crossing trust boundaries. Each must be explicitly labeled with a secure protocol like TLS or HTTPS.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flows across different components and trust boundaries, such as between the Local Engineering Environment and External Cloud Services. It is capable of depicting whether secure protocols are labeled on these data flows."
+        },
+        {
+          "requirement_id": "job53-D-composite-9454a8814d51e3209de88a23-53-000008",
+          "requirement_text": "Update mechanisms must show secure channels and digital signature validation.",
+          "verification_hint": "Look for components responsible for updates. Their connections to update sources must be labeled as secure (e.g., HTTPS), and a validation step for digital signatures should be indicated.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows components related to update mechanisms, such as deployment transfers and change management scripts. It can depict secure channels and digital signature validation if annotated properly."
+        },
+        {
+          "requirement_id": "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
+          "requirement_text": "Anti-automation and business logic controls are deployed.",
+          "verification_hint": "Look for components like WAFs, API gateways, or dedicated rate-limiting/anti-bot services positioned to protect application components.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows components like an Enterprise Firewall and Apache Tomcat Server Cluster, which could be relevant for positioning WAFs, API gateways, or rate-limiting services to protect application components."
+        },
+        {
+          "requirement_id": "job53-D-composite-bede99b5e5f325a33e768fce-53-000001",
+          "requirement_text": "File storage components are configured with size and quota limits.",
+          "verification_hint": "Identify data stores or file storage services and look for annotations indicating size limits, quotas, or dedicated file validation services.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram primarily shows application deployment and network flow, but does not detail file storage components or configurations like size and quota limits."
+        },
+        {
+          "requirement_id": "job53-D-composite-fbb3a72ceae2857088a8d4c2-53-000004",
+          "requirement_text": "Untrusted file processing includes validation and scanning components.",
+          "verification_hint": "Look for dedicated services or components (e.g., file validation service, antivirus scanner) in the data flow path for untrusted file uploads.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram focuses on software deployment and integration processes, showing components like build tools, servers, and APIs. It does not depict file processing or scanning components, which are necessary to check the requirement about untrusted file validation and scanning."
+        },
+        {
+          "requirement_id": "job53-D-d416547723579cd22fbd0779-53-000011",
+          "requirement_text": "Untrusted files are stored outside the web root with limited permissions.",
+          "verification_hint": "Identify the storage location for untrusted files and ensure it's a separate, non-web-accessible component or zone.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram focuses on deployment and network architecture, showing components like servers and APIs. It does not detail file storage locations or permissions, which are necessary to verify the requirement about untrusted file storage outside the web root."
+        },
+        {
+          "requirement_id": "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
+          "requirement_text": "Verify that the application server only sends requests to or loads data/files from allowed resources/systems.",
+          "verification_hint": "Examine connections from the application server component to other components or external systems. Ensure these connections are explicitly defined and limited to expected targets.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows connections from the Apache Tomcat Server Cluster to various external and internal systems, which can be used to verify if the application server only sends requests to allowed resources/systems."
+        },
+        {
+          "requirement_id": "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+          "requirement_text": "Verify that message headers and payload are protected in transit using strong encryption (TLS).",
+          "verification_hint": "Inspect data flow arrows between processes, data stores, and external entities. Look for annotations indicating TLS or HTTPS for all sensitive data in transit.",
+          "was_assessed_by_system": true,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows data flow arrows between processes, data stores, and external entities, which can be annotated to indicate the use of TLS or HTTPS for protecting message headers and payloads in transit."
+        },
+        {
+          "requirement_id": "job53-D-composite-700fbe6b2db199ae12159350-53-000008",
+          "requirement_text": "External asset hosting uses integrity checks (SRI) and trusted sources.",
+          "verification_hint": "Identify external CDN or third-party integrations. Look for annotations indicating SRI usage or trusted repository sourcing.",
+          "was_assessed_by_system": false,
+          "relevant": true,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram shows external cloud services and APIs, which could involve external asset hosting. It is plausible for such a diagram to include annotations about SRI usage or trusted sources for these integrations."
+        },
+        {
+          "requirement_id": "job53-D-composite-c2bc34e911d53b529699c749-53-000016",
+          "requirement_text": "HTTP responses include security headers (CSP, HSTS, X-Content-Type-Options, Referrer-Policy, X-Frame-Options).",
+          "verification_hint": "Examine message arrows representing HTTP responses. Look for annotations or labels on these messages indicating the presence and content of security-related HTTP headers.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a high-level architecture diagram showing system components and interactions, but it does not depict HTTP message flows or annotations that would indicate the presence of security headers in HTTP responses."
+        },
+        {
+          "requirement_id": "job53-D-composite-c4bb57eb009543d5ad0c32ef-53-000023",
+          "requirement_text": "CORS Access-Control-Allow-Origin uses a strict allow list; trusted proxy headers are authenticated.",
+          "verification_hint": "For CORS, check message arrows for `Access-Control-Allow-Origin` headers and verify if the allowed origins are explicitly listed. For proxy headers, look for messages from proxies to the application and subsequent authentication steps.",
+          "was_assessed_by_system": false,
+          "relevant": false,
+          "label": null,
+          "notes": "",
+          "judge_reasoning": "The diagram is a high-level architecture diagram showing deployment and network components. It does not depict HTTP headers or specific CORS configurations, nor does it show proxy header authentication steps."
+        }
+      ]
+    }
+  ]
+}

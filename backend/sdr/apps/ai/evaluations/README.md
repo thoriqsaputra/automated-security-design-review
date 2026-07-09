@@ -41,8 +41,8 @@ Current state (update when you re-ingest):
 
 | Job | Standard        | Active | Requirements |
 |-----|-----------------|--------|--------------|
-| 27  | ASVS 4.0.3      | No     | 278          |
-| 28  | ASVS 5.0        | Yes    | 341          |
+| 53  | ASVS 4.0.3      | Yes    | 278          |
+| 55  | ASVS 5.0        | No     | 345          |
 
 ---
 
@@ -57,7 +57,7 @@ Checks that every extracted row has a valid control ID, no duplicates, no blank 
 
 ```bash
 docker exec automated-security-design-review-backend-1 \
-  python /app/sdr/apps/ai/evaluations/extraction/purity_eval.py --job-id 27
+  python /app/sdr/apps/ai/evaluations/extraction/purity_eval.py --job-id 53
 ```
 
 | Metric | Threshold | Meaning |
@@ -72,16 +72,22 @@ Output: `results/eval_extraction_purity.json`
 
 ### 2. Coverage — recall vs gold set
 
-Measures how many of the 286 known ASVS 4.0.3 controls were captured.
-Only meaningful against `--job-id 27` (ASVS 4.0.3); ASVS 5.0 has a different control set.
+Measures how many known controls from a curated gold set were captured.
+Use the matching bundled gold set for the ingestion version under test.
 
 ```bash
 docker exec automated-security-design-review-backend-1 \
-  python /app/sdr/apps/ai/evaluations/extraction/coverage_eval.py --job-id 27
+  python /app/sdr/apps/ai/evaluations/extraction/coverage_eval.py --job-id 53 \
+  --gold-set /app/sdr/apps/ai/evaluations/data/asvs_403_gold_ids.json
+
+docker exec automated-security-design-review-backend-1 \
+  python /app/sdr/apps/ai/evaluations/extraction/coverage_eval.py --job-id 55 \
+  --gold-set /app/sdr/apps/ai/evaluations/data/asvs_500_gold_ids.json
 
 # Filter to specific chapters only:
 docker exec automated-security-design-review-backend-1 \
-  python /app/sdr/apps/ai/evaluations/extraction/coverage_eval.py --job-id 27 \
+  python /app/sdr/apps/ai/evaluations/extraction/coverage_eval.py --job-id 53 \
+  --gold-set /app/sdr/apps/ai/evaluations/data/asvs_403_gold_ids.json \
   --chapter V1 --chapter V9
 ```
 
@@ -105,11 +111,11 @@ enter the downstream debate pipeline.
 
 ```bash
 docker exec automated-security-design-review-backend-1 \
-  python /app/sdr/apps/ai/evaluations/extraction/category_eval.py --job-id 27
+  python /app/sdr/apps/ai/evaluations/extraction/category_eval.py --job-id 53
 
 # Add LLM judge explanations for each mismatch (costs API tokens):
 docker exec automated-security-design-review-backend-1 \
-  python /app/sdr/apps/ai/evaluations/extraction/category_eval.py --job-id 27 \
+  python /app/sdr/apps/ai/evaluations/extraction/category_eval.py --job-id 53 \
   --explain-mismatches
 ```
 
