@@ -54,22 +54,56 @@ class AIServiceInterface(ABC):
     def get_available_models(self) -> List[AIModel]:
         pass
 
-def convert_to_langchain_messages(messages: List[Dict[str, Any]], image_bytes: Optional[bytes] = None, image_format: str = "png") -> List[BaseMessage]:
-    lc_messages = []
-    
-    # Process image if provided (attach to the last user message)
+def _attach_images_to_messages(
+    messages: List[Dict[str, Any]],
+    image_bytes: Optional[bytes] = None,
+    image_format: str = "png",
+    image_payloads: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    attached = [dict(message) for message in messages]
+    payloads = list(image_payloads or [])
     if image_bytes:
-        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-        for i in range(len(messages)-1, -1, -1):
-            if messages[i].get("role") == "user":
-                content = messages[i].get("content", "")
-                messages[i]["content"] = [
-                    {"type": "text", "text": str(content)},
-                    {"type": "image_url", "image_url": {"url": f"data:image/{image_format};base64,{image_b64}"}}
-                ]
-                break
+        payloads.insert(0, {"image_bytes": image_bytes, "image_format": image_format})
+    if not payloads:
+        return attached
 
-    for m in messages:
+    for i in range(len(attached) - 1, -1, -1):
+        if attached[i].get("role") != "user":
+            continue
+        content = attached[i].get("content", "")
+        parts: List[Dict[str, Any]] = [{"type": "text", "text": str(content)}]
+        for payload in payloads:
+            raw_bytes = payload.get("image_bytes")
+            if not raw_bytes:
+                continue
+            payload_format = str(payload.get("image_format") or image_format).strip().lower() or "png"
+            image_b64 = base64.b64encode(raw_bytes).decode("utf-8")
+            parts.append(
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/{payload_format};base64,{image_b64}"},
+                }
+            )
+        attached[i]["content"] = parts
+        break
+    return attached
+
+
+def convert_to_langchain_messages(
+    messages: List[Dict[str, Any]],
+    image_bytes: Optional[bytes] = None,
+    image_format: str = "png",
+    image_payloads: Optional[List[Dict[str, Any]]] = None,
+) -> List[BaseMessage]:
+    lc_messages = []
+    prepared_messages = _attach_images_to_messages(
+        messages,
+        image_bytes=image_bytes,
+        image_format=image_format,
+        image_payloads=image_payloads,
+    )
+
+    for m in prepared_messages:
         role = m.get("role")
         content = m.get("content")
         if role == "system":
@@ -80,16 +114,15 @@ def convert_to_langchain_messages(messages: List[Dict[str, Any]], image_bytes: O
             lc_messages.append(AIMessage(content=content))
     return lc_messages
 
-def convert_to_openai_messages(messages: List[Dict[str, Any]], image_bytes: Optional[bytes] = None, image_format: str = "png") -> List[Dict[str, Any]]:
-    # Process image if provided (attach to the last user message)
-    if image_bytes:
-        image_b64 = base64.b64encode(image_bytes).decode("utf-8")
-        for i in range(len(messages)-1, -1, -1):
-            if messages[i].get("role") == "user":
-                content = messages[i].get("content", "")
-                messages[i]["content"] = [
-                    {"type": "text", "text": str(content)},
-                    {"type": "image_url", "image_url": {"url": f"data:image/{image_format};base64,{image_b64}"}}
-                ]
-                break
-    return messages
+def convert_to_openai_messages(
+    messages: List[Dict[str, Any]],
+    image_bytes: Optional[bytes] = None,
+    image_format: str = "png",
+    image_payloads: Optional[List[Dict[str, Any]]] = None,
+) -> List[Dict[str, Any]]:
+    return _attach_images_to_messages(
+        messages,
+        image_bytes=image_bytes,
+        image_format=image_format,
+        image_payloads=image_payloads,
+    )

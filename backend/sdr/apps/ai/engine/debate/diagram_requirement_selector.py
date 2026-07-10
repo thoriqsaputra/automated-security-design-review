@@ -6,7 +6,7 @@ import re
 from typing import Any, List
 
 from sdr.apps.ai.client import get_embedding
-from sdr.apps.ai.tsd_processing.visual_marker import extract_diagram_text
+from sdr.apps.ai.tsd_processing.diagram_ocr import extract_diagram_text
 from sdr.apps.ai.retrieval.core.candidates import RetrievalCandidate
 from sdr.apps.ai.retrieval.postprocessing.reranker import SafeOptionalReranker
 from sdr.apps.ai.agents.vision import VisionAgent
@@ -48,6 +48,24 @@ _MIN_RESULTS = 3
 # Kept well under typical pool sizes so each call stays focused rather than
 # asking the model to judge dozens of candidates at once in one shot.
 _GATEKEEPER_BATCH_SIZE = 15
+
+# Minimum calibrated confidence for a gatekeeper "relevant: true" to survive
+# into the debate. Without this, every relevant=true call was kept regardless
+# of confidence, and the gatekeeper's relevance question is coarse enough
+# (diagram-type plausibility) that borderline calls were common — confirmed
+# empirically as the direct cause of diagrams pulling in 40-55% of an entire
+# category's requirement pool. The gatekeeper prompt now explicitly asks it to
+# calibrate confidence against how concretely the diagram's actual content (not
+# its general type) supports the call, so this threshold is meaningful.
+#
+# NOTE: an earlier pass at 0.6 combined with an overly strict prompt caused the
+# opposite failure — selection recall against ground truth collapsed (only
+# ~26-48% of genuinely labeled requirements were still selected), because the
+# model was conflating "the control isn't drawn" (still relevant — a not_met
+# case) with "the scope isn't drawn" (genuinely not relevant), and rating
+# confidence low for the former. The prompt now explicitly separates these; 0.5
+# keeps a modest additional safety margin on top of that prompt fix.
+_GATEKEEPER_CONFIDENCE_THRESHOLD = 0.5
 
 # Keyword phrasing matched against caption/surrounding-text/OCR text to guess
 # a diagram's type, using the exact vocabulary stored in
@@ -191,7 +209,7 @@ class DiagramRequirementSelector:
         if not pool:
             return []
 
-        relevant_keys: set[str] = set()
+        ranked_relevances: dict[str, tuple[float, int]] = {}
         any_batch_succeeded = False
         for start in range(0, len(pool), _GATEKEEPER_BATCH_SIZE):
             batch = pool[start:start + _GATEKEEPER_BATCH_SIZE]
@@ -211,19 +229,47 @@ class DiagramRequirementSelector:
                 )
                 continue
             any_batch_succeeded = True
-            for item in result.get("assessments") or []:
+            for offset, item in enumerate(result.get("assessments") or []):
                 if not isinstance(item, dict) or item.get("relevant") is not True:
                     continue
                 req_id = str(item.get("requirement_id", "")).strip().strip("[]")
                 if req_id:
-                    relevant_keys.add(req_id)
+                    confidence = float(item.get("confidence", 0.5) or 0.5)
+                    global_order = start + offset
+                    previous = ranked_relevances.get(req_id)
+                    candidate = (confidence, -global_order)
+                    if previous is None or candidate > previous:
+                        ranked_relevances[req_id] = candidate
 
         if not any_batch_succeeded:
             return []
 
         by_key = {req.stable_key: req for req in pool}
-        selected = [by_key[k] for k in relevant_keys if k in by_key]
-        selected.sort(key=lambda r: pool.index(r))  # preserve original pool ordering
+        selected = [by_key[k] for k in ranked_relevances if k in by_key]
+        selected.sort(
+            key=lambda requirement: (
+                ranked_relevances.get(requirement.stable_key, (0.0, 0))[0],
+                ranked_relevances.get(requirement.stable_key, (0.0, 0))[1],
+            ),
+            reverse=True,
+        )
+
+        # Confidence cutoff: `relevant: true` alone isn't enough — the
+        # gatekeeper's relevance question is coarse enough that low-confidence
+        # borderline calls were common, and top_k alone doesn't filter those
+        # out (it only caps the count). Keep only calibrated-confident matches
+        # first; only fall back toward weaker matches (then, as a last
+        # resort, the rest of the pool) if that leaves too few to debate.
+        above_threshold = [
+            req for req in selected
+            if ranked_relevances[req.stable_key][0] >= _GATEKEEPER_CONFIDENCE_THRESHOLD
+        ]
+        if len(above_threshold) >= _MIN_RESULTS:
+            selected = above_threshold
+        elif len(selected) >= _MIN_RESULTS:
+            selected = selected[:_MIN_RESULTS]
+        # else: keep every relevant=true match (already < _MIN_RESULTS); the
+        # pool backfill below tops it up to _MIN_RESULTS.
 
         if len(selected) < _MIN_RESULTS:
             for req in pool:

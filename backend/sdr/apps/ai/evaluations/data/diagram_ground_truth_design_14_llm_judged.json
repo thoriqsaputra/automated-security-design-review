@@ -1,51 +1,17 @@
 {
-  "review_id": 68,
   "design_id": 14,
   "category_id": 1,
   "ingestion_job_id": 53,
   "items": [
     {
       "diagram_id": "p16_d0",
-      "finding_id": 2318,
       "page_number": 16,
       "caption": "Figure 1 Secure AI-Based Recruitment Processing Sequence Diagram",
-      "image_path": "vision/ground_truth_images/review_68/p16_d0.png",
-      "system_assessed_requirement_ids": [
-        "job53-D-3293e58191d94d1aef8b2d58-53-000009",
-        "job53-D-4aa8734f54de242cbb68b789",
-        "job53-D-9d7c842b8eeeb6f4244a6be9",
-        "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
-        "job53-D-composite-0914062a97936d78c1a65e74",
-        "job53-D-composite-137ee8430adb220056a6773d-53-000001",
-        "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
-        "job53-D-composite-3dc6f67a223cf26e26edfebf",
-        "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
-        "job53-D-composite-4596dd8573f228bd18ecd33a-53-000001",
-        "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
-        "job53-D-composite-50463b4a59309f108755fa85-53-000015",
-        "job53-D-composite-65241fcf5f2d3be893aec59e-53-000018",
-        "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
-        "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
-        "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
-        "job53-D-composite-6bcdb4ad3f3fa4ee0d6cf733-53-000005",
-        "job53-D-composite-807bca2da85437284139bdbb-53-000001",
-        "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
-        "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
-        "job53-D-composite-ad70cace67ce58c0b04f96e",
-        "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
-        "job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006",
-        "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
-        "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
-        "job53-D-composite-fbb3a72ceae2857088a8d4c2-53-000004",
-        "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
-        "job53-D-f795ad19b9018b705f38ee07-53-000017",
-        "job53-D-f9150a032d65c4d7d13987af-53-000038"
-      ],
+      "image_path": "vision/ground_truth_images/design_14/p16_d0.png",
       "candidate_requirements": [
         {
           "requirement_id": "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
           "requirement_text": "Verify documentation and justification of all the application's trust boundaries, components, and significant data flows.",
-          "was_assessed_by_system": true,
           "relevant": false,
           "label": null,
           "notes": "Diagram ini adalah sequence diagram, bukan Data Flow Diagram (DFD) yang secara eksplisit menunjukkan batas kepercayaan (trust boundaries) dengan garis putus-putus sesuai petunjuk verifikasi.",
@@ -54,7 +20,6 @@
         {
           "requirement_id": "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
           "requirement_text": "Verify definition and security analysis of the application's high-level architecture and all connected remote services.",
-          "was_assessed_by_system": true,
           "relevant": false,
           "label": null,
           "notes": "Diagram ini tidak menunjukkan arsitektur tingkat tinggi (high-level architecture) secara keseluruhan yang memetakan semua layanan jarak jauh, melainkan hanya alur interaksi sekuensial spesifik.",
@@ -63,7 +28,6 @@
         {
           "requirement_id": "job53-D-3293e58191d94d1aef8b2d58-53-000009",
           "requirement_text": "Verify that communications between application components, including APIs, middleware and data layers, are authenticated.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Diagram menunjukkan anotasi seperti 'forward authenticated request' dan verifikasi 'OAuth 2.0 cryptographic token', yang mengonfirmasi bahwa komunikasi antar komponen telah diautentikasi.",
@@ -72,7 +36,6 @@
         {
           "requirement_id": "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
           "requirement_text": "Verify that trusted enforcement points, such as access control gateways, enforce access controls.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Terdapat komponen 'Secure API Gateway and Identity Manager' yang memverifikasi token OAuth 2.0, bertindak secara eksplisit sebagai titik penegakan kontrol akses.",
@@ -81,7 +44,6 @@
         {
           "requirement_id": "job53-D-f795ad19b9018b705f38ee07-53-000017",
           "requirement_text": "Verify that input validation is enforced on a trusted service layer.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Input divalidasi dan disanitasi oleh 'AI Data Sanitization Agent' (menghapus PII dan sanitasi pola prompt-injection) sebelum muatan diteruskan ke enklave internal.",
@@ -90,7 +52,6 @@
         {
           "requirement_id": "job53-D-composite-6224cdc4224b15cc055e4d98-53-000023",
           "requirement_text": "Logging system: logs securely transmitted to a remote system",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak ada komponen sistem pencatatan (logging) atau alur data transmisi log ke sistem jarak jauh yang aman di dalam diagram ini.",
@@ -99,7 +60,6 @@
         {
           "requirement_id": "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
           "requirement_text": "Secure communication: encryption and authenticity verification between components",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Diagram secara spesifik menyebutkan 'TLS 1.3 encrypted request', 'authenticated request', serta memverifikasi token kriptografi OAuth 2.0, yang memenuhi syarat enkripsi dan autentikasi.",
@@ -108,7 +68,6 @@
         {
           "requirement_id": "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
           "requirement_text": "Component segregation: trust levels separated by security controls",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Komponen dipisahkan secara jelas berdasarkan zona kepercayaan dengan label '(DMZ)' untuk WAF dan '(Private Subnet)' untuk database terenkripsi, dijembatani oleh API Gateway.",
@@ -117,7 +76,6 @@
         {
           "requirement_id": "job53-D-f9150a032d65c4d7d13987af-53-000038",
           "requirement_text": "Application isolation: sandboxing, containerization, or network-level isolation",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Terdapat referensi eksplisit seperti 'isolated AI enclave' dan '(Private Subnet)' yang menunjukkan diterapkannya mekanisme isolasi jaringan maupun aplikasi.",
@@ -126,7 +84,6 @@
         {
           "requirement_id": "job53-D-composite-ef72f311ee57ad5d1f39d412",
           "requirement_text": "Verify external API calls for breached password checks are shown.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak ada interaksi dengan API eksternal untuk melakukan pemeriksaan kata sandi yang bocor (Breached Password API) pada diagram pemrosesan ini.",
@@ -135,7 +92,6 @@
         {
           "requirement_id": "job53-D-0b309de7950edbfb5e56d372",
           "requirement_text": "Verify anti-automation controls (e.g., CAPTCHA, rate limiting) are depicted.",
-          "was_assessed_by_system": false,
           "relevant": true,
           "label": "not_met",
           "notes": "Meskipun terdapat Web Application Firewall (WAF), diagram urutan ini tidak secara eksplisit menggambarkan mekanisme kontrol anti-otomatisasi (seperti CAPTCHA atau rate limiting).",
@@ -144,7 +100,6 @@
         {
           "requirement_id": "job53-D-b7e28781ff521b69f12383e6",
           "requirement_text": "Verify secure notifications are sent to users after authentication detail updates.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Fokus diagram ini adalah pada penanganan permintaan dan sanitasi AI, tidak ada aktivitas terkait notifikasi pembaruan detail autentikasi atau layanan notifikasi pengguna.",
@@ -153,7 +108,6 @@
         {
           "requirement_id": "job53-D-85169068a4a72321d8b315e6",
           "requirement_text": "Verify mutual TLS is used between CSP and application.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak terdapat Credential Service Provider (CSP) atau representasi aliran mTLS antara CSP dan aplikasi yang relevan dalam diagram ini.",
@@ -162,7 +116,6 @@
         {
           "requirement_id": "job53-D-composite-0914062a97936d78c1a65e74",
           "requirement_text": "Sensitive secrets (e.g., initial activation, recovery secrets) are not sent in clear text.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "not_met",
           "notes": "Meskipun transmisi eksternal ke WAF menggunakan TLS 1.3, proses transmisi internal saat API Gateway menerima kunci rahasia dari HSM tidak secara eksplisit mencantumkan protokol enkripsi TLS/HTTPS.",
@@ -171,7 +124,6 @@
         {
           "requirement_id": "job53-D-composite-293a1c8ed0c3bb4df31cc936",
           "requirement_text": "Out-of-band authentication communication uses a secure, independent channel.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Diagram tidak berisi proses maupun alur yang mewakili mekanisme autentikasi out-of-band (OOB).",
@@ -180,7 +132,6 @@
         {
           "requirement_id": "job53-D-composite-ad70cace67ce58c0b04f96e",
           "requirement_text": "Verify that intra-service secrets and API keys are managed securely and not included in the source code.",
-          "was_assessed_by_system": true,
           "relevant": false,
           "label": null,
           "notes": "Sequence diagram ini berfokus pada eksekusi runtime, tidak menunjukkan detail letak penyimpanan statis secrets, konfigurasi aplikasi, maupun hubungannya dengan source code.",
@@ -189,34 +140,30 @@
         {
           "requirement_id": "job53-D-9d7c842b8eeeb6f4244a6be9",
           "requirement_text": "Verify the application never reveals session tokens in URL parameters.",
-          "was_assessed_by_system": true,
-          "relevant": true,
+          "relevant": false,
           "label": "na",
-          "notes": "Rincian spesifik di tingkat pengiriman protokol jaringan (seperti struktur parameter URL) tidak ditampilkan dalam diagram berlevel konseptual ini, sehingga persyaratan tidak dapat dinilai.",
+          "notes": "Rincian spesifik di tingkat pengiriman protokol jaringan (seperti struktur parameter URL) tidak ditampilkan dalam diagram berlevel konseptual ini, sehingga persyaratan tidak dapat dinilai. Excluded from diagram eval relevance re-audit: this requirement is not diagram-checkable to a met/not_met verdict for this image.",
           "judge_reasoning": "The diagram shows message flows between the client and server components, which could potentially include URL parameters. This makes it possible to check if session tokens are revealed in URLs."
         },
         {
           "requirement_id": "job53-D-4aa8734f54de242cbb68b789",
           "requirement_text": "Verify the application generates a new session token on user authentication.",
-          "was_assessed_by_system": true,
-          "relevant": true,
+          "relevant": false,
           "label": "na",
-          "notes": "Diagram hanya menampilkan konsumsi request yang sudah terautentikasi (memverifikasi token), namun tidak menunjukkan proses pembuatan token awal saat pengguna melakukan login/autentikasi.",
+          "notes": "Diagram hanya menampilkan konsumsi request yang sudah terautentikasi (memverifikasi token), namun tidak menunjukkan proses pembuatan token awal saat pengguna melakukan login/autentikasi. Excluded from diagram eval relevance re-audit: this requirement is not diagram-checkable to a met/not_met verdict for this image.",
           "judge_reasoning": "The diagram is a sequence diagram showing interactions between components, including authentication processes. It can depict messages related to session token issuance after authentication, making it relevant for checking the requirement."
         },
         {
           "requirement_id": "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
           "requirement_text": "Session tokens are protected during transmission and storage.",
-          "was_assessed_by_system": true,
-          "relevant": true,
+          "relevant": false,
           "label": "na",
-          "notes": "Meskipun transmisi awal diklaim menggunakan enkripsi TLS 1.3, diagram ini tidak mengilustrasikan proses persistensi tempat dan bagaimana token sesi tersebut disimpan secara aman.",
+          "notes": "Meskipun transmisi awal diklaim menggunakan enkripsi TLS 1.3, diagram ini tidak mengilustrasikan proses persistensi tempat dan bagaimana token sesi tersebut disimpan secara aman. Excluded from diagram eval relevance re-audit: this requirement is not diagram-checkable to a met/not_met verdict for this image.",
           "judge_reasoning": "The diagram shows data flows and storage components, including encrypted transmission (e.g., TLS 1.3) and cryptographic storage, which are relevant for checking the protection of session tokens during transmission and storage."
         },
         {
           "requirement_id": "job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006",
           "requirement_text": "Session invalidation and re-authentication flows are present.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "not_met",
           "notes": "Tidak ada elemen atau pesan yang menunjukkan alur pencabutan sesi pengguna (session invalidation) maupun autentikasi ulang (re-authentication).",
@@ -225,16 +172,14 @@
         {
           "requirement_id": "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
           "requirement_text": "Cookie-based session tokens are transmitted securely.",
-          "was_assessed_by_system": true,
-          "relevant": true,
+          "relevant": false,
           "label": "na",
-          "notes": "Meski menunjukkan TLS 1.3 pada request masuk, diagram tidak memberikan info rinci apakah token sesi berbasis cookie (cookie-based) digunakan, apalagi menegaskan atribut pengamannya.",
+          "notes": "Meski menunjukkan TLS 1.3 pada request masuk, diagram tidak memberikan info rinci apakah token sesi berbasis cookie (cookie-based) digunakan, apalagi menegaskan atribut pengamannya. Excluded from diagram eval relevance re-audit: this requirement is not diagram-checkable to a met/not_met verdict for this image.",
           "judge_reasoning": "The diagram shows data flows and mentions secure protocols like TLS 1.3, which are relevant for verifying secure transmission of cookie-based session tokens."
         },
         {
           "requirement_id": "job53-D-composite-50463b4a59309f108755fa85-53-000015",
           "requirement_text": "OAuth token revocation and session token usage are depicted.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "not_met",
           "notes": "Hanya verifikasi penggunaan token OAuth 2.0 yang divisualisasikan; alur terkait pembatalan atau penarikan hak pakai token (revocation) tidak digambarkan.",
@@ -243,7 +188,6 @@
         {
           "requirement_id": "job53-D-composite-65241fcf5f2d3be893aec59e-53-000018",
           "requirement_text": "Authentication time limits and re-authentication events are communicated between CSPs and RPs.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "not_met",
           "notes": "Diagram berfokus pada aliran data dan sanitasi, sama sekali tidak memuat interaksi komunikasi tentang batas waktu kedaluwarsa sesi ataupun kejadian autentikasi ulang.",
@@ -252,7 +196,6 @@
         {
           "requirement_id": "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
           "requirement_text": "Access control enforcement is located within trusted service layers.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Penegakan kontrol akses dengan 'Verify zero-trust OAuth 2.0 cryptographic token' secara tegas berada dan dieksekusi di dalam lapisan layanan API Gateway yang tepercaya.",
@@ -261,16 +204,14 @@
         {
           "requirement_id": "job53-D-composite-6bcdb4ad3f3fa4ee0d6cf733-53-000005",
           "requirement_text": "Verify that sensitive data and APIs are protected against IDOR, CSRF, and unauthorized access.",
-          "was_assessed_by_system": true,
-          "relevant": true,
+          "relevant": false,
           "label": "na",
-          "notes": "Diagram ini menyajikan alur dengan tingkat abstraksi tinggi; kendali keamanan selevel aplikasi terhadap kelemahan logika spesifik seperti IDOR atau adanya token anti-CSRF tidak bisa diverifikasi.",
+          "notes": "Diagram ini menyajikan alur dengan tingkat abstraksi tinggi; kendali keamanan selevel aplikasi terhadap kelemahan logika spesifik seperti IDOR atau adanya token anti-CSRF tidak bisa diverifikasi. Excluded from diagram eval relevance re-audit: this requirement is not diagram-checkable to a met/not_met verdict for this image.",
           "judge_reasoning": "The diagram shows message flows between users and system components, including authentication and data processing steps. This allows for checking authorization checks, tokens, and potential anti-CSRF measures in the interactions depicted."
         },
         {
           "requirement_id": "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
           "requirement_text": "Verify that all external inputs are validated and sanitized before processing.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Terdapat langkah 'Remove PII and sanitize prompt-injection patterns' oleh AI Data Sanitization Agent sebelum muatan tersebut diumpankan untuk di-parsing di dalam AI enclave.",
@@ -279,7 +220,6 @@
         {
           "requirement_id": "job53-D-composite-3dc6f67a223cf26e26edfebf",
           "requirement_text": "Sensitive data stores must be labeled as encrypted at rest.",
-          "was_assessed_by_system": true,
           "relevant": false,
           "label": null,
           "notes": "Walau komponen 'Encrypted Database' ada, instruksi meminta melihat bentuk DFD (dengan bujur sangkar terbuka); format sequence diagram yang ada tidak melayani visualisasi DFD tersebut.",
@@ -288,7 +228,6 @@
         {
           "requirement_id": "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
           "requirement_text": "Secrets management solution (e.g., key vault) is used for secure secret handling.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Diagram menampilkan integrasi dengan entitas terdedikasi yaitu 'Hardware Security Module' (HSM) yang berfungsi sebagai vault pengelolaan rahasia dan suplai kunci enkripsi.",
@@ -297,25 +236,22 @@
         {
           "requirement_id": "job53-D-composite-4596dd8573f228bd18ecd33a-53-000001",
           "requirement_text": "Sensitive data is not logged to data stores accessible by unauthorized parties.",
-          "was_assessed_by_system": true,
-          "relevant": true,
+          "relevant": false,
           "label": "na",
-          "notes": "Tidak terdapat informasi visual mengenai operasi logging (pencatatan data sistem/audit) di dalam diagram, sehingga perlindungan log dari data sensitif tak bisa divalidasi.",
+          "notes": "Tidak terdapat informasi visual mengenai operasi logging (pencatatan data sistem/audit) di dalam diagram, sehingga perlindungan log dari data sensitif tak bisa divalidasi. Excluded from diagram eval relevance re-audit: this requirement is not diagram-checkable to a met/not_met verdict for this image.",
           "judge_reasoning": "The diagram shows data flows between components, including data sanitization and storage processes. It can potentially depict whether sensitive data is logged to data stores, especially across trust boundaries."
         },
         {
           "requirement_id": "job53-D-composite-137ee8430adb220056a6773d-53-000001",
           "requirement_text": "Sensitive data caching protection in server components.",
-          "was_assessed_by_system": true,
-          "relevant": true,
+          "relevant": false,
           "label": "na",
-          "notes": "Mekanisme caching internal di komponen server dan parameter keamanannya sama sekali tidak divisualisasikan dalam diagram transaksi arus ini.",
+          "notes": "Mekanisme caching internal di komponen server dan parameter keamanannya sama sekali tidak divisualisasikan dalam diagram transaksi arus ini. Excluded from diagram eval relevance re-audit: this requirement is not diagram-checkable to a met/not_met verdict for this image.",
           "judge_reasoning": "The diagram shows server components such as the AI Data Sanitization Agent, Core AI Engine, and Encrypted Database. It is possible to check for sensitive data caching protection by examining data flows and storage interactions depicted in the diagram."
         },
         {
           "requirement_id": "job53-D-composite-807bca2da85437284139bdbb-53-000001",
           "requirement_text": "All data flows across trust boundaries must be labeled with secure protocols (e.g., TLS, HTTPS).",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "not_met",
           "notes": "Meskipun data yang melintasi internet telah terlabel 'TLS 1.3', alur di dalam batas jaringan (seperti antara WAF dan API Gateway) tidak dibekali anotasi protokol aman secara eksplisit.",
@@ -324,7 +260,6 @@
         {
           "requirement_id": "job53-D-composite-9454a8814d51e3209de88a23-53-000008",
           "requirement_text": "Update mechanisms must show secure channels and digital signature validation.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Diagram ini mengilustrasikan alur logika bisnis (unggahan dan sanitasi CV), tidak mencakup aspek administrasi atau penyebaran mekanisme pembaruan aplikasi.",
@@ -333,7 +268,6 @@
         {
           "requirement_id": "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
           "requirement_text": "Anti-automation and business logic controls are deployed.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Diagram menyajikan komponen front-line dengan peran pelindung logika bisnis, yakni keberadaan 'Web Application Firewall (DMZ)' beserta 'Secure API Gateway'.",
@@ -342,7 +276,6 @@
         {
           "requirement_id": "job53-D-composite-bede99b5e5f325a33e768fce-53-000001",
           "requirement_text": "File storage components are configured with size and quota limits.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Konfigurasi operasional penyimpanan file seperti batas kuota atau ukuran unggahan (file size limits) berada di luar abstraksi sequence diagram ini.",
@@ -351,7 +284,6 @@
         {
           "requirement_id": "job53-D-composite-fbb3a72ceae2857088a8d4c2-53-000004",
           "requirement_text": "Untrusted file processing includes validation and scanning components.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Berkas tidak dipercaya (CV) diproses terlebih dahulu oleh validator khusus, yaitu 'AI Data Sanitization Agent' untuk penghapusan PII dan pembersihan pola prompt-injection.",
@@ -360,7 +292,6 @@
         {
           "requirement_id": "job53-D-d416547723579cd22fbd0779-53-000011",
           "requirement_text": "Untrusted files are stored outside the web root with limited permissions.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Diagram tidak merinci peta letak direktori penyimpanan statis untuk memvalidasi struktur direktori di luar web root maupun konfigurasi perizinan folder yang relevan.",
@@ -369,16 +300,14 @@
         {
           "requirement_id": "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
           "requirement_text": "Verify that the application server only sends requests to or loads data/files from allowed resources/systems.",
-          "was_assessed_by_system": true,
-          "relevant": true,
+          "relevant": false,
           "label": "na",
-          "notes": "Diagram mencerminkan interaksi internal yang direncanakan, namun tidak memuat informasi aturan firewall atau egress gateway untuk memverifikasi jika komunikasi ke luar memang telah dibatasi.",
+          "notes": "Diagram mencerminkan interaksi internal yang direncanakan, namun tidak memuat informasi aturan firewall atau egress gateway untuk memverifikasi jika komunikasi ke luar memang telah dibatasi. Excluded from diagram eval relevance re-audit: this requirement is not diagram-checkable to a met/not_met verdict for this image.",
           "judge_reasoning": "The diagram shows connections between the application server and other components, which can be used to verify if requests are sent only to allowed resources/systems."
         },
         {
           "requirement_id": "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
           "requirement_text": "Verify that message headers and payload are protected in transit using strong encryption (TLS).",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "not_met",
           "notes": "Awalnya paket mengadopsi 'TLS 1.3 encrypted request', namun aliran internal selanjutnya (mis. antara WAF ke API Gateway atau ke internal enclave) tidak diberi anotasi pengamanan TLS yang tegas.",
@@ -387,7 +316,6 @@
         {
           "requirement_id": "job53-D-composite-700fbe6b2db199ae12159350-53-000008",
           "requirement_text": "External asset hosting uses integrity checks (SRI) and trusted sources.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak terdapat komponen atau aset front-end eksternal seperti CDN pihak ketiga di dalam alur pengiriman data arsitektur backend ini.",
@@ -396,16 +324,14 @@
         {
           "requirement_id": "job53-D-composite-c2bc34e911d53b529699c749-53-000016",
           "requirement_text": "HTTP responses include security headers (CSP, HSTS, X-Content-Type-Options, Referrer-Policy, X-Frame-Options).",
-          "was_assessed_by_system": false,
-          "relevant": true,
+          "relevant": false,
           "label": "na",
-          "notes": "Meskipun diagram menampilkan balasan ke klien 'Display formatted results', hal ini terlalu abstrak dan tidak menjabarkan isi teknis dari struktur Header HTTP (misalnya CSP atau HSTS).",
+          "notes": "Meskipun diagram menampilkan balasan ke klien 'Display formatted results', hal ini terlalu abstrak dan tidak menjabarkan isi teknis dari struktur Header HTTP (misalnya CSP atau HSTS). Excluded from diagram eval relevance re-audit: this requirement is not diagram-checkable to a met/not_met verdict for this image.",
           "judge_reasoning": "The diagram is a sequence diagram showing message flows, which can include HTTP responses. Annotations or labels on these messages could indicate the presence of security-related HTTP headers."
         },
         {
           "requirement_id": "job53-D-composite-c4bb57eb009543d5ad0c32ef-53-000023",
           "requirement_text": "CORS Access-Control-Allow-Origin uses a strict allow list; trusted proxy headers are authenticated.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Aturan headers terkait CORS dan penanganan proxy eksternal tidak relevan atau dapat diverifikasi melalui gambaran konseptual pada tingkat sequence diagram bisnis ini.",
@@ -415,43 +341,13 @@
     },
     {
       "diagram_id": "p34_d0",
-      "finding_id": 2319,
       "page_number": 34,
       "caption": "Figure 2 AI Recruitment System Architecture and Data Exchange Diagram",
-      "image_path": "vision/ground_truth_images/review_68/p34_d0.png",
-      "system_assessed_requirement_ids": [
-        "job53-D-0b309de7950edbfb5e56d372",
-        "job53-D-3293e58191d94d1aef8b2d58-53-000009",
-        "job53-D-85169068a4a72321d8b315e6",
-        "job53-D-b7e28781ff521b69f12383e6",
-        "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
-        "job53-D-composite-0914062a97936d78c1a65e74",
-        "job53-D-composite-137ee8430adb220056a6773d-53-000001",
-        "job53-D-composite-293a1c8ed0c3bb4df31cc936",
-        "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
-        "job53-D-composite-3dc6f67a223cf26e26edfebf",
-        "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
-        "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
-        "job53-D-composite-6224cdc4224b15cc055e4d98-53-000023",
-        "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
-        "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
-        "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
-        "job53-D-composite-6bcdb4ad3f3fa4ee0d6cf733-53-000005",
-        "job53-D-composite-807bca2da85437284139bdbb-53-000001",
-        "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
-        "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
-        "job53-D-composite-ad70cace67ce58c0b04f96e",
-        "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
-        "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
-        "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
-        "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
-        "job53-D-f9150a032d65c4d7d13987af-53-000038"
-      ],
+      "image_path": "vision/ground_truth_images/design_14/p34_d0.png",
       "candidate_requirements": [
         {
           "requirement_id": "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
           "requirement_text": "Verify documentation and justification of all the application's trust boundaries, components, and significant data flows.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Diagram secara jelas menampilkan batas kepercayaan (trust boundaries) seperti Demilitarized Zone dan Isolated AI Execution Enclave, serta komponen dan aliran data dengan label yang deskriptif.",
@@ -460,7 +356,6 @@
         {
           "requirement_id": "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
           "requirement_text": "Verify definition and security analysis of the application's high-level architecture and all connected remote services.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Diagram memberikan gambaran arsitektur tingkat tinggi yang mencakup komponen utama, koneksi dengan protokol keamanan, dan layanan pihak ketiga/eksternal.",
@@ -469,7 +364,6 @@
         {
           "requirement_id": "job53-D-3293e58191d94d1aef8b2d58-53-000009",
           "requirement_text": "Verify that communications between application components, including APIs, middleware and data layers, are authenticated.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Semua aliran komunikasi antar komponen secara eksplisit dilabeli dengan 'mTLS 1.3', yang memastikan adanya otentikasi di setiap koneksi.",
@@ -478,7 +372,6 @@
         {
           "requirement_id": "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
           "requirement_text": "Verify that trusted enforcement points, such as access control gateways, enforce access controls.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Terdapat komponen 'Secure API Gateway and Identity Manager' di dalam zona DMZ yang berfungsi sebagai titik penegakan (enforcement point) untuk mengontrol akses ke layanan back-end.",
@@ -487,7 +380,6 @@
         {
           "requirement_id": "job53-D-f795ad19b9018b705f38ee07-53-000017",
           "requirement_text": "Verify that input validation is enforced on a trusted service layer.",
-          "was_assessed_by_system": false,
           "relevant": true,
           "label": "met",
           "notes": "Diagram menunjukkan adanya proses penyaringan ('Filtered requests') oleh WAF dan sanitasi ('Sanitized resume text') oleh gateway, yang mengindikasikan bahwa validasi input diterapkan pada layer tepercaya.",
@@ -496,7 +388,6 @@
         {
           "requirement_id": "job53-D-composite-6224cdc4224b15cc055e4d98-53-000023",
           "requirement_text": "Logging system: logs securely transmitted to a remote system",
-          "was_assessed_by_system": true,
           "relevant": false,
           "label": null,
           "notes": "Diagram tidak relevan karena tidak menampilkan komponen atau layanan pencatatan log (logging) secara spesifik.",
@@ -505,7 +396,6 @@
         {
           "requirement_id": "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
           "requirement_text": "Secure communication: encryption and authenticity verification between components",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Penggunaan mTLS 1.3 pada semua jalur komunikasi memastikan enkripsi data sekaligus verifikasi keaslian dua arah (mutual authentication) antar komponen.",
@@ -514,7 +404,6 @@
         {
           "requirement_id": "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
           "requirement_text": "Component segregation: trust levels separated by security controls",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Terdapat pemisahan tingkat kepercayaan yang jelas menggunakan batas zona (DMZ, Hardware-Secured, Isolated AI) yang dipisahkan oleh kontrol seperti WAF dan API Gateway.",
@@ -523,7 +412,6 @@
         {
           "requirement_id": "job53-D-f9150a032d65c4d7d13987af-53-000038",
           "requirement_text": "Application isolation: sandboxing, containerization, or network-level isolation",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Isolasi aplikasi terlihat kuat dari adanya pembagian zona seperti 'Isolated AI Execution Enclave' yang memisahkan pemrosesan khusus dari komponen lainnya.",
@@ -532,7 +420,6 @@
         {
           "requirement_id": "job53-D-composite-ef72f311ee57ad5d1f39d412",
           "requirement_text": "Verify external API calls for breached password checks are shown.",
-          "was_assessed_by_system": false,
           "relevant": true,
           "label": "not_met",
           "notes": "Meskipun merupakan kontrol arsitektur yang penting, diagram tidak menampilkan API eksternal atau aliran data khusus untuk pengecekan kata sandi yang bocor (breached passwords).",
@@ -541,7 +428,6 @@
         {
           "requirement_id": "job53-D-0b309de7950edbfb5e56d372",
           "requirement_text": "Verify anti-automation controls (e.g., CAPTCHA, rate limiting) are depicted.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Kehadiran Web Application Firewall (WAF) di DMZ berfungsi sebagai garis pertahanan pertama untuk menerapkan batasan otomatisasi (seperti rate limiting) terhadap klien eksternal.",
@@ -550,7 +436,6 @@
         {
           "requirement_id": "job53-D-b7e28781ff521b69f12383e6",
           "requirement_text": "Verify secure notifications are sent to users after authentication detail updates.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Diagram menampilkan aliran 'Verification and OTP alerts' menuju komponen 'SMS and Email Notification Gateways', memvalidasi mekanisme pengiriman notifikasi yang aman.",
@@ -559,7 +444,6 @@
         {
           "requirement_id": "job53-D-85169068a4a72321d8b315e6",
           "requirement_text": "Verify mutual TLS is used between CSP and application.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Terdapat label eksplisit 'mTLS 1.3' pada seluruh koneksi, termasuk yang berinteraksi dengan gateway identitas dan entitas pihak ketiga.",
@@ -568,7 +452,6 @@
         {
           "requirement_id": "job53-D-composite-0914062a97936d78c1a65e74",
           "requirement_text": "Sensitive secrets (e.g., initial activation, recovery secrets) are not sent in clear text.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Seluruh koneksi lalu lintas data dilindungi enkripsi mTLS 1.3, mencegah pengiriman data sensitif dalam bentuk plain text.",
@@ -577,7 +460,6 @@
         {
           "requirement_id": "job53-D-composite-293a1c8ed0c3bb4df31cc936",
           "requirement_text": "Out-of-band authentication communication uses a secure, independent channel.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Komunikasi otentikasi seperti OTP dipisahkan ke rute 'SMS and Email Notification Gateways' yang diamankan secara independen melalui mTLS 1.3.",
@@ -586,7 +468,6 @@
         {
           "requirement_id": "job53-D-composite-ad70cace67ce58c0b04f96e",
           "requirement_text": "Verify that intra-service secrets and API keys are managed securely and not included in the source code.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Penggunaan 'Hardware Security Module' (HSM) yang menangani manajemen kunci memastikan perlindungan rahasia intra-service yang terpusat dan aman.",
@@ -595,7 +476,6 @@
         {
           "requirement_id": "job53-D-9d7c842b8eeeb6f4244a6be9",
           "requirement_text": "Verify the application never reveals session tokens in URL parameters.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Diagram ini bersifat arsitektur tingkat tinggi dan tidak memuat format payload request ataupun struktur URL, sehingga parameter token tidak dapat dievaluasi di sini.",
@@ -604,7 +484,6 @@
         {
           "requirement_id": "job53-D-4aa8734f54de242cbb68b789",
           "requirement_text": "Verify the application generates a new session token on user authentication.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Pembuatan dan penanganan siklus token adalah proses transaksional yang memerlukan diagram sekuens (sequence diagram), bukan diagram topologi ini.",
@@ -613,7 +492,6 @@
         {
           "requirement_id": "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
           "requirement_text": "Session tokens are protected during transmission and storage.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Diagram memperlihatkan proteksi in-transit menggunakan mTLS 1.3 dan proteksi at-rest pada Core Database Ledger menggunakan AES-256-GCM.",
@@ -622,7 +500,6 @@
         {
           "requirement_id": "job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006",
           "requirement_text": "Session invalidation and re-authentication flows are present.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Mekanisme re-otentikasi dan terminasi sesi tidak digambarkan pada struktur diagram arsitektur tingkat ini.",
@@ -631,7 +508,6 @@
         {
           "requirement_id": "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
           "requirement_text": "Cookie-based session tokens are transmitted securely.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Penggunaan enkripsi pada tingkat transport (mTLS 1.3) mengamankan transmisi semua muatan HTTP, termasuk token sesi berbasis cookie.",
@@ -640,7 +516,6 @@
         {
           "requirement_id": "job53-D-composite-50463b4a59309f108755fa85-53-000015",
           "requirement_text": "OAuth token revocation and session token usage are depicted.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Logika interaksi seperti pencabutan (revocation) token OAuth memerlukan diagram sekuens dan tidak tercakup dalam pandangan arsitektur tingkat tinggi.",
@@ -649,7 +524,6 @@
         {
           "requirement_id": "job53-D-composite-65241fcf5f2d3be893aec59e-53-000018",
           "requirement_text": "Authentication time limits and re-authentication events are communicated between CSPs and RPs.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Diagram ini menggambarkan pergerakan data makro, bukan pertukaran sinyal waktu habis sesi atau parameter otentikasi antar pihak.",
@@ -658,7 +532,6 @@
         {
           "requirement_id": "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
           "requirement_text": "Access control enforcement is located within trusted service layers.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Layanan 'Secure API Gateway and Identity Manager' bertindak sebagai penjaga kebijakan akses tersentralisasi di dalam batas kepercayaan yang aman.",
@@ -667,16 +540,14 @@
         {
           "requirement_id": "job53-D-composite-6bcdb4ad3f3fa4ee0d6cf733-53-000005",
           "requirement_text": "Verify that sensitive data and APIs are protected against IDOR, CSRF, and unauthorized access.",
-          "was_assessed_by_system": true,
-          "relevant": true,
+          "relevant": false,
           "label": "na",
-          "notes": "Walaupun relevan dan sistem ini memiliki Identity Manager, diagram tidak dapat merincikan keberadaan kendali di tingkat kode (seperti anti-CSRF token) untuk menjustifikasi mitigasi IDOR dan CSRF.",
+          "notes": "Walaupun relevan dan sistem ini memiliki Identity Manager, diagram tidak dapat merincikan keberadaan kendali di tingkat kode (seperti anti-CSRF token) untuk menjustifikasi mitigasi IDOR dan CSRF. Excluded from diagram eval relevance re-audit: this requirement is not diagram-checkable to a met/not_met verdict for this image.",
           "judge_reasoning": "The diagram shows message flows between user devices, external entities, and internal components, including a Secure API Gateway and Identity Manager. This setup is capable of depicting authorization checks and tokens, which are relevant for verifying protection against IDOR, CSRF, and unauthorized access."
         },
         {
           "requirement_id": "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
           "requirement_text": "Verify that all external inputs are validated and sanitized before processing.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Label aliran seperti 'Filtered requests' pasca-WAF dan 'Sanitized resume text' pasca-API Gateway memverifikasi prosedur validasi yang diwajibkan.",
@@ -685,7 +556,6 @@
         {
           "requirement_id": "job53-D-composite-3dc6f67a223cf26e26edfebf",
           "requirement_text": "Sensitive data stores must be labeled as encrypted at rest.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Tempat penyimpanan data inti (Core Database Ledger) dilabeli dengan perlindungan 'AES-256-GCM', menegaskan fitur enkripsi dalam keadaan statis (at rest).",
@@ -694,7 +564,6 @@
         {
           "requirement_id": "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
           "requirement_text": "Secrets management solution (e.g., key vault) is used for secure secret handling.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Adanya 'Hardware Security Module' (HSM) dengan peruntukan 'Key management' menegaskan pemakaian solusi manajemen rahasia yang kokoh.",
@@ -703,25 +572,22 @@
         {
           "requirement_id": "job53-D-composite-4596dd8573f228bd18ecd33a-53-000001",
           "requirement_text": "Sensitive data is not logged to data stores accessible by unauthorized parties.",
-          "was_assessed_by_system": false,
-          "relevant": true,
+          "relevant": false,
           "label": "na",
-          "notes": "Relevan secara prinsip, namun karena komponen penyimpanan log tidak ditampilkan di arsitektur DFD ini, hal ini tidak bisa dievaluasi.",
+          "notes": "Relevan secara prinsip, namun karena komponen penyimpanan log tidak ditampilkan di arsitektur DFD ini, hal ini tidak bisa dievaluasi. Excluded from diagram eval relevance re-audit: this requirement is not diagram-checkable to a met/not_met verdict for this image.",
           "judge_reasoning": "The diagram shows data flows between various components, including data stores and external entities. It is possible to check if sensitive data is flowing into logging data stores across trust boundaries, which is relevant to the requirement."
         },
         {
           "requirement_id": "job53-D-composite-137ee8430adb220056a6773d-53-000001",
           "requirement_text": "Sensitive data caching protection in server components.",
-          "was_assessed_by_system": true,
-          "relevant": true,
+          "relevant": false,
           "label": "na",
-          "notes": "Sistem ini menggunakan load balancer dan gateway, tetapi mekanisme proteksi cache untuk data sensitif di perangkat perantara tidak dijelaskan dalam diagram.",
+          "notes": "Sistem ini menggunakan load balancer dan gateway, tetapi mekanisme proteksi cache untuk data sensitif di perangkat perantara tidak dijelaskan dalam diagram. Excluded from diagram eval relevance re-audit: this requirement is not diagram-checkable to a met/not_met verdict for this image.",
           "judge_reasoning": "The diagram includes components like a Web Application Firewall, Load Balancer, and Secure API Gateway, which are relevant for checking sensitive data caching protection in server components. These elements can potentially show data flow and protection mechanisms."
         },
         {
           "requirement_id": "job53-D-composite-807bca2da85437284139bdbb-53-000001",
           "requirement_text": "All data flows across trust boundaries must be labeled with secure protocols (e.g., TLS, HTTPS).",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Seluruh lintas pertukaran antar komponen dan penyeberangan zona secara konsisten diberikan label pengaman berupa 'mTLS 1.3'.",
@@ -730,7 +596,6 @@
         {
           "requirement_id": "job53-D-composite-9454a8814d51e3209de88a23-53-000008",
           "requirement_text": "Update mechanisms must show secure channels and digital signature validation.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Siklus pembaruan perangkat lunak maupun distribusi patch tidak termasuk di dalam ruang lingkup skema operasional data flow diagram ini.",
@@ -739,7 +604,6 @@
         {
           "requirement_id": "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
           "requirement_text": "Anti-automation and business logic controls are deployed.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Penggelaran WAF (Web Application Firewall) beserta Secure API Gateway merupakan representasi kontrol yang mengelola arus bisnis dan menangkis otomatisasi peretasan.",
@@ -748,16 +612,14 @@
         {
           "requirement_id": "job53-D-composite-bede99b5e5f325a33e768fce-53-000001",
           "requirement_text": "File storage components are configured with size and quota limits.",
-          "was_assessed_by_system": false,
-          "relevant": true,
+          "relevant": false,
           "label": "na",
-          "notes": "Berdasarkan interaksi, aplikasi menangani pengunggahan file CV, namun diagram tingkat atas ini tidak memerinci manajemen ukuran dan kuota penyimpanannya.",
+          "notes": "Berdasarkan interaksi, aplikasi menangani pengunggahan file CV, namun diagram tingkat atas ini tidak memerinci manajemen ukuran dan kuota penyimpanannya. Excluded from diagram eval relevance re-audit: this requirement is not diagram-checkable to a met/not_met verdict for this image.",
           "judge_reasoning": "The diagram does not specifically depict file storage components or annotations related to size limits or quotas. It focuses on data flow, security protocols, and service interactions, which are not directly related to file storage configurations."
         },
         {
           "requirement_id": "job53-D-composite-fbb3a72ceae2857088a8d4c2-53-000004",
           "requirement_text": "Untrusted file processing includes validation and scanning components.",
-          "was_assessed_by_system": false,
           "relevant": true,
           "label": "not_met",
           "notes": "Meski dokumen masuk sebagai file eksternal (Profile data and CVs), diagram tersebut tidak mengikutsertakan titik pemindaian malware dan utilitas verifikasi berkas secara spesifik sebelum ekstraksi (NLP parsing).",
@@ -766,16 +628,14 @@
         {
           "requirement_id": "job53-D-d416547723579cd22fbd0779-53-000011",
           "requirement_text": "Untrusted files are stored outside the web root with limited permissions.",
-          "was_assessed_by_system": false,
-          "relevant": true,
+          "relevant": false,
           "label": "na",
-          "notes": "Diperlukan pengamanan tempat fisik file unggahan yang tidak dipercaya, tetapi lokasi penyimpanan file CV yang spesifik tidak dipetakan dalam gambaran sistem ini.",
+          "notes": "Diperlukan pengamanan tempat fisik file unggahan yang tidak dipercaya, tetapi lokasi penyimpanan file CV yang spesifik tidak dipetakan dalam gambaran sistem ini. Excluded from diagram eval relevance re-audit: this requirement is not diagram-checkable to a met/not_met verdict for this image.",
           "judge_reasoning": "The diagram shows various components and zones, including a demilitarized zone and data storage areas. It is capable of depicting whether untrusted files are stored outside the web root in a non-web-accessible component or zone."
         },
         {
           "requirement_id": "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
           "requirement_text": "Verify that the application server only sends requests to or loads data/files from allowed resources/systems.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Semua rute data (data flows) dan konektivitas digambarkan secara terkunci/terbatas (directional) membatasi interaksi komponen hanya ke titik sumber daya spesifik yang sudah ditentukan.",
@@ -784,7 +644,6 @@
         {
           "requirement_id": "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
           "requirement_text": "Verify that message headers and payload are protected in transit using strong encryption (TLS).",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Semua jalur pergerakan data dilabeli dengan mTLS 1.3, yang menandakan bahwa perlindungan transit kriptografis diterapkan pada beban data maupun headernya.",
@@ -793,7 +652,6 @@
         {
           "requirement_id": "job53-D-composite-700fbe6b2db199ae12159350-53-000008",
           "requirement_text": "External asset hosting uses integrity checks (SRI) and trusted sources.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Infrastruktur hosting elemen situs statis atau Content Delivery Network eksternal (CDN) sama sekali tidak disajikan dalam arsitektur backend/pengolahan ini.",
@@ -802,7 +660,6 @@
         {
           "requirement_id": "job53-D-composite-c2bc34e911d53b529699c749-53-000016",
           "requirement_text": "HTTP responses include security headers (CSP, HSTS, X-Content-Type-Options, Referrer-Policy, X-Frame-Options).",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Properti konfigurasi tajuk atau header level HTTP (seperti CSP dan HSTS) berada di luar tingkat abstraksi pemodelan sistem ini.",
@@ -811,7 +668,6 @@
         {
           "requirement_id": "job53-D-composite-c4bb57eb009543d5ad0c32ef-53-000023",
           "requirement_text": "CORS Access-Control-Allow-Origin uses a strict allow list; trusted proxy headers are authenticated.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Konfigurasi terperinci mengenai policy Cross-Origin Resource Sharing (CORS) maupun autentikasi header proxy tidak terlihat pada desain visual makro tersebut.",
@@ -821,39 +677,13 @@
     },
     {
       "diagram_id": "p43_d0",
-      "finding_id": 2320,
       "page_number": 43,
       "caption": "Figure 3 Secure Network Architecture for an AI-Enabled Recruitment Platform",
-      "image_path": "vision/ground_truth_images/review_68/p43_d0.png",
-      "system_assessed_requirement_ids": [
-        "job53-D-3293e58191d94d1aef8b2d58-53-000009",
-        "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
-        "job53-D-composite-0914062a97936d78c1a65e74",
-        "job53-D-composite-137ee8430adb220056a6773d-53-000001",
-        "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
-        "job53-D-composite-3dc6f67a223cf26e26edfebf",
-        "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
-        "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
-        "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
-        "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
-        "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
-        "job53-D-composite-6bcdb4ad3f3fa4ee0d6cf733-53-000005",
-        "job53-D-composite-807bca2da85437284139bdbb-53-000001",
-        "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
-        "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
-        "job53-D-composite-ad70cace67ce58c0b04f96e",
-        "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
-        "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
-        "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
-        "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
-        "job53-D-f795ad19b9018b705f38ee07-53-000017",
-        "job53-D-f9150a032d65c4d7d13987af-53-000038"
-      ],
+      "image_path": "vision/ground_truth_images/design_14/p43_d0.png",
       "candidate_requirements": [
         {
           "requirement_id": "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
           "requirement_text": "Verify documentation and justification of all the application's trust boundaries, components, and significant data flows.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Diagram menunjukkan batasan kepercayaan (trust boundaries) yang jelas seperti 'Secure Demilitarized Zone' dan 'Restricted Application Subnet', beserta komponen dan aliran datanya.",
@@ -862,7 +692,6 @@
         {
           "requirement_id": "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
           "requirement_text": "Verify definition and security analysis of the application's high-level architecture and all connected remote services.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Diagram arsitektur tingkat tinggi secara eksplisit menampilkan layanan eksternal yang terhubung, seperti 'MoL and PEF Government Databases' dan 'External Job Sites'.",
@@ -871,7 +700,6 @@
         {
           "requirement_id": "job53-D-3293e58191d94d1aef8b2d58-53-000009",
           "requirement_text": "Verify that communications between application components, including APIs, middleware and data layers, are authenticated.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Terdapat keterangan 'Authenticated API traffic' pada aliran komunikasi antar komponen internal.",
@@ -880,7 +708,6 @@
         {
           "requirement_id": "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
           "requirement_text": "Verify that trusted enforcement points, such as access control gateways, enforce access controls.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Komponen 'Secure API Gateway and Identity Manager' bertindak sebagai titik penegakan akses (access control gateway) di dalam arsitektur.",
@@ -889,7 +716,6 @@
         {
           "requirement_id": "job53-D-f795ad19b9018b705f38ee07-53-000017",
           "requirement_text": "Verify that input validation is enforced on a trusted service layer.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Diagram menunjukkan adanya 'Web Application Firewall' yang menghasilkan 'Filtered web traffic', serta aliran 'Sanitized AI processing requests', mengindikasikan validasi dan sanitasi input.",
@@ -898,7 +724,6 @@
         {
           "requirement_id": "job53-D-composite-6224cdc4224b15cc055e4d98-53-000023",
           "requirement_text": "Logging system: logs securely transmitted to a remote system",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak relevan dengan diagram ini karena tidak ada representasi sistem logging.",
@@ -907,7 +732,6 @@
         {
           "requirement_id": "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
           "requirement_text": "Secure communication: encryption and authenticity verification between components",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Diagram secara eksplisit mencantumkan 'HTTPS / TLS 1.3' dan 'Encrypted data operations' di antara komponen-komponennya.",
@@ -916,7 +740,6 @@
         {
           "requirement_id": "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
           "requirement_text": "Component segregation: trust levels separated by security controls",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Komponen dipisahkan ke dalam zona kepercayaan yang berbeda (DMZ, Restricted, Isolated Private) dengan kontrol keamanan seperti WAF dan API Gateway di antaranya.",
@@ -925,7 +748,6 @@
         {
           "requirement_id": "job53-D-f9150a032d65c4d7d13987af-53-000038",
           "requirement_text": "Application isolation: sandboxing, containerization, or network-level isolation",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Terdapat isolasi pada level jaringan yang ditunjukkan melalui pembagian subnet (misalnya, 'Isolated Private AI and Data Subnet').",
@@ -934,7 +756,6 @@
         {
           "requirement_id": "job53-D-composite-ef72f311ee57ad5d1f39d412",
           "requirement_text": "Verify external API calls for breached password checks are shown.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak relevan karena diagram tidak mencakup detail tentang pengecekan kata sandi yang bocor (breached password checks).",
@@ -943,7 +764,6 @@
         {
           "requirement_id": "job53-D-0b309de7950edbfb5e56d372",
           "requirement_text": "Verify anti-automation controls (e.g., CAPTCHA, rate limiting) are depicted.",
-          "was_assessed_by_system": false,
           "relevant": true,
           "label": "met",
           "notes": "Diagram mencantumkan komponen 'Web Application Firewall (WAF)' yang ditempatkan sebelum layanan aplikasi/autentikasi untuk kontrol anti-otomatisasi.",
@@ -952,7 +772,6 @@
         {
           "requirement_id": "job53-D-b7e28781ff521b69f12383e6",
           "requirement_text": "Verify secure notifications are sent to users after authentication detail updates.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak relevan karena diagram jaringan ini tidak memodelkan aliran pesan notifikasi aplikasi.",
@@ -961,7 +780,6 @@
         {
           "requirement_id": "job53-D-85169068a4a72321d8b315e6",
           "requirement_text": "Verify mutual TLS is used between CSP and application.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak relevan karena detail spesifik tentang mTLS antara CSP dan aplikasi tidak digambarkan dalam level diagram arsitektur ini.",
@@ -970,7 +788,6 @@
         {
           "requirement_id": "job53-D-composite-0914062a97936d78c1a65e74",
           "requirement_text": "Sensitive secrets (e.g., initial activation, recovery secrets) are not sent in clear text.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Aliran data dilindungi oleh enkripsi (HTTPS / TLS 1.3 dan operasi terenkripsi), memastikan rahasia sensitif tidak dikirim dalam bentuk teks biasa.",
@@ -979,7 +796,6 @@
         {
           "requirement_id": "job53-D-composite-293a1c8ed0c3bb4df31cc936",
           "requirement_text": "Out-of-band authentication communication uses a secure, independent channel.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak relevan karena mekanisme autentikasi out-of-band tidak dipetakan dalam diagram ini.",
@@ -988,7 +804,6 @@
         {
           "requirement_id": "job53-D-composite-ad70cace67ce58c0b04f96e",
           "requirement_text": "Verify that intra-service secrets and API keys are managed securely and not included in the source code.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Terdapat komponen 'Hardware Security Module and Secrets Vault' yang ditujukan untuk mengelola rahasia dan kunci API secara aman.",
@@ -997,7 +812,6 @@
         {
           "requirement_id": "job53-D-9d7c842b8eeeb6f4244a6be9",
           "requirement_text": "Verify the application never reveals session tokens in URL parameters.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak relevan; diagram level arsitektur tidak menampilkan detail parameter URL atau token sesi.",
@@ -1006,7 +820,6 @@
         {
           "requirement_id": "job53-D-4aa8734f54de242cbb68b789",
           "requirement_text": "Verify the application generates a new session token on user authentication.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak relevan; alur pertukaran token sesi tidak digambarkan pada diagram ini.",
@@ -1015,7 +828,6 @@
         {
           "requirement_id": "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
           "requirement_text": "Session tokens are protected during transmission and storage.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Transmisi diamankan melalui 'HTTPS / TLS 1.3' dan data disimpan pada 'AES-256 Encrypted Core Database', yang melindungi token saat transit maupun at-rest.",
@@ -1024,7 +836,6 @@
         {
           "requirement_id": "job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006",
           "requirement_text": "Session invalidation and re-authentication flows are present.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak relevan; diagram tidak menampilkan aliran urutan (sequence flow) untuk manajemen sesi atau re-autentikasi.",
@@ -1033,7 +844,6 @@
         {
           "requirement_id": "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
           "requirement_text": "Cookie-based session tokens are transmitted securely.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Aliran trafik jaringan publik dilindungi oleh 'HTTPS / TLS 1.3', yang mencakup transmisi cookie sesi secara aman.",
@@ -1042,7 +852,6 @@
         {
           "requirement_id": "job53-D-composite-50463b4a59309f108755fa85-53-000015",
           "requirement_text": "OAuth token revocation and session token usage are depicted.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak relevan karena tidak ada diagram sekuens untuk penggunaan atau pencabutan token OAuth.",
@@ -1051,7 +860,6 @@
         {
           "requirement_id": "job53-D-composite-65241fcf5f2d3be893aec59e-53-000018",
           "requirement_text": "Authentication time limits and re-authentication events are communicated between CSPs and RPs.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak relevan; informasi detail batas waktu autentikasi atau re-autentikasi tidak ada pada diagram.",
@@ -1060,7 +868,6 @@
         {
           "requirement_id": "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
           "requirement_text": "Access control enforcement is located within trusted service layers.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Komponen penegakan akses ('Secure API Gateway and Identity Manager') terletak dengan jelas di dalam lapisan layanan yang dipercaya ('Restricted Application Subnet').",
@@ -1069,16 +876,14 @@
         {
           "requirement_id": "job53-D-composite-6bcdb4ad3f3fa4ee0d6cf733-53-000005",
           "requirement_text": "Verify that sensitive data and APIs are protected against IDOR, CSRF, and unauthorized access.",
-          "was_assessed_by_system": true,
-          "relevant": true,
+          "relevant": false,
           "label": "na",
-          "notes": "Persyaratan ini relevan, namun tidak dapat diverifikasi dari diagram arsitektur tingkat ini karena tidak menampilkan token spesifik (seperti anti-CSRF) pada tingkat pesan (message-level).",
+          "notes": "Persyaratan ini relevan, namun tidak dapat diverifikasi dari diagram arsitektur tingkat ini karena tidak menampilkan token spesifik (seperti anti-CSRF) pada tingkat pesan (message-level). Excluded from diagram eval relevance re-audit: this requirement is not diagram-checkable to a met/not_met verdict for this image.",
           "judge_reasoning": "The diagram shows message flows between users and the system, as well as between internal components. It includes elements like the API Gateway and Identity Manager, which could depict authorization checks, and the Web Application Firewall, which might relate to CSRF protection."
         },
         {
           "requirement_id": "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
           "requirement_text": "Verify that all external inputs are validated and sanitized before processing.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Terdapat komponen 'Web Application Firewall' untuk input dari luar, serta aliran data secara spesifik dilabeli sebagai 'Sanitized AI processing requests'.",
@@ -1087,7 +892,6 @@
         {
           "requirement_id": "job53-D-composite-3dc6f67a223cf26e26edfebf",
           "requirement_text": "Sensitive data stores must be labeled as encrypted at rest.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Penyimpanan data secara jelas dilabeli sebagai 'AES-256 Encrypted Core Database', memenuhi syarat enkripsi at-rest.",
@@ -1096,7 +900,6 @@
         {
           "requirement_id": "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
           "requirement_text": "Secrets management solution (e.g., key vault) is used for secure secret handling.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Terdapat solusi manajemen rahasia khusus yang dilabeli 'Hardware Security Module and Secrets Vault'.",
@@ -1105,25 +908,22 @@
         {
           "requirement_id": "job53-D-composite-4596dd8573f228bd18ecd33a-53-000001",
           "requirement_text": "Sensitive data is not logged to data stores accessible by unauthorized parties.",
-          "was_assessed_by_system": false,
-          "relevant": true,
+          "relevant": false,
           "label": "na",
-          "notes": "Tidak dapat diverifikasi pada diagram ini karena tidak ada representasi alur data logging menuju tempat penyimpanan log (data store).",
+          "notes": "Tidak dapat diverifikasi pada diagram ini karena tidak ada representasi alur data logging menuju tempat penyimpanan log (data store). Excluded from diagram eval relevance re-audit: this requirement is not diagram-checkable to a met/not_met verdict for this image.",
           "judge_reasoning": "The diagram shows data flows and storage components, including databases and subnets, which can be used to check if sensitive data is logged to unauthorized data stores. Trust boundaries and encryption are also depicted, relevant for assessing unauthorized access."
         },
         {
           "requirement_id": "job53-D-composite-137ee8430adb220056a6773d-53-000001",
           "requirement_text": "Sensitive data caching protection in server components.",
-          "was_assessed_by_system": true,
-          "relevant": true,
+          "relevant": false,
           "label": "na",
-          "notes": "Meski komponen load balancer ada, mekanisme perlindungan caching untuk data sensitif tidak dijelaskan secara spesifik pada level detail diagram ini.",
+          "notes": "Meski komponen load balancer ada, mekanisme perlindungan caching untuk data sensitif tidak dijelaskan secara spesifik pada level detail diagram ini. Excluded from diagram eval relevance re-audit: this requirement is not diagram-checkable to a met/not_met verdict for this image.",
           "judge_reasoning": "The diagram includes server components such as a Web Application Firewall, Load Balancer, and Web Frontend Servers. These elements are relevant for checking sensitive data caching protection as they can potentially cache data. The diagram can show whether protection mechanisms are in place for these components."
         },
         {
           "requirement_id": "job53-D-composite-807bca2da85437284139bdbb-53-000001",
           "requirement_text": "All data flows across trust boundaries must be labeled with secure protocols (e.g., TLS, HTTPS).",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "not_met",
           "notes": "Diagram gagal memberikan label protokol keamanan (seperti TLS atau HTTPS) pada semua aliran yang melintasi batas kepercayaan (trust boundaries), seperti menuju layanan pemerintah eksternal atau antara WAF dan Web Server.",
@@ -1132,7 +932,6 @@
         {
           "requirement_id": "job53-D-composite-9454a8814d51e3209de88a23-53-000008",
           "requirement_text": "Update mechanisms must show secure channels and digital signature validation.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak relevan; komponen untuk mekanisme pembaruan sistem/aplikasi tidak digambarkan.",
@@ -1141,7 +940,6 @@
         {
           "requirement_id": "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
           "requirement_text": "Anti-automation and business logic controls are deployed.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Komponen WAF dan Secure API Gateway ditempatkan sebagai perimeter yang biasanya menyediakan kontrol anti-otomatisasi.",
@@ -1150,7 +948,6 @@
         {
           "requirement_id": "job53-D-composite-bede99b5e5f325a33e768fce-53-000001",
           "requirement_text": "File storage components are configured with size and quota limits.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak relevan; diagram tidak menampilkan tempat penyimpanan file (file storage) atau kuota penyimpanannya.",
@@ -1159,7 +956,6 @@
         {
           "requirement_id": "job53-D-composite-fbb3a72ceae2857088a8d4c2-53-000004",
           "requirement_text": "Untrusted file processing includes validation and scanning components.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak relevan; diagram tidak secara spesifik memodelkan alur pemrosesan file yang tidak terpercaya.",
@@ -1168,16 +964,14 @@
         {
           "requirement_id": "job53-D-d416547723579cd22fbd0779-53-000011",
           "requirement_text": "Untrusted files are stored outside the web root with limited permissions.",
-          "was_assessed_by_system": false,
-          "relevant": true,
+          "relevant": false,
           "label": "na",
-          "notes": "Tidak dapat diverifikasi pada diagram ini karena tidak ada representasi eksplisit dari lokasi penyimpanan file.",
+          "notes": "Tidak dapat diverifikasi pada diagram ini karena tidak ada representasi eksplisit dari lokasi penyimpanan file. Excluded from diagram eval relevance re-audit: this requirement is not diagram-checkable to a met/not_met verdict for this image.",
           "judge_reasoning": "The diagram shows various components and zones, including a 'Restricted Application Subnet' and 'Isolated Private AI and Data Subnet,' which could depict storage locations. This allows for checking if untrusted files are stored outside the web root with limited permissions."
         },
         {
           "requirement_id": "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
           "requirement_text": "Verify that the application server only sends requests to or loads data/files from allowed resources/systems.",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "met",
           "notes": "Koneksi dari server aplikasi (Web Frontend dan API Gateway) digambarkan secara eksplisit dan terbatas pada tujuan yang ditentukan (database, AI enclave, layanan pemerintah).",
@@ -1186,7 +980,6 @@
         {
           "requirement_id": "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
           "requirement_text": "Verify that message headers and payload are protected in transit using strong encryption (TLS).",
-          "was_assessed_by_system": true,
           "relevant": true,
           "label": "not_met",
           "notes": "Tidak semua rute lalu lintas data yang melintasi sistem (terutama lalu lintas internal) secara eksplisit diberi label perlindungan enkripsi (seperti TLS) pada diagram.",
@@ -1195,7 +988,6 @@
         {
           "requirement_id": "job53-D-composite-700fbe6b2db199ae12159350-53-000008",
           "requirement_text": "External asset hosting uses integrity checks (SRI) and trusted sources.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak relevan; diagram tidak menampilkan hosting aset eksternal (seperti CDN).",
@@ -1204,7 +996,6 @@
         {
           "requirement_id": "job53-D-composite-c2bc34e911d53b529699c749-53-000016",
           "requirement_text": "HTTP responses include security headers (CSP, HSTS, X-Content-Type-Options, Referrer-Policy, X-Frame-Options).",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak relevan; diagram tingkat tinggi tidak menampilkan detail payload atau header respons HTTP.",
@@ -1213,7 +1004,6 @@
         {
           "requirement_id": "job53-D-composite-c4bb57eb009543d5ad0c32ef-53-000023",
           "requirement_text": "CORS Access-Control-Allow-Origin uses a strict allow list; trusted proxy headers are authenticated.",
-          "was_assessed_by_system": false,
           "relevant": false,
           "label": null,
           "notes": "Tidak relevan karena kebijakan CORS dan konfigurasi proxy header spesifik tidak dimodelkan dalam arsitektur ini.",

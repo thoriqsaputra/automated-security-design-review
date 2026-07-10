@@ -3,6 +3,7 @@ from __future__ import annotations
 import base64
 import logging
 from dataclasses import dataclass, field
+from difflib import SequenceMatcher
 from typing import Any, Dict, List, Optional
 
 from sdr.apps.ai.prompts.agents import (
@@ -52,6 +53,7 @@ class DiagramDebateOutput:
 
     diagram: DiagramInput
     hunter_result: Dict[str, Any] = field(default_factory=dict)
+    hunter_rebuttal_result: Dict[str, Any] = field(default_factory=dict)
     critic_result: Dict[str, Any] = field(default_factory=dict)
     mediator_result: Dict[str, Any] = field(default_factory=dict)
     requirements: List[Any] = field(default_factory=list)
@@ -71,8 +73,9 @@ class VisionAgent(BaseAgent):
         self,
         *,
         user_prompt: str,
-        image_bytes: bytes,
+        image_bytes: Optional[bytes] = None,
         image_format: str = "png",
+        image_payloads: Optional[List[Dict[str, Any]]] = None,
         system_prompt: str = "",
         log_context: str = "",
     ) -> Optional[Dict[str, Any]]:
@@ -84,6 +87,7 @@ class VisionAgent(BaseAgent):
                 user_prompt,
                 image_b64=image_bytes,
                 image_format=image_format,
+                image_payloads=image_payloads,
                 top_p=self.top_p,
                 log_context=log_context,
             )
@@ -125,8 +129,19 @@ class VisionAgent(BaseAgent):
 
 
 class VisionHunterAgent(VisionAgent):
-    """VisionAgent pinned to the Hunter's own model (AI_MODEL_VISION_HUNTER)."""
+    """VisionAgent pinned to the Hunter's own model (AI_MODEL_VISION_HUNTER) —
+    deliberately a fast, shallow first pass (low token budget, minimal reasoning)
+    so it behaves like a realistic single-agent baseline, not one already
+    hardened with the Critic's anti-hallucination discipline."""
     model_component: str = "vision_hunter"
+    # NOTE: max_tokens must stay large enough to cover a full assessment object
+    # for every requirement in the largest diagrams (18-23 requirements) — the
+    # Hunter must assess EVERY requirement (completeness rule), so shrinking
+    # this below ~6144 causes outright JSON-truncation failures (not "dumber"
+    # reasoning, just broken output) rather than weaker per-item reasoning.
+    # The "dumbing down" instead comes from the simplified prompt/guardrails.
+    max_tokens: int = 6144
+    reasoning_effort: str = "low"
 
 
 class VisionCriticAgent(VisionAgent):
@@ -134,11 +149,15 @@ class VisionCriticAgent(VisionAgent):
     a different underlying model than the Hunter so the Critic's re-examination
     of the same image is a genuinely independent second opinion."""
     model_component: str = "vision_critic"
+    max_tokens: int = 12288
+    reasoning_effort: str = "high"
 
 
 class VisionMediatorAgent(VisionAgent):
     """VisionAgent pinned to the Mediator's own model (AI_MODEL_VISION_MEDIATOR)."""
     model_component: str = "vision_mediator"
+    max_tokens: int = 12288
+    reasoning_effort: str = "high"
 
 
 def _format_requirements_compact(requirements: List[Any]) -> str:
@@ -197,7 +216,7 @@ def _apply_diagram_evidence_policy(
         hunter_scope == "non_architecture" and critic_scope == "non_architecture"
     ) or (
         critic_scope == "non_architecture"
-        and not (critic_result.get("validated_requirements") or [])
+        and not (_critic_has_requirement_reviews(critic_result) or critic_result.get("validated_requirements"))
         and bool((critic_result.get("diagram_scope_reasoning") or "").strip())
     )
     if should_force_non_architecture:
@@ -211,7 +230,7 @@ def _apply_diagram_evidence_policy(
         return mediator_result
 
     if assessments:
-        assessments, downgraded = _ground_assessed_requirements_against_critic(assessments, critic_result)
+        assessments, corrected = _ground_assessed_requirements_against_critic(assessments, critic_result)
         mediator_result["assessed_requirements"] = assessments
         # The topline verdict is never trusted from the Mediator's own
         # free-standing claim — it's always the deterministic worst-case of
@@ -226,7 +245,7 @@ def _apply_diagram_evidence_policy(
             str(assessment.get("verdict", "")).strip().lower() == VERDICT_NA
             for assessment in assessments
         )
-        if downgraded:
+        if corrected:
             mediator_result["verdict_policy_source"] = "diagram_requirement_not_corroborated"
         elif all_na and aggregated != verdict:
             mediator_result["verdict_policy_source"] = "diagram_all_requirements_not_applicable"
@@ -244,9 +263,10 @@ def _apply_diagram_evidence_policy(
     # into it.
     hallucinated = critic_result.get("hallucinated_claims") or []
     if hallucinated and verdict == VERDICT_NOT_MET:
-        invalidated = critic_result.get("invalidated_requirements") or []
+        requirement_reviews = _critic_requirement_reviews_by_id(critic_result)
         not_met_in_invalidated = any(
-            r.get("verdict", "").lower() == VERDICT_NOT_MET for r in invalidated
+            str(review.get("critic_verdict", "")).strip().lower() == VERDICT_NOT_MET
+            for review in requirement_reviews.values()
         )
         if not_met_in_invalidated or len(hallucinated) >= 2:
             mediator_result["final_verdict"] = VERDICT_NA
@@ -312,26 +332,258 @@ def _calibrate_diagram_confidence(
     return mediator_result
 
 
+def _has_scope_evidence(review: Dict[str, Any]) -> bool:
+    return bool(str(review.get("scope_evidence") or "").strip())
+
+
+def _has_absence_evidence(review: Dict[str, Any]) -> bool:
+    return bool(str(review.get("absence_evidence") or "").strip())
+
+
+def _normalized_bool(value: Any) -> Optional[bool]:
+    if isinstance(value, bool):
+        return value
+    normalized = str(value or "").strip().lower()
+    if normalized in {"true", "yes", "y", "1"}:
+        return True
+    if normalized in {"false", "no", "n", "0"}:
+        return False
+    return None
+
+
+def _normalized_failure_mode(review: Dict[str, Any]) -> str:
+    return str(review.get("failure_mode") or "none").strip().lower()
+
+
+def _normalized_check_answer(answer: Any) -> str:
+    normalized = str(answer or "").strip().lower()
+    if normalized in {"present", "pass", "passed", "satisfied", "yes", "true"}:
+        return "present"
+    if normalized in {"absent", "fail", "failed", "missing", "no", "false"}:
+        return "absent"
+    if normalized in {"unclear", "unknown", "partial", "ambiguous"}:
+        return "unclear"
+    return ""
+
+
+def _verification_checks(review: Dict[str, Any]) -> List[Dict[str, Any]]:
+    checks: List[Dict[str, Any]] = []
+    for check in review.get("verification_checks") or []:
+        if isinstance(check, dict):
+            checks.append(check)
+    return checks
+
+
+def _review_has_absent_check(review: Dict[str, Any]) -> bool:
+    """An "unclear" check alone is not evidence of failure — only an outright
+    "absent" answer blocks "met" by itself. A lone "unclear" is already caught
+    by the supports_met=false branch in _critic_blocks_met when the Critic
+    also explicitly says the evidence doesn't support "met"."""
+    for check in _verification_checks(review):
+        if _normalized_check_answer(check.get("answer")) == "absent":
+            return True
+    return False
+
+
+def _review_supports_met(review: Dict[str, Any]) -> Optional[bool]:
+    return _normalized_bool(review.get("supports_met"))
+
+
+def _review_supports_not_met(review: Dict[str, Any]) -> Optional[bool]:
+    return _normalized_bool(review.get("supports_not_met"))
+
+
+def _review_has_absent_compound_subelement(review: Dict[str, Any]) -> bool:
+    for item in review.get("compound_subelements_checked") or []:
+        text = str(item or "").strip().lower()
+        if not text:
+            continue
+        if ": absent" in text or text.endswith("absent"):
+            return True
+        if ": unclear" in text or text.endswith("unclear"):
+            return True
+    return False
+
+
+def _normalized_compound_status(review: Dict[str, Any]) -> str:
+    value = str(review.get("compound_status") or "").strip().lower()
+    if value in {"single", "compound_core_control", "compound_independent_controls"}:
+        return value
+    return ""
+
+
+def _critic_blocks_met(review: Dict[str, Any]) -> bool:
+    failure_mode = _normalized_failure_mode(review)
+    supports_met = _review_supports_met(review)
+    if supports_met is False:
+        return True
+    # "weak_positive_evidence" is a soft/fuzzy signal that over-fires on a
+    # more talkative Critic — only concrete findings (a genuinely partial
+    # compound requirement or an affirmative contradiction) block "met" here.
+    if failure_mode in {"partial_compound", "contradiction"}:
+        return True
+    if _review_has_absent_check(review):
+        return True
+    if _review_has_absent_compound_subelement(review):
+        return True
+    return False
+
+
+def _critic_prefers_not_met(review: Dict[str, Any]) -> bool:
+    critic_verdict = str(review.get("critic_verdict", "")).strip().lower()
+    supports_not_met = _review_supports_not_met(review)
+    if critic_verdict == VERDICT_NOT_MET and supports_not_met is not False:
+        return True
+    return bool(supports_not_met)
+
+
+def _critic_not_met_is_grounded(review: Dict[str, Any]) -> bool:
+    critic_verdict = _normalized_requirement_verdict(review.get("critic_verdict"))
+    supports_not_met = _review_supports_not_met(review)
+    if critic_verdict != VERDICT_NOT_MET and supports_not_met is not True:
+        return False
+    if not _has_scope_evidence(review) or not _has_absence_evidence(review):
+        return False
+    failure_mode = _normalized_failure_mode(review)
+    if failure_mode not in {"none", "partial_compound", "contradiction"}:
+        return False
+    if _normalized_compound_status(review) == "compound_independent_controls":
+        return _review_has_absent_compound_subelement(review)
+    return True
+
+
+def _mediator_has_judged(item: Dict[str, Any]) -> bool:
+    return bool(
+        str(item.get("resolution_basis") or "").strip()
+        or str(item.get("winning_side") or "").strip()
+        or str(item.get("judge_reason") or "").strip()
+    )
+
+
+def _normalized_requirement_verdict(value: Any) -> str:
+    verdict = str(value or "").strip().lower()
+    if verdict in {VERDICT_MET, VERDICT_NOT_MET, VERDICT_NA}:
+        return verdict
+    return ""
+
+
+def _is_policy_na_downgrade(item: Dict[str, Any], final_verdict: str, hunter_verdict: str) -> bool:
+    if final_verdict != VERDICT_NA or hunter_verdict == final_verdict:
+        return False
+    return str(item.get("verdict_policy_source") or "").strip().lower() in {
+        "diagram_not_met_without_scope_evidence",
+        "diagram_not_met_without_absence_evidence",
+        "diagram_mediator_not_met_without_scope_evidence",
+        "diagram_mediator_not_met_without_absence_evidence",
+        "diagram_met_not_supported_by_critic_verifier",
+    }
+
+
+def _determine_final_decision_source(
+    item: Dict[str, Any],
+    *,
+    hunter_verdict: str,
+    critic_verdict: str,
+    mediator_has_judged: bool,
+) -> str:
+    final_verdict = _normalized_requirement_verdict(item.get("verdict"))
+    winning_side = str(item.get("winning_side") or "").strip().lower()
+
+    if _is_policy_na_downgrade(item, final_verdict, hunter_verdict):
+        return "policy_downgraded_to_na"
+
+    if mediator_has_judged:
+        if winning_side == "critic" and final_verdict and final_verdict != hunter_verdict:
+            return "mediator_tiebreak_to_critic"
+        if winning_side == "hunter" and critic_verdict and final_verdict and final_verdict != critic_verdict:
+            return "mediator_tiebreak_to_hunter"
+
+    if critic_verdict and final_verdict and final_verdict != hunter_verdict and final_verdict == critic_verdict:
+        return "critic_corrected"
+
+    if final_verdict and final_verdict == hunter_verdict:
+        return "hunter_preserved"
+
+    if final_verdict == VERDICT_NA and hunter_verdict != final_verdict:
+        return "policy_downgraded_to_na"
+
+    return "grounded_fallback"
+
+
+_DUPLICATE_EVIDENCE_SIMILARITY_THRESHOLD = 0.82
+
+
+def _normalized_evidence_text(review: Dict[str, Any]) -> str:
+    return " ".join(
+        str(review.get(field) or "").strip().lower()
+        for field in ("scope_evidence", "absence_evidence")
+    ).strip()
+
+
+def _find_contaminated_requirement_ids(critic_result: Dict[str, Any]) -> set[str]:
+    """Detect boilerplate evidence bleeding across sibling requirements in the
+    same batched Critic response: if two or more DIFFERENT requirements both
+    got a "not_met" verdict justified by near-identical scope/absence evidence
+    text, that evidence almost certainly isn't independently grounded for each
+    one — the model likely reused one requirement's finding as a template. Keep
+    the first (order of appearance) as the trusted exemplar and flag the rest
+    as contaminated so callers fall back to the Hunter's verdict for them."""
+    reviews = _critic_requirement_reviews_by_id(critic_result)
+    candidates = [
+        (req_id, _normalized_evidence_text(review))
+        for req_id, review in reviews.items()
+        if _normalized_requirement_verdict(review.get("critic_verdict")) == VERDICT_NOT_MET
+        and _has_scope_evidence(review)
+        and _has_absence_evidence(review)
+    ]
+    contaminated: set[str] = set()
+    for i in range(len(candidates)):
+        req_id_i, text_i = candidates[i]
+        if req_id_i in contaminated or not text_i:
+            continue
+        for j in range(i + 1, len(candidates)):
+            req_id_j, text_j = candidates[j]
+            if req_id_j in contaminated or not text_j:
+                continue
+            if SequenceMatcher(None, text_i, text_j).ratio() >= _DUPLICATE_EVIDENCE_SIMILARITY_THRESHOLD:
+                contaminated.add(req_id_j)
+    return contaminated
+
+
+def _find_met_rejection_contaminated_ids(critic_result: Dict[str, Any]) -> set[str]:
+    """Same boilerplate-bleeding check as _find_contaminated_requirement_ids,
+    but for the met-rejection path: if 2+ different requirements both got
+    blocked from "met" (_critic_blocks_met) with near-identical `reason` text,
+    that's a blanket/boilerplate objection, not a per-row grounded one."""
+    reviews = _critic_requirement_reviews_by_id(critic_result)
+    candidates = [
+        (req_id, str(review.get("reason") or "").strip().lower())
+        for req_id, review in reviews.items()
+        if _critic_blocks_met(review)
+    ]
+    contaminated: set[str] = set()
+    for i in range(len(candidates)):
+        req_id_i, text_i = candidates[i]
+        if req_id_i in contaminated or not text_i:
+            continue
+        for j in range(i + 1, len(candidates)):
+            req_id_j, text_j = candidates[j]
+            if req_id_j in contaminated or not text_j:
+                continue
+            if SequenceMatcher(None, text_i, text_j).ratio() >= _DUPLICATE_EVIDENCE_SIMILARITY_THRESHOLD:
+                contaminated.add(req_id_j)
+    return contaminated
+
+
 def _ground_assessed_requirements_against_critic(
     assessments: List[Dict[str, Any]],
     critic_result: Dict[str, Any],
 ) -> tuple[List[Dict[str, Any]], bool]:
-    invalidated_ids = {
-        str(r.get("requirement_id")).strip().lower()
-        for r in (critic_result.get("invalidated_requirements") or [])
-        if isinstance(r, dict) and r.get("requirement_id")
-    }
-
-    # Only an explicit Critic rejection (invalidated_requirements) downgrades a
-    # Hunter "met". Requiring the requirement_id to also appear in
-    # validated_requirements used to downgrade on any omission from that list —
-    # but a single Critic completion has to re-list every "met" requirement_id
-    # (often 20+ opaque composite IDs per diagram batch), so any completeness
-    # lapse there silently converted a correct "met" into a false "na" with no
-    # actual disagreement. The Critic prompt's completeness requirement is what
-    # populates invalidated_requirements reliably; treat that as the sole signal.
+    requirement_reviews = _critic_requirement_reviews_by_id(critic_result)
+    contaminated_ids = _find_contaminated_requirement_ids(critic_result)
+    met_rejection_contaminated_ids = _find_met_rejection_contaminated_ids(critic_result)
     grounded: List[Dict[str, Any]] = []
-    downgraded = False
+    corrected = False
     for assessment in assessments:
         item = dict(assessment)
         req_id = str(item.get("requirement_id", "")).strip().lower()
@@ -341,15 +593,166 @@ def _ground_assessed_requirements_against_critic(
             item.setdefault("summary", "Mediator omitted a stable verdict; preserving conservative applicability-only fallback.")
             item.setdefault("reasoning", item["summary"])
             verdict = VERDICT_NA
-        if verdict == VERDICT_MET and req_id in invalidated_ids:
-            item["verdict"] = VERDICT_NA
-            item["summary"] = (
-                "Downgraded: Critic explicitly invalidated this requirement's evidence."
-            )
-            item["reasoning"] = item["summary"]
-            downgraded = True
+        review = requirement_reviews.get(req_id)
+        hunter_verdict = _normalized_requirement_verdict(item.get("hunter_verdict"))
+        critic_verdict = ""
+        mediator_has_judged = _mediator_has_judged(item)
+        if review:
+            hunter_verdict = hunter_verdict or _normalized_requirement_verdict(review.get("hunter_verdict"))
+            critic_verdict = _normalized_requirement_verdict(review.get("critic_verdict"))
+            if critic_verdict:
+                item["critic_verdict"] = critic_verdict
+            if req_id in contaminated_ids and critic_verdict == VERDICT_NOT_MET:
+                # This row's "not_met" evidence duplicated another requirement's
+                # finding in the same batched Critic response — a sign the model
+                # reused one requirement's absence finding as a template rather
+                # than independently grounding this one. Don't trust it.
+                item["verdict"] = hunter_verdict or VERDICT_NA
+                item["summary"] = (
+                    "Critic's 'not_met' evidence for this requirement duplicated "
+                    "another requirement's finding in the same batch; treating as "
+                    "unsupported and reverting to the Hunter's opening verdict."
+                )
+                item["reasoning"] = item["summary"]
+                item["verdict_policy_source"] = "diagram_not_met_contaminated_evidence"
+                corrected = True
+            elif critic_verdict == VERDICT_NOT_MET and not _has_scope_evidence(review):
+                # A "not_met" claim still needs explicit scope-establishing
+                # evidence from the raw image; otherwise it is not assessable.
+                item["verdict"] = VERDICT_NA
+                item["summary"] = (
+                    "Critic's 'not_met' verdict named no scope-establishing "
+                    "evidence; downgraded to 'na'."
+                )
+                item["reasoning"] = item["summary"]
+                item["verdict_policy_source"] = "diagram_not_met_without_scope_evidence"
+                corrected = True
+            elif critic_verdict == VERDICT_NOT_MET and not _has_absence_evidence(review):
+                item["verdict"] = VERDICT_NA
+                item["summary"] = (
+                    "Critic's 'not_met' verdict named no concrete absence or "
+                    "contradiction evidence; downgraded to 'na'."
+                )
+                item["reasoning"] = item["summary"]
+                item["verdict_policy_source"] = "diagram_not_met_without_absence_evidence"
+                corrected = True
+            elif req_id in met_rejection_contaminated_ids and verdict == VERDICT_MET and _critic_blocks_met(review):
+                # This row's met-rejection reasoning duplicated another
+                # requirement's objection in the same batch — a blanket
+                # boilerplate objection, not one grounded in this row's own
+                # evidence. Don't trust it; keep the Hunter's "met".
+                item["summary"] = (
+                    "Critic's objection to this 'met' verdict duplicated another "
+                    "requirement's reasoning in the same batch; treating as "
+                    "unsupported and preserving the Hunter's opening verdict."
+                )
+                item["reasoning"] = item["summary"]
+                item["verdict_policy_source"] = "diagram_met_rejection_contaminated_evidence"
+            elif not mediator_has_judged and verdict == VERDICT_MET and _critic_blocks_met(review):
+                if _critic_prefers_not_met(review) and _critic_not_met_is_grounded(review):
+                    item["verdict"] = VERDICT_NOT_MET
+                    explanation = str(review.get("reason") or "").strip() or (
+                        "Critic verification checks showed the governed scope but "
+                        "did not support a 'met' verdict."
+                    )
+                    item["summary"] = explanation
+                    item["reasoning"] = explanation
+                    item["verdict_policy_source"] = "diagram_met_rejected_by_critic_verifier"
+                else:
+                    item["verdict"] = VERDICT_NA
+                    explanation = str(review.get("reason") or "").strip() or (
+                        "Critic verification checks did not support a 'met' verdict; "
+                        "downgraded to 'na'."
+                    )
+                    item["summary"] = explanation
+                    item["reasoning"] = explanation
+                    item["verdict_policy_source"] = "diagram_met_not_supported_by_critic_verifier"
+                corrected = True
+            elif not mediator_has_judged and critic_verdict in {VERDICT_MET, VERDICT_NOT_MET, VERDICT_NA} and critic_verdict != verdict:
+                item["verdict"] = critic_verdict
+                explanation = str(review.get("reason") or review.get("summary") or "").strip()
+                if not explanation:
+                    explanation = f"Corrected to '{critic_verdict}' based on critic re-examination."
+                item["summary"] = explanation
+                item["reasoning"] = explanation
+                corrected = True
+            elif mediator_has_judged and verdict == VERDICT_NOT_MET and not _has_scope_evidence(review):
+                item["verdict"] = VERDICT_NA
+                item["summary"] = (
+                    "Mediator selected 'not_met' but the Critic named no "
+                    "scope-establishing evidence; downgraded to 'na'."
+                )
+                item["reasoning"] = item["summary"]
+                item["verdict_policy_source"] = "diagram_mediator_not_met_without_scope_evidence"
+                corrected = True
+            elif mediator_has_judged and verdict == VERDICT_NOT_MET and not _has_absence_evidence(review):
+                item["verdict"] = VERDICT_NA
+                item["summary"] = (
+                    "Mediator selected 'not_met' but the Critic named no "
+                    "concrete absence or contradiction evidence; downgraded to 'na'."
+                )
+                item["reasoning"] = item["summary"]
+                item["verdict_policy_source"] = "diagram_mediator_not_met_without_absence_evidence"
+                corrected = True
+            elif review.get("reason") and not item.get("summary"):
+                item["summary"] = str(review["reason"]).strip()
+                item["reasoning"] = item["summary"]
+        if hunter_verdict:
+            item["hunter_verdict"] = hunter_verdict
+        item["final_decision_source"] = _determine_final_decision_source(
+            item,
+            hunter_verdict=hunter_verdict,
+            critic_verdict=critic_verdict,
+            mediator_has_judged=mediator_has_judged,
+        )
         grounded.append(item)
-    return grounded, downgraded
+    return grounded, corrected
+
+
+def _critic_has_requirement_reviews(critic_result: Dict[str, Any]) -> bool:
+    return bool(_critic_requirement_reviews_by_id(critic_result))
+
+
+def _critic_requirement_reviews_by_id(critic_result: Dict[str, Any]) -> Dict[str, Dict[str, Any]]:
+    reviews: Dict[str, Dict[str, Any]] = {}
+    for review in critic_result.get("requirement_reviews") or []:
+        if not isinstance(review, dict):
+            continue
+        req_id = str(review.get("requirement_id", "")).strip().lower()
+        if not req_id:
+            continue
+        reviews[req_id] = dict(review)
+
+    for review in critic_result.get("validated_requirements") or []:
+        if not isinstance(review, dict):
+            continue
+        req_id = str(review.get("requirement_id", "")).strip().lower()
+        if not req_id or req_id in reviews:
+            continue
+        reviews[req_id] = {
+            "requirement_id": review.get("requirement_id"),
+            "critic_verdict": review.get("verdict"),
+            "disposition": "uphold",
+            "reason": review.get("reason", ""),
+        }
+
+    for review in critic_result.get("invalidated_requirements") or []:
+        if not isinstance(review, dict):
+            continue
+        req_id = str(review.get("requirement_id", "")).strip().lower()
+        if not req_id:
+            continue
+        if req_id in reviews:
+            continue
+        legacy_verdict = str(review.get("verdict", "")).strip().lower()
+        reviews[req_id] = {
+            "requirement_id": review.get("requirement_id"),
+            "critic_verdict": review.get("corrected_verdict")
+            or (VERDICT_NA if legacy_verdict == VERDICT_MET else review.get("verdict")),
+            "disposition": "overturn",
+            "reason": review.get("reason", ""),
+        }
+    return reviews
 
 
 def _merge_assessed_requirements(
@@ -365,7 +768,11 @@ def _merge_assessed_requirements(
         if not req_id:
             continue
         ordered_ids.append(req_id)
-        merged[req_id] = dict(source)
+        merged_item = dict(source)
+        hunter_verdict = _normalized_requirement_verdict(source.get("verdict"))
+        if hunter_verdict:
+            merged_item.setdefault("hunter_verdict", hunter_verdict)
+        merged[req_id] = merged_item
     for source in (mediator_assessments or []):
         if not isinstance(source, dict):
             continue
@@ -385,12 +792,18 @@ def _merge_assessed_requirements(
 
 
 def _worst_case_diagram_verdict(assessments: List[Dict[str, Any]]) -> str:
-    verdicts = {str(a.get("verdict", "")).strip().lower() for a in assessments}
+    verdicts = [
+        str(assessment.get("verdict", "")).strip().lower()
+        for assessment in assessments
+        if str(assessment.get("verdict", "")).strip().lower() in {VERDICT_MET, VERDICT_NOT_MET, VERDICT_NA}
+    ]
+    if not verdicts:
+        return VERDICT_NA
     if VERDICT_NOT_MET in verdicts:
         return VERDICT_NOT_MET
-    if VERDICT_NA in verdicts:
-        return VERDICT_NA
-    return VERDICT_MET if verdicts else VERDICT_NA
+    if VERDICT_MET in verdicts:
+        return VERDICT_MET
+    return VERDICT_NA
 
 
 def _normalize_diagram_scope_verdict(value: Any) -> str:

@@ -177,6 +177,7 @@ class BaseAgent:
         user_prompt: str,
         image_b64: Optional[bytes] = None,
         image_format: str = "png",
+        image_payloads: Optional[List[Dict[str, Any]]] = None,
         top_p: Optional[float] = None,
         stream_handler: Optional[Callable[[str], None]] = None,
         max_tokens: Optional[int] = None,
@@ -194,6 +195,7 @@ class BaseAgent:
             "response_format": {"type": "json_object"},
             "image_bytes": image_b64,
             "image_format": image_format,
+            "image_payloads": image_payloads,
             "top_p": top_p,
         }
         reasoning_effort = self.reasoning_effort or getattr(settings, "AI_OPENROUTER_REASONING_EFFORT", "") or ""

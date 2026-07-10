@@ -32,14 +32,14 @@ def test_agents_vision_exports_and_runs_mocked_debate(monkeypatch):
     )
 
     responses = iter(
-        [
-            AIResponse(
-                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"The image shows an authentication flow between system components.","overall_verdict":"not_met","confidence":0.61,"reasoning":"No MFA step is visible.","requirement_assessments":[{"requirement_id":"D-1","verdict":"not_met"}],"visual_elements_cited":["login form"]}',
+            [
+                AIResponse(
+                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"The image shows an authentication flow between system components.","overall_verdict":"not_met","confidence":0.61,"reasoning":"No MFA step is visible.","requirement_assessments":[{"requirement_id":"D-1","verdict":"not_met","strongest_scope_evidence":"The login gateway path is visible.","visual_evidence":"Login gateway path without MFA branch."}],"visual_elements_cited":["login form"]}',
                 model="test",
                 provider=AIProvider.LOCAL,
             ),
             AIResponse(
-                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"The image depicts an authentication flow between components.","outcome":"uphold","validated_requirements":[{"requirement_id":"D-1","verdict":"not_met"}],"hallucinated_claims":[]}',
+                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"The image depicts an authentication flow between components.","outcome":"uphold","requirement_reviews":[{"requirement_id":"D-1","hunter_verdict":"not_met","critic_verdict":"not_met","disposition":"uphold","scope_evidence":"The login gateway path is visible.","absence_evidence":"The visible authentication path was inspected and no MFA step or label is shown.","reason":"The governed authentication path is visible but no MFA control is shown."}],"validated_requirements":[{"requirement_id":"D-1","verdict":"not_met"}],"hallucinated_claims":[]}',
                 model="test",
                 provider=AIProvider.LOCAL,
             ),
@@ -70,7 +70,7 @@ def test_agents_vision_exports_and_runs_mocked_debate(monkeypatch):
     assert output.diagram.diagram_id == "p1_d1"
     assert output.mediator_result["final_verdict"] == "not_met"
     assert output.mediator_result["diagram_scope_verdict"] == "architecture_relevant"
-    assert output.mediator_result["confidence"] == 0.72
+    assert output.mediator_result["confidence"] == 0.71
 
     forced = _apply_diagram_evidence_policy(
         {
@@ -165,6 +165,185 @@ def test_diagram_debate_service_shim_reexports_symbols():
     assert shim_module.DiagramInput is vision_module.DiagramInput
     assert shim_module.DiagramDebateOutput is vision_module.DiagramDebateOutput
     assert shim_module.DiagramDebateService is vision_module.DiagramDebateService
+
+
+def test_diagram_debate_service_batches_critic_and_synthesizes_missing_rows(monkeypatch):
+    from sdr.apps.ai.agents.base import BaseAgent
+    from sdr.apps.ai.agents.vision import DiagramDebateService, DiagramInput
+
+    responses = iter(
+        [
+            AIResponse(
+                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"Architecture diagram.","overall_verdict":"met","confidence":0.7,"reasoning":"Opening claim.","requirement_assessments":[{"requirement_id":"D-1","verdict":"met","strongest_scope_evidence":"Gateway path visible."},{"requirement_id":"D-2","verdict":"met","strongest_scope_evidence":"Gateway path visible."},{"requirement_id":"D-3","verdict":"na"}]}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+            AIResponse(
+                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"Architecture diagram.","outcome":"uphold","requirement_reviews":[{"requirement_id":"D-1","hunter_verdict":"met","critic_verdict":"met","disposition":"uphold","reason":"Gateway is visible.","review_state":"uphold_same_verdict"}],"hallucinated_claims":[],"reasoning":"First batch incomplete."}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+            AIResponse(
+                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"Architecture diagram.","outcome":"uphold","requirement_reviews":[{"requirement_id":"D-1","hunter_verdict":"met","critic_verdict":"met","disposition":"uphold","reason":"Gateway is visible.","review_state":"uphold_same_verdict"}],"hallucinated_claims":[],"reasoning":"Retry still incomplete."}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+            AIResponse(
+                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"Architecture diagram.","outcome":"uphold","requirement_reviews":[{"requirement_id":"D-3","hunter_verdict":"na","critic_verdict":"na","disposition":"uphold","reason":"Not shown.","review_state":"uphold_same_verdict"}],"hallucinated_claims":[],"reasoning":"Second batch complete."}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+            AIResponse(
+                content='{"rebuttal_requirements":[],"reasoning":"No defense offered."}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+            AIResponse(
+                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"Architecture diagram.","final_verdict":"met","confidence":0.8,"finding_description":"Batch one.","reasoning":"Preserve D-1.","assessed_requirements":[{"requirement_id":"D-1","verdict":"met","resolution_basis":"hunter_upheld","winning_side":"hunter","judge_reason":"Gateway is visible.","summary":"Preserved."},{"requirement_id":"D-2","verdict":"na","resolution_basis":"mediator_tiebreak","winning_side":"split","judge_reason":"Critic coverage was incomplete.","summary":"Independent na fallback."}]}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+            AIResponse(
+                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"Architecture diagram.","final_verdict":"na","confidence":0.6,"finding_description":"Batch two.","reasoning":"Preserve D-3.","assessed_requirements":[{"requirement_id":"D-3","verdict":"na","resolution_basis":"hunter_upheld","winning_side":"hunter","judge_reason":"Still not shown.","summary":"Preserved."}]}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+        ]
+    )
+
+    monkeypatch.setattr(BaseAgent, "_call_llm", lambda self, **kwargs: next(responses))
+
+    service = DiagramDebateService()
+    service._debate_batch_size = 2
+    service._debate_batch_max_concurrency = 1
+    service._rebuttal_batch_max_concurrency = 1
+    output = service.run_diagram_debate(
+        diagram=DiagramInput(
+            diagram_id="p-batch",
+            image_b64=_diagram_bytes(),
+            page_number=1,
+            caption="Batch test",
+        ),
+        requirements=[
+            _requirement(ordinal=1, stable_key="D-1"),
+            _requirement(ordinal=2, stable_key="D-2"),
+            _requirement(ordinal=3, stable_key="D-3"),
+        ],
+        tsd_context="Batch completeness test.",
+        skip_mediator_on_uphold=False,
+    )
+
+    assert output.error is None
+    assert output.critic_result["batch_diagnostics"]["retry_batches"] == 1
+    assert output.critic_result["batch_diagnostics"]["fallback_rows"] == 1
+    assert len(output.critic_result["requirement_reviews"]) == 3
+    fallback_review = next(
+        review for review in output.critic_result["requirement_reviews"]
+        if review["requirement_id"] == "D-2"
+    )
+    assert fallback_review["review_state"] == "fallback_incomplete"
+    assert len(output.mediator_result["assessed_requirements"]) == 3
+
+
+def test_diagram_debate_service_allows_mediator_to_overrule_hunter(monkeypatch):
+    from sdr.apps.ai.agents.base import BaseAgent
+    from sdr.apps.ai.agents.vision import DiagramDebateService, DiagramInput
+
+    responses = iter(
+        [
+            AIResponse(
+                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"Architecture diagram.","overall_verdict":"met","confidence":0.7,"reasoning":"Opening claim.","requirement_assessments":[{"requirement_id":"D-1","verdict":"met","strongest_scope_evidence":"Public gateway path is visible.","visual_evidence":"Gateway line."}]}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+            AIResponse(
+                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"Architecture diagram.","outcome":"overturn","requirement_reviews":[{"requirement_id":"D-1","hunter_verdict":"met","critic_verdict":"not_met","disposition":"overturn","scope_evidence":"Public gateway path is visible.","absence_evidence":"The visible governed path was inspected end-to-end and no required control is shown.","reason":"The governed path is shown but the required control is absent.","review_state":"critic_changes_verdict","supports_met":false,"supports_not_met":true,"failure_mode":"contradiction"}],"hallucinated_claims":[],"reasoning":"Critic overturns Hunter."}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+            AIResponse(
+                content='{"rebuttal_requirements":[{"requirement_id":"D-1","stance":"concede","defended_claim":"None","rebuttal_evidence":"Conceded.","reasoning":"The critic is correct."}],"reasoning":"Conceded."}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+            AIResponse(
+                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"Architecture diagram.","final_verdict":"not_met","confidence":0.75,"finding_description":"Missing control.","reasoning":"Critic wins.","assessed_requirements":[{"requirement_id":"D-1","verdict":"not_met","resolution_basis":"mediator_tiebreak","winning_side":"critic","judge_reason":"The critic established visible governed scope and no control is shown.","summary":"Critic wins."}]}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+        ]
+    )
+
+    monkeypatch.setattr(BaseAgent, "_call_llm", lambda self, **kwargs: next(responses))
+
+    service = DiagramDebateService()
+    service._debate_batch_max_concurrency = 1
+    service._rebuttal_batch_max_concurrency = 1
+    output = service.run_diagram_debate(
+        diagram=DiagramInput(
+            diagram_id="p-override",
+            image_b64=_diagram_bytes(),
+            page_number=1,
+            caption="Override test",
+        ),
+        requirements=[_requirement()],
+        tsd_context="Mediator override test.",
+        skip_mediator_on_uphold=False,
+    )
+
+    assert output.error is None
+    assert output.mediator_result["final_verdict"] == "not_met"
+    assessment = output.mediator_result["assessed_requirements"][0]
+    assert assessment["verdict"] == "not_met"
+    assert assessment["final_decision_source"] == "mediator_tiebreak_to_critic"
+
+
+def test_diagram_debate_service_exposes_parallelism_settings(monkeypatch):
+    from sdr.apps.ai.agents.base import BaseAgent
+    from sdr.apps.ai.agents.vision import DiagramDebateService, DiagramInput
+
+    responses = iter(
+        [
+            AIResponse(
+                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"Architecture diagram.","overall_verdict":"na","confidence":0.6,"reasoning":"Opening claim.","requirement_assessments":[{"requirement_id":"D-1","verdict":"na"},{"requirement_id":"D-2","verdict":"na"}]}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+            AIResponse(
+                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"Architecture diagram.","outcome":"uphold","requirement_reviews":[{"requirement_id":"D-1","hunter_verdict":"na","critic_verdict":"na","disposition":"uphold","reason":"Still not assessable.","review_state":"uphold_same_verdict"}],"hallucinated_claims":[],"reasoning":"Batch one."}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+            AIResponse(
+                content='{"diagram_scope_verdict":"architecture_relevant","diagram_scope_reasoning":"Architecture diagram.","outcome":"uphold","requirement_reviews":[{"requirement_id":"D-2","hunter_verdict":"na","critic_verdict":"na","disposition":"uphold","reason":"Still not assessable.","review_state":"uphold_same_verdict"}],"hallucinated_claims":[],"reasoning":"Batch two."}',
+                model="test",
+                provider=AIProvider.LOCAL,
+            ),
+        ]
+    )
+
+    monkeypatch.setattr(BaseAgent, "_call_llm", lambda self, **kwargs: next(responses))
+
+    service = DiagramDebateService()
+    service._debate_batch_size = 1
+    service._debate_batch_max_concurrency = 1
+    output = service.run_diagram_debate(
+        diagram=DiagramInput(
+            diagram_id="p-parallel",
+            image_b64=_diagram_bytes(),
+            page_number=1,
+            caption="Parallel settings",
+        ),
+        requirements=[
+            _requirement(ordinal=1, stable_key="D-1"),
+            _requirement(ordinal=2, stable_key="D-2"),
+        ],
+        tsd_context="Parallel settings test.",
+    )
+
+    assert output.error is None
+    assert service._debate_batch_max_concurrency >= 1
+    assert service._rebuttal_batch_max_concurrency >= 1
 
 
 class _FakeDiagramBlock:
@@ -581,4 +760,3 @@ def test_backend_runtime_source_has_no_legacy_vision_agent_usage():
         source = path.read_text(encoding="utf-8")
         assert "VisionAgent" not in source
         assert "audit_diagrams_for_parameter" not in source
-

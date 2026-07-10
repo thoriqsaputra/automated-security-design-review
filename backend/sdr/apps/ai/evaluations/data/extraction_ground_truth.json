@@ -29,7 +29,7 @@
     {
       "control_id": "1.1.4",
       "requirement_excerpt": "Verify documentation and justification of all the application's trust boundaries",
-      "expected_category": "design",
+      "expected_category": "design",  
       "rationale": "Trust boundary documentation IS the TSD — directly verifiable from architecture diagrams"
     },
     {

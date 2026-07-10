@@ -1,14 +1,14 @@
 """
 Shared real-diagram sourcing for vision evaluation scripts.
 
-Loads the same labeled `diagram_ground_truth_review_<id>.json` produced by
+Loads the same labeled `diagram_ground_truth_design_<id>.json` produced by
 `evaluations/data/build_diagram_ground_truth_template.py` and consumed by
-`retrieval/diagram_retrieval_eval.py` / `debate/diagram_ablation_eval.py`,
-and resolves each labeled (diagram_id, requirement_id) row to a real
-`DiagramInput` built from the design's parsed TSD document — no synthetic
-image generation. `design_id` is read directly from the ground-truth file
-(written there by build_diagram_ground_truth_template.py), so callers only
-need to pass `--ground-truth`.
+`retrieval/diagram_retrieval_eval.py` / `debate/diagram_ablation_eval.py`, and resolves each labeled
+(diagram_id, requirement_id) row to a real `DiagramInput` built from the
+design's parsed TSD document — no synthetic image generation. `design_id` is
+read directly from the ground-truth file (written there by
+build_diagram_ground_truth_template.py), so callers only need to pass
+`--ground-truth`.
 """
 from __future__ import annotations
 

@@ -1835,7 +1835,16 @@ class DebateService:
                 term in citation_text for term in ("unsupported", "deprecated", "obsolete", "end-of-life", "must not")
             )
             has_prohibition = any(marker in citation_text for marker in ("must not", "does not", "only", "exclusively", "solely"))
-            return mentions_target or has_prohibition
+            if mentions_target or has_prohibition:
+                return True
+            # A citation that names a concrete, specific technology inventory for
+            # the relevant tier (e.g. explicitly-named frameworks/libraries making
+            # up "the presentation tier"/"the client-side stack") is itself
+            # closed-world evidence for this requirement class — a TSD that
+            # documents exactly which frontend libraries are used doesn't leave
+            # room for an undocumented Flash/ActiveX component, even without an
+            # explicit "we don't use X" line.
+            return self._has_named_technology_inventory_evidence(citation_text)
 
         if any(term in requirement_text for term in ("weak authenticators", "sms and email", "secondary verification")):
             return self._has_weak_authenticator_restriction_evidence(citations)
@@ -1844,6 +1853,37 @@ class DebateService:
             return self._has_uniform_strong_auth_evidence(citations)
 
         return any(marker in citation_text for marker in _EXPLICIT_ABSENCE_EVIDENCE_MARKERS)
+
+    def _has_named_technology_inventory_evidence(self, citation_text: str) -> bool:
+        tier_markers = (
+            "presentation tier",
+            "client-side stack",
+            "client side stack",
+            "front end",
+            "frontend",
+            "technology stack",
+            "client-side technolog",
+            "client side technolog",
+        )
+        if not any(marker in citation_text for marker in tier_markers):
+            return False
+        named_tech_markers = (
+            "jquery",
+            "jsp",
+            "java server pages",
+            "bootstrap",
+            "react",
+            "angular",
+            "vue",
+            "javascript",
+            "typescript",
+            "css",
+            "html",
+            "ajax",
+            "dom",
+        )
+        hits = sum(1 for marker in named_tech_markers if marker in citation_text)
+        return hits >= 2
 
     def _requirement_keywords(self, parameter_text: str) -> List[str]:
         words = []
@@ -2246,7 +2286,14 @@ class DebateService:
         if any(term in requirement_text for term in ("encrypt", "crypto", "signed")):
             mechanism_hits += int(any(term in citation_text for term in ("tls", "cryptographic", "signed", "encrypted")))
 
-        return keyword_hits >= 2 or mechanism_hits >= 2
+        # Two independent signals (a requirement keyword present, and a matching
+        # technical-mechanism term present) are as strong a sign as two of the same
+        # kind — without this, wording that splits across categories (e.g. the
+        # requirement's "authenticated" keyword vs. a citation reading "authentication
+        # tokens", a different word form) fails the single-category >=2 bar even
+        # though both a domain keyword and a concrete mechanism term are genuinely
+        # present in the citation.
+        return keyword_hits >= 2 or mechanism_hits >= 2 or (keyword_hits >= 1 and mechanism_hits >= 1)
 
     def _has_essential_gap(
         self,

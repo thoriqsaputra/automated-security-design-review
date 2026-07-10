@@ -7,12 +7,12 @@ CategoryDiagramRequirementEmbedding) against the same naive fallback path produc
 falls back to on embedding/search failure (`list_diagram_requirements()[:top_k]`,
 ordinal order, no ranking).
 
-Ground truth is a human-labeled `diagram_ground_truth_review_<id>.json` file (see
-`evaluations/data/build_diagram_ground_truth_template.py`), where each diagram lists
-the FULL candidate pool of diagram requirements for its category with a `relevant`
-flag — not just the subset the system happened to retrieve. This is what makes
-recall (not just precision) measurable: a requirement the vector search never
-retrieved can still be graded as a miss.
+Ground truth is a human-labeled `diagram_ground_truth_design_<id>.json` file (see
+`evaluations/data/build_diagram_ground_truth_template.py`), where each diagram
+lists the FULL candidate pool of diagram requirements for its category with a
+`relevant` flag — not just the subset the system happened to retrieve. This is
+what makes recall (not just precision) measurable: a requirement the vector
+search never retrieved can still be graded as a miss.
 
 Metrics per strategy (averaged across ground-truth diagrams):
   precision      — |retrieved ∩ relevant| / |retrieved|
@@ -22,7 +22,7 @@ Metrics per strategy (averaged across ground-truth diagrams):
 
 Usage:
     python diagram_retrieval_eval.py --design-id 7 \\
-        --ground-truth /app/sdr/apps/ai/evaluations/data/diagram_ground_truth_review_12.json
+        --ground-truth /app/sdr/apps/ai/evaluations/data/diagram_ground_truth_design_7.json
 """
 import argparse
 import json
@@ -47,6 +47,7 @@ from sdr.apps.ai.engine.persistence.workflow_repository import SqlAlchemyReviewW
 from sdr.apps.ai.engine.debate.diagram_requirement_selector import DiagramRequirementSelector
 
 from sdr.apps.ai.evaluations.shared import results_path
+from sdr.apps.ai.evaluations.shared.diagram_ground_truth import resolve_diagram_ground_truth_path
 from sdr.apps.ai.evaluations.shared.metrics import (
     calculate_context_precision,
     calculate_set_retrieval_precision_recall,
@@ -118,19 +119,22 @@ def main():
     )
     parser.add_argument("--design-id", type=int, required=True)
     parser.add_argument(
-        "--ground-truth", type=str, required=True,
-        help="Path to a labeled diagram ground-truth JSON (see build_diagram_ground_truth_template.py)"
+        "--ground-truth",
+        type=str,
+        default=None,
+        help="Path to a labeled diagram ground-truth JSON (defaults to the canonical design-scoped file)",
     )
-    parser.add_argument("--top-k", type=int, default=15)
+    parser.add_argument("--top-k", type=int, default=AnalysisPipelineConfig().vision_diagram_requirements_max_items)
     parser.add_argument("--sample-seed", type=int, default=42, help="Seed for the random-baseline draw.")
     parser.add_argument("--output", type=str, default="eval_diagram_retrieval.json")
     args = parser.parse_args()
 
-    if not os.path.exists(args.ground_truth):
-        logger.error(f"Ground truth file not found: {args.ground_truth}")
+    gt_path = args.ground_truth or resolve_diagram_ground_truth_path(args.design_id)
+    if not os.path.exists(gt_path):
+        logger.error(f"Ground truth file not found: {gt_path}")
         return
 
-    gt = _load_ground_truth(args.ground_truth)
+    gt = _load_ground_truth(gt_path)
     category_id = gt.get("category_id")
     ingestion_job_id = gt.get("ingestion_job_id")
     if category_id is None or ingestion_job_id is None:
@@ -241,6 +245,7 @@ def main():
 
     summary = {
         "design_id": args.design_id,
+        "ground_truth_path": gt_path,
         "top_k": args.top_k,
         "sample_seed": args.sample_seed,
         "diagrams_evaluated": len(per_diagram_results),

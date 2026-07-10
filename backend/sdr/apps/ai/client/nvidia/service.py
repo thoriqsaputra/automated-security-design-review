@@ -14,7 +14,7 @@ from sdr.apps.ai.client.base import (
     AIProvider,
     AIResponse,
     AIServiceInterface,
-    convert_to_langchain_messages,
+    convert_to_openai_messages,
 )
 from sdr.apps.ai.rate_limiter import get_rate_limiter
 
@@ -115,6 +115,7 @@ class NVIDIAAIService(AIServiceInterface):
         response_format: Optional[Dict[str, str]] = None,
         image_bytes: Optional[bytes] = None,
         image_format: str = "png",
+        image_payloads: Optional[List[Dict[str, Any]]] = None,
         stream: bool = False,
         **kwargs
     ) -> Union[AIResponse, Generator[str, None, None]]:
@@ -123,7 +124,12 @@ class NVIDIAAIService(AIServiceInterface):
 
         try:
             # `messages` is modified by `convert_to_langchain_messages` for image support if needed
-            convert_to_langchain_messages(messages, image_bytes, image_format)
+            messages = convert_to_openai_messages(
+                messages,
+                image_bytes,
+                image_format,
+                image_payloads=image_payloads,
+            )
             
             invoke_url = "https://integrate.api.nvidia.com/v1/chat/completions"
             headers = {

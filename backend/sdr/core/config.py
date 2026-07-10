@@ -107,8 +107,19 @@ class Settings(BaseSettings):
     AI_VISION_ENABLED: bool = Field(default=True)
     AI_VISION_MAX_CONCURRENCY: int = Field(default=2)
     AI_VISION_MIN_DIAGRAM_BYTES: int = Field(default=512)
-    AI_VISION_DIAGRAM_REQUIREMENTS_MAX_ITEMS: int = Field(default=15)
+    AI_VISION_DIAGRAM_REQUIREMENTS_MAX_ITEMS: int = Field(default=16)
     AI_VISION_SKIP_MEDIATOR_ON_UPHOLD: bool = Field(default=True)
+    AI_VISION_DEBATE_REQUIREMENT_BATCH_SIZE: int = Field(default=10)
+    AI_VISION_DEBATE_BATCH_RETRY_LIMIT: int = Field(default=1)
+    AI_VISION_DEBATE_BATCH_MAX_CONCURRENCY: int = Field(default=6)
+    AI_VISION_DEBATE_REBUTTAL_MAX_CONCURRENCY: int = Field(default=6)
+    # Self-consistency voting: run each diagram's full debate this many times
+    # and take the majority verdict (DiagramDebateService.run_diagram_debate_voted).
+    # Literature-backed lever for stabilizing debate outputs against the kind
+    # of batch-dependent instability observed empirically (design 18: identical
+    # Hunter hallucination pattern corrected on one diagram, missed entirely on
+    # another in the same run). 1 = disabled (single run, current behavior).
+    AI_VISION_DEBATE_VOTES: int = Field(default=1)
 
     AI_RAPTOR_SUMMARY_MAX_CONCURRENCY: int = Field(default=3)
     AI_RAPTOR_EMBED_MAX_CONCURRENCY: int = Field(default=4)

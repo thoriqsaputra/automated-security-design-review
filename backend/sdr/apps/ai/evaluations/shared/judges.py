@@ -119,8 +119,8 @@ def judge_context_recall(question: str, ground_truth: str, retrieved_context: st
 DIAGRAM_RELEVANCE_PROMPT = """You are an expert evaluator building ground truth \
 for a diagram-retrieval evaluation in an AI Security Auditor system.
 
-You will be shown a real architecture/security diagram (with numbered Set-of-Mark \
-markers burned into it) and a single candidate security requirement. Your only \
+You will be shown a real architecture/security diagram and a single candidate \
+security requirement. Your only \
 job is to judge: is this requirement genuinely CHECKABLE from this diagram — i.e. \
 could a well-annotated version of this diagram plausibly show evidence that \
 would let a reviewer determine whether the requirement is met or not met?

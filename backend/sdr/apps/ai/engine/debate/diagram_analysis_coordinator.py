@@ -114,7 +114,6 @@ class DiagramAnalysisCoordinator:
                 getattr(category, "code", None),
             )
             return
-        tsd_context = tsd_document.full_text[:3000] if hasattr(tsd_document, "full_text") else ""
         category_code = getattr(category, "code", None) or "unknown"
 
         review_debate_event_store.seed_debates(
@@ -133,34 +132,15 @@ class DiagramAnalysisCoordinator:
         ) as executor:
             futures = {}
             for diagram in eligible_diagrams:
-                requirements = self.requirement_selector.select_for_diagram(
+                future = executor.submit(
+                    capture_current_context(self._select_requirements_and_run_debate),
                     diagram=diagram,
                     tsd_document=tsd_document,
                     category=category,
                     ingestion_job=ingestion_job,
-                )
-                self.logger.info(
-                    "DiagramAnalysisCoordinator.run: diagram_id=%s requirements_selected=%d",
-                    diagram.diagram_id,
-                    len(requirements),
-                )
-                future = executor.submit(
-                    capture_current_context(self.diagram_debate_service.run_diagram_debate),
-                    diagram=diagram,
-                    requirements=requirements,
-                    tsd_context=tsd_context,
+                    review=review,
+                    category_code=category_code,
                     cancel_check=cancel_check,
-                    agent_started_handler=lambda agent, diagram=diagram: self._publish_live_agent_start(
-                        review=review, diagram=diagram, category_code=category_code, agent=agent,
-                    ),
-                    agent_completed_handler=lambda agent, content, diagram=diagram, critic_outcome=None, requires_rebuttal=None: self._publish_live_agent_complete(
-                        review=review,
-                        diagram=diagram,
-                        agent=agent,
-                        content=content,
-                        critic_outcome=critic_outcome,
-                        requires_rebuttal=requires_rebuttal,
-                    ),
                 )
                 futures[future] = diagram
             for future in as_completed(futures):
@@ -226,6 +206,84 @@ class DiagramAnalysisCoordinator:
             "DiagramAnalysisCoordinator.run: COMPLETE — %d diagram findings persisted",
             persisted_count,
         )
+
+    def _select_requirements_and_run_debate(
+        self,
+        *,
+        diagram,
+        tsd_document,
+        category,
+        ingestion_job,
+        review,
+        category_code: str,
+        cancel_check=None,
+    ):
+        """Requirement selection (several sequential gatekeeper LLM calls per
+        diagram) used to run synchronously in the main loop before a diagram's
+        debate was even submitted to the executor — that serialized every
+        diagram's debate-start behind every earlier diagram's selection, even
+        though AI_VISION_MAX_CONCURRENCY would happily run many debates at
+        once. Bundling selection + debate into one executor-submitted unit
+        lets diagram N+1's selection run concurrently with diagram N's
+        selection AND debate, so debates actually start close together."""
+        requirements = self.requirement_selector.select_for_diagram(
+            diagram=diagram,
+            tsd_document=tsd_document,
+            category=category,
+            ingestion_job=ingestion_job,
+        )
+        self.logger.info(
+            "DiagramAnalysisCoordinator.run: diagram_id=%s requirements_selected=%d",
+            diagram.diagram_id,
+            len(requirements),
+        )
+        tsd_context = self._build_diagram_tsd_context(
+            tsd_document=tsd_document, diagram=diagram,
+        )
+        return self.diagram_debate_service.run_diagram_debate_voted(
+            diagram=diagram,
+            requirements=requirements,
+            tsd_context=tsd_context,
+            votes=self.config.vision_debate_votes,
+            cancel_check=cancel_check,
+            agent_started_handler=lambda agent, diagram=diagram: self._publish_live_agent_start(
+                review=review, diagram=diagram, category_code=category_code, agent=agent,
+            ),
+            agent_completed_handler=lambda agent, content, diagram=diagram, critic_outcome=None, requires_rebuttal=None: self._publish_live_agent_complete(
+                review=review,
+                diagram=diagram,
+                agent=agent,
+                content=content,
+                critic_outcome=critic_outcome,
+                requires_rebuttal=requires_rebuttal,
+            ),
+        )
+
+    @staticmethod
+    def _build_diagram_tsd_context(*, tsd_document, diagram, max_chars: int = 3000) -> str:
+        """Broader per-diagram TSD grounding — the page(s) the diagram actually
+        lives on, not a blind document-prefix slice. A raw `full_text[:N]`
+        slice was previously shared identically across every diagram in the
+        document and, for any TSD with a table of contents, front matter, or
+        cover page, that slice is mostly table-of-contents noise rather than
+        actual project/architecture content — the same irrelevant text handed
+        to every diagram's debate regardless of where in the document it
+        appears. Diagram.caption/.surrounding_text already cover the tight
+        bbox-local text; this covers the page-level framing around it."""
+        pages = getattr(tsd_document, "pages", None) or []
+        page_number = getattr(diagram, "page_number", None)
+        if isinstance(page_number, int) and pages:
+            window_texts = []
+            for candidate_page_number in (page_number - 1, page_number, page_number + 1):
+                if 1 <= candidate_page_number <= len(pages):
+                    page_text = (getattr(pages[candidate_page_number - 1], "all_text", "") or "").strip()
+                    if page_text:
+                        window_texts.append(page_text)
+            window = "\n\n".join(window_texts).strip()
+            if window:
+                return window[:max_chars]
+        full_text = getattr(tsd_document, "full_text", "") or ""
+        return full_text[:max_chars]
 
     def _build_live_debate_descriptor(self, *, diagram, category_code: str) -> dict:
         return {

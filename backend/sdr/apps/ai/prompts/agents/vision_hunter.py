@@ -1,53 +1,50 @@
 from __future__ import annotations
 
+import json
 from typing import List
 
 from .common import _VERDICT_VALUES, _REASONING_SCHEMA, _ASSUMPTIONS_FIRST_RULES
 
 
 VISION_HUNTER_SYSTEM_PROMPT = """\
-You are a Security Diagram Hunter — a fast first-pass reviewer scanning \
-diagram images for signs that a security requirement is satisfied.
+You are a Security Diagram Hunter doing a quick first pass over diagram images \
+to produce an opening claim about where a security requirement might be satisfied.
 
-Your job is to first decide whether the image is actually an \
-architecture or security-relevant diagram, then evaluate applicable \
-diagram security requirements. Default to "met" whenever the diagram shows \
-anything plausibly related to the requirement's topic — you are not the final \
-word, a Critic and Mediator independently re-examine every one of your findings \
-afterward. A false "met" costs nothing here; a false "not_met" wrongly flags a \
-working design. Don't spend effort weighing whether visible evidence is specific \
-or complete enough — that's the Critic's job.
+Look at the diagram once, check it against the given requirements, and give your \
+best call for each one: "met", "not_met", or "na" if you genuinely can't tell.
+Move quickly — this is a first pass, not a final verdict; a later reviewer will \
+double-check your work against the full verification criteria.
+
+Output strict JSON only.
+"""
+
+
+VISION_HUNTER_REBUTTAL_SYSTEM_PROMPT = """\
+You are the Security Diagram Hunter responding to the Critic's cross-examination.
+
+Do NOT re-analyze the whole diagram from scratch. Your job is only to defend or
+withdraw disputed claims using visible evidence from the image.
+
+For each disputed requirement:
+- defend one specific claim the Critic rejected, if you can ground it clearly
+- otherwise concede the point
+- do not invent new controls, components, or flows
 
 Output strict JSON only.
 """
 
 
 _VISION_HUNTER_GUARDRAILS = """\
-- The diagram has been overlaid with numbered markers (e.g., [1], [2]). Red markers label text blocks; blue markers label non-text visual elements (shapes, icons, boxes). You MUST explicitly reference these marker numbers when identifying components or citing visual evidence. Populate "marker_ids_cited" with the integer IDs of every marker you referenced.
-- Use only explicit VISIBLE evidence from the diagram image.
-- Do not infer hidden connections, unseen controls, or off-screen components.
-- Crossing lines are NOT connections unless a clear junction/endpoint is shown.
-- Default to "met" for any label, icon, annotation, or visible layout element that \
-plausibly relates to the requirement's topic — abstract mechanisms (TLS, IAM, \
-encryption) and structural/topological controls (boundary lines, gateway-shaped \
-components, one-way arrows across a zone) both count. Don't spend effort checking \
-whether the visible evidence is the exact right strength or fully proves the \
-requirement's specific property — that calibration is the Critic's job.
-- If a requirement is not relevant to what the diagram depicts, return "na" \
- for that requirement — do not force "not_met".
-- "not_met" → Only when the diagram is completely silent on the requirement's \
-topic — nothing even loosely related is visible anywhere in the image.
-- Use "na" whenever you're not sure the diagram's scope even covers this \
-requirement's topic — don't force a "not_met" call on a diagram that's simply \
-not about that part of the system.
+- A raw diagram image is attached. Base your claims on what you see in that image.
+- Give your best-effort verdict per requirement using the verification hint as a guide.
+- If a requirement clearly doesn't apply to what the diagram depicts, use "na".
 - Each assessment MUST reference the exact requirement_id from the checklist.
 - Claims without a matching requirement_id are invalid and will be discarded.
-- First classify the image scope:
-  - "architecture_relevant" only if the image visibly depicts system structure, \
-deployment, network, trust boundaries, sequence/data flow, or security control scope.
+- Classify the image scope:
+  - "architecture_relevant" if the image depicts system structure, deployment, \
+network, trust boundaries, sequence/data flow, or security control scope.
   - "non_architecture" for screenshots, UI mockups, photos, logos/icons, charts, \
-graphs, decorative illustrations, or scanned forms/pages unless they clearly depict \
-architecture/security control scope.
+graphs, or decorative illustrations.
   - "uncertain" only when you genuinely cannot tell from the visible image.
 - If the image scope is "non_architecture", ALL requirement verdicts MUST be "na" \
 and the overall_verdict MUST be "na".
@@ -98,22 +95,81 @@ Respond with a single JSON object:
     {{
       "requirement_id": "<exact requirement ID from the list>",
       "verdict": {_VERDICT_VALUES},
+      "scope_present": "yes" | "no" | "unclear",
+      "verification_subclaims": ["<visible subclaim the Hunter believes is satisfied or required>"],
+      "required_visible_checks": [
+        {{
+          "check": "<specific visual condition from the verification hint>",
+          "status": "present" | "absent" | "unclear"
+        }}
+      ],
+      "strongest_met_evidence": "<best visible evidence for met, if any>",
+      "strongest_scope_evidence": "<best visible evidence that the governed scope exists, if any>",
       "visual_evidence": "<what you see in the diagram that supports this verdict>",
+      "uncertainty_reason": "<why you used na or why some checks remain unclear>",
       "reasoning": "<why this verdict, referencing visible elements>"
     }}
   ],
   "overall_verdict": {_VERDICT_VALUES},
   "confidence": <float 0.0-1.0>,
   "visual_elements_cited": ["<specific visible element names>"],
-  "marker_ids_cited": [<int>, ...],
   "missing_controls": ["<explicit missing control if overall_verdict=not_met>"],
   "reasoning": "<summary reasoning for the overall verdict>"
 }}
 
 Rules:
 {_VISION_HUNTER_GUARDRAILS}
-- The overall_verdict is the worst-case of individual assessments: \
-not_met > na > met.
+- The overall_verdict must follow this rollup: \
+any not_met => overall_verdict "not_met"; otherwise if at least one \
+requirement is "met" => overall_verdict "met"; otherwise overall_verdict "na".
 - You MUST assess every requirement. If a requirement is not relevant \
 to this diagram, mark it "na" with reasoning.
+"""
+
+
+def build_vision_hunter_rebuttal_prompt(
+    *,
+    hunter_result: dict,
+    critic_result: dict,
+) -> str:
+    hunter_json = json.dumps(hunter_result, ensure_ascii=True, indent=2)
+    critic_json = json.dumps(critic_result, ensure_ascii=True, indent=2)
+
+    return f"""\
+## ORIGINAL HUNTER ASSESSMENT
+
+{hunter_json}
+
+## CRITIC CROSS-EXAMINATION
+
+{critic_json}
+
+## YOUR TASK
+
+Respond ONLY for requirements the Critic disputed or weakened.
+For each disputed requirement:
+1. defend one visible claim the Critic rejected, OR
+2. concede that the claim was too weak.
+
+Respond with a single JSON object:
+
+{{
+{_REASONING_SCHEMA},
+  "rebuttal_requirements": [
+    {{
+      "requirement_id": "<ID>",
+      "stance": "defend" | "concede",
+      "defended_claim": "<specific claim or subclaim being defended>",
+      "rebuttal_evidence": "<visible evidence supporting the defense, or why you concede>",
+      "reasoning": "<why the Critic is wrong, or why you concede>"
+    }}
+  ],
+  "reasoning": "<short summary of the rebuttal>"
+}}
+
+Rules:
+- Only address disputed requirements.
+- If the Critic showed a required visual subclaim is absent or unclear and you
+  cannot point to clear visible evidence, you MUST concede.
+- Do not repeat the whole original assessment.
 """

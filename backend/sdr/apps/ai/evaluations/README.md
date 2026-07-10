@@ -336,21 +336,21 @@ vs. single-model inference).
 
 ### Step 1 — Build the ground-truth template
 
-Requires at least one completed, vision-enabled review with diagram findings
-(`analysis_mode` other than `text_only`).
+Requires a design with at least one completed, vision-enabled review that has
+diagram findings (`analysis_mode` other than `text_only`).
 
 ```bash
 docker exec automated-security-design-review-backend-1 \
   python /app/sdr/apps/ai/evaluations/data/build_diagram_ground_truth_template.py \
-  --review-id 1
+  --design-id 1
 ```
 
-This downloads every diagram's marked (Set-of-Mark) image to
-`results/vision/ground_truth_images/review_1/` and writes
-`data/diagram_ground_truth_review_1.json`, listing — for every diagram — the **full**
-candidate pool of diagram requirements for the review's category (not just the ones the
-system happened to select). Open each image, then for every `candidate_requirements`
-entry set:
+This downloads every diagram's raw persisted image to
+`results/vision/ground_truth_images/design_1/` and writes
+`data/diagram_ground_truth_design_1.json`, listing — for every diagram — the
+**full** candidate pool of diagram requirements for the design's category (not
+just the ones the system happened to select). Open each image, then for every
+`candidate_requirements` entry set:
 
 - `"relevant": true/false` — is this requirement genuinely checkable from this diagram?
 - `"label": "met"|"not_met"|"na"` — only for `relevant: true` rows.
@@ -361,20 +361,20 @@ entry set:
 Mediator, so this isn't the system grading its own homework) instead of manual review.
 Costs one vision LLM call per `(diagram, candidate requirement)` row — e.g. 3 diagrams
 × 41 candidates ≈ 123 calls for a typical review. Writes to
-`diagram_ground_truth_review_<id>_llm_judged.json` by default (not the plain
-`diagram_ground_truth_review_<id>.json` name) so it never collides with or overwrites
-a hand-labeled file:
+`diagram_ground_truth_design_<id>_llm_judged.json` by default (not the plain
+`diagram_ground_truth_design_<id>.json` name) so it never collides with or
+overwrites a hand-labeled file:
 
 ```bash
 docker exec automated-security-design-review-backend-1 \
   python /app/sdr/apps/ai/evaluations/data/build_diagram_ground_truth_template.py \
-  --review-id 1 --llm-judge
+  --design-id 1 --llm-judge
 ```
 
 `"label"` still requires manual review either way — the judge only covers relevance
 scoping, not met/not_met verdicts.
 
-This one labeled file feeds both evals below.
+This one labeled file feeds all diagram evals below.
 
 ### Step 2a — Diagram requirement retrieval eval
 
@@ -385,7 +385,7 @@ production uses when embedding/search fails.
 ```bash
 docker exec automated-security-design-review-backend-1 \
   python /app/sdr/apps/ai/evaluations/retrieval/diagram_retrieval_eval.py \
-  --design-id 1 --ground-truth /app/sdr/apps/ai/evaluations/data/diagram_ground_truth_review_1.json
+  --design-id 1 --ground-truth /app/sdr/apps/ai/evaluations/data/diagram_ground_truth_design_1.json
 ```
 
 | Metric | Meaning |
@@ -407,7 +407,7 @@ from a completed, vision-enabled review) — no LLM calls, free to re-run.
 ```bash
 docker exec automated-security-design-review-backend-1 \
   python /app/sdr/apps/ai/evaluations/debate/diagram_ablation_eval.py \
-  --review-id 1 --ground-truth /app/sdr/apps/ai/evaluations/data/diagram_ground_truth_review_1.json
+  --design-id 1 --ground-truth /app/sdr/apps/ai/evaluations/data/diagram_ground_truth_design_1.json
 ```
 
 | Metric | Target | Meaning |
@@ -424,14 +424,12 @@ Output: `results/debate/diagram_debate_ablation_results.json`
 
 ## Threats to validity
 
-Both diagram evals currently draw on a single design/review (design 15 /
-review 53), which has 53 usable met/not_met-labeled `(diagram, requirement)`
-samples (12 `met`, 41 `not_met`). This is a real generalizability limit —
-results have not been confirmed to hold across other designs or diagram
-styles. Extending coverage requires running
-`data/build_diagram_ground_truth_template.py` against another completed,
-vision-enabled review and manually labeling the resulting candidates; it is
-not something that can be scripted away.
+The diagram evals currently draw on a small set of designs with hand-labeled
+ground truth. That is still a generalizability limit, but the labels are now
+reusable across future reviews of the same design. Extending coverage requires
+running `data/build_diagram_ground_truth_template.py` against another design
+and manually labeling the resulting candidates; it is not something that can
+be scripted away.
 
 ---
 

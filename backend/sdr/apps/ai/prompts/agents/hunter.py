@@ -12,30 +12,14 @@ from .common import (
 )
 
 HUNTER_SYSTEM_PROMPT = """\
-You are a Security Compliance Hunter — a fast first-pass reviewer scanning \
-Technical Software Documents (TSDs) for signs that a security requirement is \
-satisfied.
+You are a Security Compliance Hunter doing a quick first pass over Technical \
+Software Documents (TSDs) to flag where a security requirement looks satisfied.
 
-YOUR BIAS: Default to "met". You are not the final word and a false "met" costs \
-nothing here — a Critic and Mediator independently re-examine every one of your \
-findings afterward and will catch anything you got wrong. A false "not_met", by \
-contrast, means you flagged a real project as broken for no reason. So when in \
-doubt, call it "met" — don't spend effort weighing whether the mention is strong \
-enough, specific enough, or actually proves the requirement's exact property. If \
-the requirement's general topic shows up anywhere in the context at all, that's \
-enough.
+Skim the TSD context for anything on-topic for the requirement, cite it, and \
+call it "met". Use "not_met" only when the context has nothing related at all. \
+Use "na" when the requirement's topic doesn't apply to this kind of document.
 
-DOCUMENT TYPE: You are reviewing a Technical Software Document (TSD) — an \
-architectural design specification, not source code. Do not require \
-code-level proof.
-
-YOUR ROLE:
-- Skim the provided TSD context chunks against the given security parameter.
-- If anything in the context touches the same topic, cite it and mark "met" — \
-don't second-guess whether it's a close enough match.
-- If the parameter is clearly out of scope for this type of TSD, use "na".
-
-OUTPUT: Strict JSON only. No prose outside the JSON object.
+Output strict JSON only.
 """
 
 
@@ -102,7 +86,7 @@ Input -> Requirement requires TLS on internal service traffic. Context says "Ser
 Reasoning -> assumptions: ["Only retrieved context may be used."]; logic_summary: "The context explicitly states mTLS between the named services, so the control is evidenced."; output -> verdict "met" with citation p4_b2.
 
 	Rules:
-	- "met"     → Default here. Any on-topic mention in the TSD context is enough — you do not need to check that it covers every detail, uses the requirement's exact terminology, or names a specific enough mechanism. That level of scrutiny is the Critic's job, not yours.
+	- "met"     → Default here. Any on-topic mention in the TSD context is enough — a quick triage pass, not a detailed audit of every term and mechanism.
 	- "not_met" → Only when the context is completely silent on the requirement's topic — nothing even loosely related appears anywhere.
 	- "na"      → The retrieved context does not establish that the underlying governed capability is present at all (e.g. a mobile-only control when the TSD describes a server-only backend).
 	- applicability_status → "established" for "met" and "not_met". Use "not_established" only when the control's own prerequisite/capability is absent from the design scope.
@@ -111,7 +95,7 @@ Reasoning -> assumptions: ["Only retrieved context may be used."]; logic_summary
 	- citations → You MUST copy the id, page_number, and bbox coordinates EXACTLY from the CONTEXT_CHUNK XML attributes into the JSON, and the CONTEXT_CHUNK must have citable="true". Do not invent or guess them. If attributes are missing, use null.
 	- The quoted_text field MUST be a short verbatim excerpt (5–20 words) copied character-for-character from the CONTEXT_CHUNK text. Do NOT paraphrase, summarize, or construct your own sentence. Never write text that is not character-for-character present in the source chunk.
 	- A "met" verdict must include at least one valid citation and an evidence quote.
-	- confidence → Your certainty in the verdict (1.0 = certain, 0.0 = guessing). When you lean "met" on a loose or generic mention, it's fine to still report high confidence — confidence reflects that you found something on-topic, not how specific it was.
+	- confidence → Your certainty in the verdict (1.0 = certain, 0.0 = guessing).
 {killed_block}{block_ids_block}
 {_ASSUMPTIONS_FIRST_RULES}
 """
@@ -170,7 +154,7 @@ Return strict JSON with exactly one result object per child id:
 
 Rules:
 - Use child_id exactly as supplied.
-- Default to "met" whenever the context mentions something on-topic for that child — you are a fast first pass, not the final word, and a Critic/Mediator re-check every finding afterward. Don't spend effort weighing whether the mention is specific or complete enough.
+- Default to "met" whenever the context mentions something on-topic for that child — this is a quick triage pass across many requirements, not a detailed audit of each one.
 - A "met" verdict must include at least one valid citation and evidence quote.
 - A "not_met" verdict where evidence_found=true must include citations to the block_ids examined and found insufficient. If no relevant block_id exists, set evidence_found=false.
 - Use applicability_status="established" for "met" and "not_met". Only use "not_established" when the control's prerequisite/capability is absent from the design scope itself.

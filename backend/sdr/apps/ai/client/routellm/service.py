@@ -50,6 +50,7 @@ class RouteLLMAIService(AIServiceInterface):
         response_format: Optional[Dict[str, str]] = None,
         image_bytes: Optional[bytes] = None,
         image_format: str = "png",
+        image_payloads: Optional[List[Dict[str, Any]]] = None,
         stream: bool = False,
         **kwargs
     ) -> Union[AIResponse, Generator[str, None, None]]:
@@ -67,7 +68,12 @@ class RouteLLMAIService(AIServiceInterface):
         
         try:
             # Convert messages to OpenAI format (handling images if any)
-            oa_messages = convert_to_openai_messages(messages, image_bytes, image_format)
+            oa_messages = convert_to_openai_messages(
+                messages,
+                image_bytes,
+                image_format,
+                image_payloads=image_payloads,
+            )
             
             request_kwargs = {
                 "model": model_to_use,
