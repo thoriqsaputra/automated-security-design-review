@@ -17,6 +17,10 @@ class AnalysisPipelineConfig:
     vision_max_concurrency: int = 2
     vision_skip_mediator_on_uphold: bool = True
     vision_debate_votes: int = 1
+    vision_extraction_votes: int = 3
+    vision_extraction_merge_threshold: float = 0.5
+    vision_extraction_fuzzy_match_threshold: float = 0.75
+    vision_reasoner_batch_size: int = 10
     @classmethod
     def from_settings(cls) -> "AnalysisPipelineConfig":
         return cls(
@@ -42,4 +46,12 @@ class AnalysisPipelineConfig:
                 getattr(settings, "AI_VISION_SKIP_MEDIATOR_ON_UPHOLD", True)
             ),
             vision_debate_votes=max(1, int(getattr(settings, "AI_VISION_DEBATE_VOTES", 1))),
+            vision_extraction_votes=max(1, int(getattr(settings, "AI_VISION_EXTRACTION_VOTES", 3))),
+            vision_extraction_merge_threshold=float(
+                getattr(settings, "AI_VISION_EXTRACTION_MERGE_THRESHOLD", 0.5)
+            ),
+            vision_extraction_fuzzy_match_threshold=float(
+                getattr(settings, "AI_VISION_EXTRACTION_FUZZY_MATCH_THRESHOLD", 0.75)
+            ),
+            vision_reasoner_batch_size=max(1, int(getattr(settings, "AI_VISION_REASONER_BATCH_SIZE", 10))),
         )

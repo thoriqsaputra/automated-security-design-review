@@ -160,6 +160,136 @@ class VisionMediatorAgent(VisionAgent):
     reasoning_effort: str = "high"
 
 
+class VisionExtractorAgent(VisionAgent):
+    """VisionAgent pinned to the Extractor's own model (AI_MODEL_VISION_EXTRACTOR) —
+    Stage 1 of the extract-then-reason pipeline. This is a pure perception pass:
+    describe what's visibly in the diagram, no requirement judgment at all, so a
+    low token budget / low reasoning effort is appropriate (and cheap, since it
+    may run multiple independent times for self-consistency voting)."""
+    model_component: str = "vision_extractor"
+    max_tokens: int = 4096
+    reasoning_effort: str = "low"
+
+
+class VisionReasonerAgent(VisionAgent):
+    """VisionAgent pinned to the Reasoner's own model (AI_MODEL_VISION_REASONER) —
+    Stage 2 of the extract-then-reason pipeline. Deliberately uses run_text(),
+    never run_multimodal() — no image is attached here, only the structured
+    extraction produced by the Extractor. This is where the reasoning budget
+    goes now that grounding is decoupled from perception."""
+    model_component: str = "vision_reasoner"
+    max_tokens: int = 8192
+    reasoning_effort: str = "high"
+
+
+@dataclass
+class MergedDiagramExtraction:
+    """Self-consistency-merged output of N independent Stage-1 extraction
+    passes over the same diagram image. Each element (component/trust_boundary/
+    flow) carries a `confirmed` flag: True if it appeared in >= merge_threshold
+    fraction of the N passes, False if it only appeared in a minority (kept,
+    not dropped, so Stage 2 can still cite it at reduced trust)."""
+
+    components: List[Dict[str, Any]] = field(default_factory=list)
+    trust_boundaries: List[Dict[str, Any]] = field(default_factory=list)
+    flows: List[Dict[str, Any]] = field(default_factory=list)
+    other_visible_text: List[str] = field(default_factory=list)
+    diagram_scope_verdict: str = "uncertain"
+    diagram_scope_reasoning: str = ""
+    diagram_style: str = "other"
+    votes_total: int = 1
+    raw_passes: List[Dict[str, Any]] = field(default_factory=list)
+    merge_diagnostics: Dict[str, Any] = field(default_factory=dict)
+
+    def confirmed_element_ids(self) -> set:
+        return {
+            str(element["id"])
+            for group in (self.components, self.trust_boundaries, self.flows)
+            for element in group
+            if element.get("confirmed")
+        }
+
+    def all_element_ids(self) -> set:
+        return {
+            str(element["id"])
+            for group in (self.components, self.trust_boundaries, self.flows)
+            for element in group
+        }
+
+    def _component_label(self, component_id: Optional[str]) -> str:
+        for component in self.components:
+            if str(component.get("id")) == str(component_id):
+                return str(component.get("name") or component_id)
+        return str(component_id or "unknown")
+
+    def _confirmation_tag(self, element: Dict[str, Any]) -> str:
+        return "[confirmed]" if element.get("confirmed") else "[unconfirmed]"
+
+    def to_reasoner_text(self) -> str:
+        """
+        Serializes this extraction for the Stage-2 (text-only) reasoning prompt.
+        Renders TWO blocks so the reasoner never has to reconstruct structural
+        relationships (containment, adjacency) by mentally joining ids across
+        separate arrays: (1) tagged raw JSON — needed so the reasoner can emit
+        valid cited_element_ids — and (2) a deterministically-generated
+        relationship narrative, one explicit sentence per resolved relationship.
+        Unconfirmed elements are tagged inline in both blocks.
+        """
+        import json as _json
+
+        raw_json = _json.dumps(
+            {
+                "diagram_scope_verdict": self.diagram_scope_verdict,
+                "diagram_scope_reasoning": self.diagram_scope_reasoning,
+                "diagram_style": self.diagram_style,
+                "components": self.components,
+                "trust_boundaries": self.trust_boundaries,
+                "flows": self.flows,
+                "other_visible_text": self.other_visible_text,
+            },
+            ensure_ascii=True,
+            indent=2,
+        )
+
+        narrative_lines: List[str] = []
+        for boundary in self.trust_boundaries:
+            enclosed = boundary.get("encloses_component_ids") or []
+            enclosed_desc = ", ".join(
+                f"{cid} ({self._component_label(cid)})" for cid in enclosed
+            ) or "nothing visibly enclosed"
+            narrative_lines.append(
+                f"Trust boundary {boundary.get('id')} ('{boundary.get('label', '')}') "
+                f"{self._confirmation_tag(boundary)} encloses: {enclosed_desc}."
+            )
+        for flow_item in self.flows:
+            source_id = flow_item.get("source_component_id")
+            target_id = flow_item.get("target_component_id")
+            narrative_lines.append(
+                f"Flow {flow_item.get('id')} {self._confirmation_tag(flow_item)}: "
+                f"{source_id} ({self._component_label(source_id)}) -> "
+                f"{target_id} ({self._component_label(target_id)}), "
+                f"protocol: {flow_item.get('protocol') or 'unlabeled'}, "
+                f"direction: {flow_item.get('direction', 'unclear')}, "
+                f"label: '{flow_item.get('label', '')}'."
+            )
+        for component in self.components:
+            narrative_lines.append(
+                f"Component {component.get('id')} {self._confirmation_tag(component)}: "
+                f"'{component.get('name', '')}' (type: {component.get('type', 'other')})."
+            )
+
+        narrative_block = "\n".join(narrative_lines) if narrative_lines else "(no elements extracted)"
+
+        return (
+            "### Structured extraction (JSON)\n"
+            f"{raw_json}\n\n"
+            "### Relationship narrative (derived from the JSON above; "
+            "[confirmed] = seen in a majority of independent extraction passes, "
+            "[unconfirmed] = seen in a minority only)\n"
+            f"{narrative_block}"
+        )
+
+
 def _format_requirements_compact(requirements: List[Any]) -> str:
     lines = []
     for req in requirements:

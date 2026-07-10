@@ -53,6 +53,8 @@ class AIServiceManager:
             'vision_hunter': getattr(settings, 'AI_MODEL_VISION_HUNTER', None) or getattr(settings, 'AI_MODEL_VISION', 'meta/llama-3.2-90b-vision-instruct'),
             'vision_critic': getattr(settings, 'AI_MODEL_VISION_CRITIC', None) or getattr(settings, 'AI_MODEL_VISION', 'meta/llama-3.2-90b-vision-instruct'),
             'vision_mediator': getattr(settings, 'AI_MODEL_VISION_MEDIATOR', None) or getattr(settings, 'AI_MODEL_VISION', 'meta/llama-3.2-90b-vision-instruct'),
+            'vision_extractor': getattr(settings, 'AI_MODEL_VISION_EXTRACTOR', None) or getattr(settings, 'AI_MODEL_VISION', 'meta/llama-3.2-90b-vision-instruct'),
+            'vision_reasoner': getattr(settings, 'AI_MODEL_VISION_REASONER', None) or getattr(settings, 'AI_MODEL_VISION', 'meta/llama-3.2-90b-vision-instruct'),
             'contract_synthesizer': getattr(settings, 'AI_MODEL_CONTRACT_SYNTHESIZER', 'meta/llama-3.1-70b-instruct'),
             'hunter': getattr(settings, 'AI_MODEL_HUNTER', 'meta/llama-3.1-70b-instruct'),
             'critic': getattr(settings, 'AI_MODEL_CRITIC', 'meta/llama-3.1-70b-instruct'),

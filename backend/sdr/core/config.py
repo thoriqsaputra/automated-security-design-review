@@ -121,6 +121,25 @@ class Settings(BaseSettings):
     # another in the same run). 1 = disabled (single run, current behavior).
     AI_VISION_DEBATE_VOTES: int = Field(default=1)
 
+    # Extract-then-reason pipeline (DiagramExtractReasonService): decouples
+    # perception (Stage 1, vision-in-the-loop structured extraction, voted
+    # via self-consistency) from reasoning (Stage 2, text-only verdicts over
+    # the extraction) — an alternative to the debate pipeline above.
+    AI_VISION_EXTRACTION_VOTES: int = Field(default=3)
+    AI_VISION_EXTRACTION_MERGE_THRESHOLD: float = Field(default=0.5)
+    AI_VISION_EXTRACTION_FUZZY_MATCH_THRESHOLD: float = Field(default=0.75)
+    AI_VISION_EXTRACTION_MAX_CONCURRENCY: int = Field(default=3)
+    AI_VISION_REASONER_BATCH_SIZE: int = Field(default=10)
+    AI_VISION_REASONER_BATCH_MAX_CONCURRENCY: int = Field(default=6)
+    AI_VISION_REASONER_CITATION_RETRY_LIMIT: int = Field(default=1)
+    # Batches where the reasoner's response failed entirely (empty/unparseable,
+    # nothing answered at all) get a larger retry budget than partial-omission
+    # batches — a total failure is a cheap, likely-transient generation hiccup
+    # worth retrying harder, not a persistent completeness/reasoning gap.
+    AI_VISION_REASONER_FULL_FAILURE_RETRY_LIMIT: int = Field(default=2)
+    AI_MODEL_VISION_EXTRACTOR: str = Field(default="")
+    AI_MODEL_VISION_REASONER: str = Field(default="")
+
     AI_RAPTOR_SUMMARY_MAX_CONCURRENCY: int = Field(default=3)
     AI_RAPTOR_EMBED_MAX_CONCURRENCY: int = Field(default=4)
     AI_RAPTOR_LEAF_TOKEN_BUDGET: int = Field(default=800)

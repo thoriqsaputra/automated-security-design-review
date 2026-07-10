@@ -22,6 +22,8 @@ from .vision_hunter import (
     build_vision_hunter_rebuttal_prompt,
 )
 from .vision_mediator import VISION_MEDIATOR_DEBATE_SYSTEM_PROMPT, build_vision_mediator_debate_prompt
+from .vision_extractor import VISION_EXTRACTOR_SYSTEM_PROMPT, build_vision_extractor_prompt
+from .vision_reasoner import VISION_REASONER_SYSTEM_PROMPT, build_vision_reasoner_prompt
 
 __all__ = [
     "CRITIC_SYSTEM_PROMPT",
@@ -35,6 +37,8 @@ __all__ = [
     "VISION_HUNTER_SYSTEM_PROMPT",
     "VISION_HUNTER_REBUTTAL_SYSTEM_PROMPT",
     "VISION_MEDIATOR_DEBATE_SYSTEM_PROMPT",
+    "VISION_EXTRACTOR_SYSTEM_PROMPT",
+    "VISION_REASONER_SYSTEM_PROMPT",
     "build_batch_critic_prompt",
     "build_batch_hunter_prompt",
     "build_batch_mediator_prompt",
@@ -49,4 +53,6 @@ __all__ = [
     "build_vision_hunter_prompt",
     "build_vision_hunter_rebuttal_prompt",
     "build_vision_mediator_debate_prompt",
+    "build_vision_extractor_prompt",
+    "build_vision_reasoner_prompt",
 ]
