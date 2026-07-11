@@ -560,5 +560,23 @@
         "original_text": "recommendations.\n\u2022\nNFR-005: The application must deploy advanced runtime application self-protection tools\nto provide continuous integrity monitoring across all Artificial Intelligence execution\nenclaves and core algorithmic files, immediately flagging any anomalous code\nmodifications.\n\u2022\nNFR-006: All permanent data at rest, explicitly including the high dimensional vector\nembeddings utilized by the Artificial Intelligence engine for matching calculations, must be",
         "question": "Verify that the application deploys advanced runtime application self-protection tools to provide continuous integrity monitoring across all AI execution enclaves and core algorithmic files, immediately flagging any anomalous code modifications.",
         "ground_truth_context": "NFR-005: The application must deploy advanced runtime application self-protection tools to provide continuous integrity monitoring across all Artificial Intelligence execution enclaves and core algorithmic files, immediately flagging any anomalous code modifications."
+    },
+    {
+        "source": "synthetic",
+        "block_ids": [
+            "p52_b12",
+            "p52_b13",
+            "p52_b14",
+            "p52_b15",
+            "p52_b16",
+            "p53_b0",
+            "p53_b1",
+            "p53_b2",
+            "p53_b3",
+            "p53_b4"
+        ],
+        "original_text": "Prompt Injection\nA highly sophisticated Artificial Intelligence specific cyberattack where\nmalicious actors embed hidden instructions within unstructured text,\nstrictly neutralized within this architecture by aggressive data\nsanitization agents located prior to the natural language processing\nenclaves.\nRecovery\nPoint\nObjective\nThe strictly defined maximum acceptable amount of data loss\nmeasured chronologically, explicitly mandated as exactly one hour to\nguarantee that the system perfectly recovers from catastrophic\ndisasters without significant national transaction loss.\nRecovery\nTime\nObjective\nThe strictly targeted duration of time within which the core\nauthentication and matchmaking business processes must be\ncompletely restored following a severe disruption, mathematically\nmandated as exactly four hours for this critical infrastructure.\nRetrieval Augmented\nGeneration Context\nPoisoning\nAn advanced vector attack vector where malicious adversarial inputs\nare intentionally uploaded to corrupt the semantic matching models,\nexplicitly prevented by strict physical and logical quarantine of the\nArtificial Intelligence enclave.\nRole Based Access\nControl\nA rigorous security framework that heavily restricts application access\nand graphical interface visibility based on the specific operational roles\nassigned to users, explicitly preventing unauthorized privilege\nescalation between job seekers and employers.",
+        "question": "Verify that the application uses aggressive data sanitization agents located prior to the natural language processing enclaves to neutralize prompt injection attacks.",
+        "ground_truth_context": "strictly neutralized within this architecture by aggressive data sanitization agents located prior to the natural language processing enclaves."
     }
 ]

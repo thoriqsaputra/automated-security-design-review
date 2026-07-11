@@ -1,0 +1,619 @@
+[
+  {
+    "source": "synthetic",
+    "zone": "front",
+    "block_ids": [
+      "p12_b0",
+      "p12_b1",
+      "p12_b2",
+      "p12_b3",
+      "p12_b4",
+      "p12_b5",
+      "p12_b6",
+      "p12_b7",
+      "p12_b8",
+      "p12_b9",
+      "p12_b10",
+      "p12_b11",
+      "p12_b12"
+    ],
+    "original_text": "objects, which further contain nested Exam and MeetingPattern objects. Depending on the user's\nrequested output, the GatewayAction will then pass these organized objects to either the\nCalBuilder component to generate a downloadable standard iCal file, or to the gCalBuilder\ncomponent, which communicates directly with external Google Auth Servers to push the schedule\nto a Google Calendar account.\nTo illustrate the critical data acquisition phase of the Schedule Subsystem, the following\nMermaid.js sequence diagram defines the exact micro-interactions required to fetch a student's\nschedule immediately following a successful login event.\nFigure 1 Sequence Diagram for Student Schedule Preloading During Login\nThis sequence diagram details the exact micro-interactions and method calls that occur when a\nuser attempts to download their schedule as an iCal file. It traces the execution path from the\ninitial user input at the JSP layer, through the Struts MainAction controller, and into the CalBuilder\nlooping logic that maps the classes.",
+    "question": "Verify that the application fetches a student's schedule only after a successful login event.",
+    "ground_truth_context": "To illustrate the critical data acquisition phase of the Schedule Subsystem, the following Mermaid.js sequence diagram defines the exact micro-interactions required to fetch a student's schedule immediately following a successful login event."
+  },
+  {
+    "source": "synthetic",
+    "zone": "front",
+    "block_ids": [
+      "p3_b26",
+      "p3_b27",
+      "p3_b28",
+      "p3_b29",
+      "p4_b0",
+      "p4_b1",
+      "p4_b2",
+      "p4_b3",
+      "p4_b4",
+      "p4_b5",
+      "p4_b6",
+      "p4_b7",
+      "p4_b8",
+      "p4_b9",
+      "p4_b10"
+    ],
+    "original_text": "schedule by interacting with the RIT Interactive Map API to dynamically generate clickable URLs\nand visual overlays indicating exact building locations for scheduled classes.\nGranular Objectives:\n\u2022\nTo deploy a secure authentication module leveraging the existing Shibboleth infrastructure\nto validate student credentials prior to initiating data requests.\n\u2022\nTo architect the system utilizing the Apache Struts 2 framework (version 2.3.15.2) to\nmaintain a strict Model View Controller separation of concerns.\n\u2022\nTo invoke the SIS Gateway Web Services API to pull JSON formatted student registration\ndata dynamically.\n\u2022\nTo construct a JSON parsing engine that translates raw schedule text into internal Plain\nOld Java Objects configured as Courses, Exams, and Meeting Patterns.\n\u2022\nTo utilize the iCal4j library to build compliant ICS files representing the parsed schedule\nfor direct user download via the browser.\n\u2022\nTo construct a dedicated GCalBuilder module utilizing the Google API to programmatically\ninsert course events into a user's remote Google Calendar account.",
+    "question": "Verify that the application uses Shibboleth for secure authentication and validates student credentials before initiating any data requests.",
+    "ground_truth_context": "To deploy a secure authentication module leveraging the existing Shibboleth infrastructure to validate student credentials prior to initiating data requests."
+  },
+  {
+    "source": "synthetic",
+    "zone": "front",
+    "block_ids": [
+      "p2_b16",
+      "p2_b17",
+      "p2_b18",
+      "p2_b19",
+      "p2_b20",
+      "p2_b21",
+      "p2_b22",
+      "p2_b23",
+      "p2_b24",
+      "p2_b25",
+      "p2_b26",
+      "p2_b27"
+    ],
+    "original_text": "system then parses this incoming JSON data, transforming the raw course and exam information\ninto Plain Old Java Objects to be manipulated by the action layers.\nOnce the schedule is loaded into the Java application environment, the integration branches into\ntwo primary export methodologies. First, the system leverages the iCal4j Java library to\nmeticulously convert the customized schedule data into standard iCal formatted files. This allows\nthe user to download a universally compatible file to import into the desktop or mobile calendar\napplication of their choice. Second, the application features a direct synchronization pathway\nutilizing the Google API. This integration authorizes the SISCalendar application to automatically\nupload the student's scheduled classes and meeting patterns directly to their connected Google\nCalendar account, entirely removing the need for manual data entry. Furthermore, the schedule\nview is enhanced by the RIT Interactive Map API, which provides students with rich location data\nby generating interactive overlays of their specific class buildings.",
+    "question": "Verify that the application provides a direct synchronization pathway to automatically upload scheduled classes and meeting patterns to a user's connected Google Calendar account, eliminating the need for manual data entry.",
+    "ground_truth_context": "Second, the application features a direct synchronization pathway utilizing the Google API. This integration authorizes the SISCalendar application to automatically upload the student's scheduled classes and meeting patterns directly to their connected Google Calendar account, entirely removing the need for manual data entry."
+  },
+  {
+    "source": "synthetic",
+    "zone": "front",
+    "block_ids": [
+      "p9_b0",
+      "p9_b1",
+      "p9_b2",
+      "p9_b3",
+      "p9_b4",
+      "p9_b5",
+      "p9_b6",
+      "p9_b7",
+      "p9_b8",
+      "p9_b9",
+      "p9_b10",
+      "p9_b11",
+      "p9_b12",
+      "p9_b13",
+      "p9_b14"
+    ],
+    "original_text": "\u2022\nFR-ICAL-001: The graphical user interface must provide a definitive \"Download iCal\"\ninteraction point for the user within the main JSP view.\n\u2022\nFR-ICAL-002: Activating the \"Download iCal\" element must prompt the JSP layer to\ntrigger a new MainAction() controller execution.\n\u2022\nFR-ICAL-003: The MainAction component must instantiate a new calBuilder() object to\nserve as the dedicated iCal4j formatting engine.\n\u2022\nFR-ICAL-004: The MainAction must execute the addClasses(classes) method on the\nCalBuilder, supplying the preloaded course data from the user's session.\n\u2022\nFR-ICAL-005: The CalBuilder must initiate an internal iterative loop, recursively calling the\naddClass(course) method for every individual course entity provided.\n\u2022\nFR-ICAL-006: Upon completion of the iterative mapping loop, the MainAction must invoke\nthe getICS() method on the CalBuilder to finalize the calendar format.\n\u2022\nFR-ICAL-007: The CalBuilder must return the finalized iCal payload back to the awaiting\nMainAction controller.\n\u2022\nFR-ICAL-008: The MainAction must transmit a \"return SUCCESS\" signal simultaneously",
+    "question": "Verify that the iCal download is only triggered by a user-initiated action on the GUI, not by direct URL access or automated processes.",
+    "ground_truth_context": "FR-ICAL-002: Activating the \"Download iCal\" element must prompt the JSP layer to trigger a new MainAction() controller execution."
+  },
+  {
+    "source": "synthetic",
+    "zone": "front",
+    "block_ids": [
+      "p6_b10",
+      "p6_b11",
+      "p6_b12",
+      "p6_b13",
+      "p6_b14",
+      "p6_b15",
+      "p6_b16",
+      "p6_b17",
+      "p6_b18",
+      "p6_b19",
+      "p6_b20",
+      "p6_b21"
+    ],
+    "original_text": "consumption. The SISCalendar application will never attempt to execute write commands, update\ncourse registrations, drop classes, or modify any academic records within the university's primary\nstudent information systems. The system acts purely as a downstream consumer of the schedule\npayload provided by the gateway.\nSimilarly, the integration with the RIT Interactive Map API operates strictly under a read only\nconstraint. It is entirely out of scope for the SISCalendar application to alter map coordinates,\nupload new building layouts, or modify the underlying geographical database of the university.\nThe application will only ingest the provided map endpoints to display visual overlays to the end\nuser. Furthermore, the permanent local storage of user data is completely out of scope. The\nsystem handles schedule details as transient Plain Old Java Objects stored temporarily in\nmemory during active sessions. Building a persistent database to warehouse student data long\nterm is not within the defined technical boundaries of this release. Finally, custom provisioning of",
+    "question": "Verify that the application enforces a read-only access control model across all upstream integrations and does not perform any write operations to external systems.",
+    "ground_truth_context": "The SISCalendar application will never attempt to execute write commands, update course registrations, drop classes, or modify any academic records within the university's primary student information systems."
+  },
+  {
+    "source": "synthetic",
+    "zone": "front",
+    "block_ids": [
+      "p7_b7",
+      "p7_b8",
+      "p7_b9",
+      "p7_b10",
+      "p7_b11",
+      "p7_b12",
+      "p7_b13",
+      "p7_b14",
+      "p7_b15",
+      "p7_b16",
+      "p7_b17",
+      "p7_b18",
+      "p7_b19"
+    ],
+    "original_text": "The Functional Requirements section dictates the precise operational behaviors and system\nresponses expected within the core subsystems of the SISCalendar application. Focusing entirely\non the critical user journeys, this detailed breakdown maps the complex internal communications\nbridging the front-end view layer and the underlying Java models. Specifically, these requirements\nexhaustively trace the authentication subsystem's procedural interaction with the external\nShibboleth security services to verify user identity. Furthermore, this section strictly defines the\nschedule subsystem's micro-interactions, detailing the precise sequence of method calls required\nto securely fetch course data via the Gateway component, process complex JSON payloads, and\nsystematically assemble downloadable iCal files for the authenticated user. By defining these\ngranular steps, the development team ensures that all Model View Controller interactions align\nperfectly with the architectural design.\n\u2022\nFR-AUTH-001: The system must present a secure login interface via a Java Server Page\n(JSP) to capture the user's initial login credentials.",
+    "question": "Verify that the system presents a secure login interface via a Java Server Page (JSP) to capture the user's initial login credentials.",
+    "ground_truth_context": "FR-AUTH-001: The system must present a secure login interface via a Java Server Page (JSP) to capture the user's initial login credentials."
+  },
+  {
+    "source": "synthetic",
+    "zone": "front",
+    "block_ids": [
+      "p9_b17",
+      "p9_b18",
+      "p9_b19",
+      "p9_b20",
+      "p9_b21",
+      "p9_b22",
+      "p9_b23",
+      "p9_b24",
+      "p9_b25",
+      "p9_b26",
+      "p10_b0",
+      "p10_b1",
+      "p10_b2"
+    ],
+    "original_text": "The Non-Functional Requirements establish the critical architectural constraints, performance\nmetrics, and rigorous security standards that the entire SISCalendar ecosystem must strictly\nobserve. While functional requirements define the explicit tasks the system executes, these non-\nfunctional mandates dictate the qualitative attributes of how securely, reliably, and efficiently the\nsystem performs those actions under varying operational loads. A primary and uncompromising\nfocus of this section is the proactive mitigation of critical web vulnerabilities. To safeguard user\ndata and maintain the integrity of the university's external APIs, the application architecture\nexplicitly mandates comprehensive adherence to baseline OWASP Top 10 security standards.\nThis includes stringent enforcement of parameterized inputs, deep validation protocols across all\nauthentication boundaries, and resilient data encoding strategies for all front-end presentations.\n\u2022\nNFR-SEC-001: To establish a hardened defense against complex Injection attacks as\noutlined by the OWASP Top 10, the application architecture explicitly mandates the\nexclusive use of parameterized queries for any and all data access operations. No user-",
+    "question": "Verify that the application architecture mandates the exclusive use of parameterized queries for all data access operations to defend against injection attacks as outlined by the OWASP Top 10.",
+    "ground_truth_context": "NFR-SEC-001: To establish a hardened defense against complex Injection attacks as outlined by the OWASP Top 10, the application architecture explicitly mandates the exclusive use of parameterized queries for any and all data access operations."
+  },
+  {
+    "source": "synthetic",
+    "zone": "front",
+    "block_ids": [
+      "p11_b2",
+      "p11_b3",
+      "p11_b4",
+      "p11_b5",
+      "p11_b6",
+      "p11_b7",
+      "p11_b8",
+      "p11_b9",
+      "p11_b10",
+      "p11_b11",
+      "p11_b12",
+      "p11_b13",
+      "p11_b14",
+      "p11_b15"
+    ],
+    "original_text": "Architecture Type: Model-View-Controller (MVC)\nDescription: The SISCalendar application is architected around a robust Model-View-Controller\n(MVC) paradigm, primarily facilitated by the Apache Struts 2 framework. This architectural\ndecision enables a clean separation of concerns, ensuring that the application remains\nmaintainable, reusable, and easily extendable over its lifecycle. At a high level, the system acts\nas a central hub that facilitates interactions between the end-user (accessing the system via\ntraditional web browsers or mobile devices) and several external data systems. These external\nintegrations include the Shibboleth Authentication System for security, the SIS Gateway API for\nstudent academic records, the RIT Interactive Map API for geographical data overlays, and the\nGoogle Calendar API for automated schedule synchronization.\nInternally, the application is systematically divided into two major operational modules: the\nAuthentication Subsystem and the Schedule Subsystem.\nThe Authentication Subsystem serves as the initial, rigorous security gateway that all users must\npass through. This subsystem relies heavily on the established infrastructure from the",
+    "question": "Verify that the application integrates with the Shibboleth Authentication System for authentication.",
+    "ground_truth_context": "These external integrations include the Shibboleth Authentication System for security, the SIS Gateway API for student academic records, the RIT Interactive Map API for geographical data overlays, and the Google Calendar API for automated schedule synchronization."
+  },
+  {
+    "source": "synthetic",
+    "zone": "front",
+    "block_ids": [
+      "p4_b11",
+      "p4_b12",
+      "p4_b13",
+      "p4_b14",
+      "p4_b15",
+      "p4_b16",
+      "p4_b17",
+      "p4_b18",
+      "p5_b0",
+      "p5_b1",
+      "p5_b2",
+      "p5_b3",
+      "p5_b4",
+      "p5_b5"
+    ],
+    "original_text": "\u2022\nTo integrate the RIT Interactive Map API to augment schedule views with clickable building\nlocations and contextual campus overlays.\n\u2022\nTo engineer a responsive, cross browser compatible client-side view using Java Server\nPages, JQuery 2.0.3, and Bootstrap.\n\u2022\nTo utilize Apache ANT scripts for automating the compilation of Java source code into\ndeployable web archive files.\n\u2022\nTo maintain strict version control across the development lifecycle by utilizing a Git\nrepository hosted on Github.\nThe functional scope of the SISCalendar system encompasses the end-to-end retrieval,\nprocessing, and export of student academic schedules across multiple device platforms. Within\nthe operational boundaries, the system is fully responsible for presenting a secure login gateway\nthat processes user credentials via the Shibboleth Authentication System. Upon successful\nauthorization, the in-scope functionality includes the synchronous execution of data requests\ndirected at the SIS Gateway Web Services to pull term and class information. The application is",
+    "question": "Verify that the application authenticates users via a secure login gateway that processes user credentials through the Shibboleth Authentication System.",
+    "ground_truth_context": "Within the operational boundaries, the system is fully responsible for presenting a secure login gateway that processes user credentials via the Shibboleth Authentication System."
+  },
+  {
+    "source": "synthetic",
+    "zone": "front",
+    "block_ids": [
+      "p7_b20",
+      "p7_b21",
+      "p7_b22",
+      "p7_b23",
+      "p7_b24",
+      "p7_b25",
+      "p7_b26",
+      "p7_b27",
+      "p8_b0",
+      "p8_b1",
+      "p8_b2",
+      "p8_b3",
+      "p8_b4",
+      "p8_b5",
+      "p8_b6",
+      "p8_b7",
+      "p8_b8",
+      "p8_b9"
+    ],
+    "original_text": "\u2022\nFR-AUTH-002: Upon credential submission from the JSP, the system must trigger a\nnewAuthenticateUserAction to intercept the authentication request.\n\u2022\nFR-AUTH-003: The AuthenticateUserAction module must synchronously execute the\nisUserLoggedIn() method against the SingleSignOnHandler to determine the current\nsession status.\n\u2022\nFR-AUTH-004: The SingleSignOnHandler must initiate a checkSession procedure,\ntransmitting a request to the external Shibboleth Services to validate existing token data.\n\u2022\nFR-AUTH-005:\nIf\nthe\ninitial\ncheckSession\nreturns\na\n\"false\"\nresult,\nthe\nSingleSignOnHandler must immediately trigger the performSingleSignOn() method to\ninitiate a new authentication challenge.\n\u2022\nFR-AUTH-006: Following the execution of performSingleSignOn(), the system must run a\nsecondary checkSession against the Shibboleth Services to capture the resulting\nvalidation state.\n\u2022\nFR-AUTH-007: Once a \"true\" result is successfully returned from the Shibboleth Services,\nthe\nSingleSignOnHandler\nmust\nresolve\nthe\noperation\nback\nto\nthe\nwaiting\nAuthenticateUserAction.\n\u2022\nFR-AUTH-008: The AuthenticateUserAction must dispatch a \"SUCCESS\" response back\nto the client-side JSP, authorizing the rendering of the Main.jsp application dashboard.",
+    "question": "Verify that the application triggers a newAuthenticateUserAction to intercept authentication requests upon credential submission from the JSP.",
+    "ground_truth_context": "Upon credential submission from the JSP, the system must trigger a newAuthenticateUserAction to intercept the authentication request."
+  },
+  {
+    "source": "synthetic",
+    "zone": "middle",
+    "block_ids": [
+      "p18_b1",
+      "p18_b2",
+      "p18_b3",
+      "p18_b4",
+      "p18_b5",
+      "p18_b6",
+      "p18_b7",
+      "p18_b8",
+      "p18_b9",
+      "p18_b10",
+      "p18_b11",
+      "p18_b12"
+    ],
+    "original_text": "The data architecture of the SISCalendar application is distinctly engineered to operate without a\npersistent, traditional relational database management system (RDBMS). Instead, the system\nleverages a highly efficient, transient, in-memory data model constructed entirely from Plain Old\nJava Objects (POJOs). This design decision ensures that sensitive academic data is not\nwarehoused locally long-term, significantly reducing the security footprint of the application. The\nprimary responsibility of this data model is to act as an intermediate structural representation,\nseamlessly translating the complex, nested JSON payloads retrieved from the external SIS\nGateway API into an organized, object-oriented hierarchy that the Apache Struts 2 actions can\nrapidly manipulate during an active user session.\nAt the core of this object-oriented architecture is the Course entity, which serves as the\nfoundational root node for a student's academic schedule. As strictly defined by the Schedule\nSubsystem class diagrams, the Course POJO is not a flat data structure; rather, it establishes",
+    "question": "Verify that the application does not persistently store sensitive academic data in a traditional database, ensuring that data is only held transiently in memory to reduce the security footprint.",
+    "ground_truth_context": "This design decision ensures that sensitive academic data is not warehoused locally long-term, significantly reducing the security footprint of the application."
+  },
+  {
+    "source": "synthetic",
+    "zone": "middle",
+    "block_ids": [
+      "p21_b8",
+      "p21_b9",
+      "p21_b10",
+      "p21_b11",
+      "p21_b12",
+      "p21_b13"
+    ],
+    "original_text": "The system handles user access by defining specific roles and their associated permissions. Due\nto the focused scope of the SISCalendar application, the access model is streamlined to\nspecifically serve the primary user base interacting with the university's academic data.\nThe Student User role is granted an access level of Standard User / Read-Only . Users assigned\nto this role must authenticate via the Shibboleth Authentication System . This role is primarily\nresponsible for: securely accessing the application via a web browser or mobile device to",
+    "question": "Verify that the application enforces role-based access control, ensuring that users assigned the 'Student User' role are granted only 'Standard User / Read-Only' access and must authenticate via the Shibboleth Authentication System.",
+    "ground_truth_context": "The Student User role is granted an access level of Standard User / Read-Only . Users assigned to this role must authenticate via the Shibboleth Authentication System ."
+  },
+  {
+    "source": "synthetic",
+    "zone": "middle",
+    "block_ids": [
+      "p22_b13",
+      "p22_b14",
+      "p22_b15",
+      "p22_b16",
+      "p22_b17",
+      "p22_b18"
+    ],
+    "original_text": "(extending the ShibSignOnHandler) to orchestrate the validation of user credentials. To parse the\ncomplex security assertions provided by the Shibboleth identity provider, the handler employs\ndedicated utility classes. Specifically, the ShibUtil component is tasked with dissecting the\nincoming ShibHeader, breaking it down further into usable ShibProperties and ShibFields. Once\nthis data is successfully validated and parsed, the system instantiates an internal User model,\nofficially granting the Student User role access to the Schedule Subsystem to begin data retrieval.",
+    "question": "Verify that the application grants the Student User role access to the Schedule Subsystem only after successful validation and parsing of the Shibboleth security assertions.",
+    "ground_truth_context": "Once this data is successfully validated and parsed, the system instantiates an internal User model, officially granting the Student User role access to the Schedule Subsystem to begin data retrieval."
+  },
+  {
+    "source": "synthetic",
+    "zone": "middle",
+    "block_ids": [
+      "p19_b21",
+      "p19_b22",
+      "p19_b23",
+      "p19_b24",
+      "p19_b25"
+    ],
+    "original_text": "To ensure the SISCalendar application remains completely stable and highly performant under\nmassive concurrency loads, the Java 1.7.0_40 environment and the underlying Apache Tomcat\nserver are explicitly configured with rigid operational limits and timeout parameters. These\nconfiguration parameters dictate the exact operational boundaries of system memory allocation,\nnetwork socket lifespans, and external API connection thresholds.",
+    "question": "Verify that the application's runtime environment (Java and Apache Tomcat) is configured with explicit operational limits and timeout parameters that define boundaries for system memory allocation, network socket lifespans, and external API connection thresholds.",
+    "ground_truth_context": "These configuration parameters dictate the exact operational boundaries of system memory allocation, network socket lifespans, and external API connection thresholds."
+  },
+  {
+    "source": "synthetic",
+    "zone": "middle",
+    "block_ids": [
+      "p17_b13",
+      "p17_b14",
+      "p17_b15",
+      "p17_b16",
+      "p17_b17",
+      "p17_b18",
+      "p17_b19",
+      "p17_b20",
+      "p17_b21",
+      "p17_b22",
+      "p17_b23",
+      "p17_b24",
+      "p17_b25"
+    ],
+    "original_text": "application relies heavily on this external library to automatically upload formatted class\ninformation directly to a student's personal Google Calendar without requiring the user to\nhandle manual file downloads. The internal gCalBuilder module acts as the dedicated\nclient for this interface, structuring the parsed Java objects and securely pushing them via\nauthenticated endpoints directly to the Google Auth Servers. API calls require standard\nauthentication parameters, utilizing standard OAuth tokens, to securely link the application\nwith the user's external profile.\n\u2022\nRIT Interactive Maps API - The university's specialized geographic interface that allows\ncontextual location information to be displayed dynamically within Google Maps, utilizing\na highly customized overlay of the RIT campus. The SISCalendar application uses this\ngeographic information to accurately display the location of classes and to render helpful\ninformational tooltips about various campus buildings. This integration is critical for\ngenerating a clickable URL to display a specific building on the campus map directly within",
+    "question": "Verify that the application uses standard OAuth tokens for API authentication to securely link with the user's external profile.",
+    "ground_truth_context": "API calls require standard authentication parameters, utilizing standard OAuth tokens, to securely link the application with the user's external profile."
+  },
+  {
+    "source": "synthetic",
+    "zone": "middle",
+    "block_ids": [
+      "p18_b13",
+      "p18_b14",
+      "p18_b15",
+      "p18_b16",
+      "p18_b17",
+      "p18_b18",
+      "p18_b19",
+      "p18_b20",
+      "p18_b21",
+      "p18_b22",
+      "p18_b23",
+      "p18_b24",
+      "p18_b25"
+    ],
+    "original_text": "crucial compositional relationships with several secondary entities to accurately represent the\nnuances of university scheduling. Specifically, the system dictates that a single Course instance\ncan contain an optional, one-to-one or zero-to-one relationship with an Exam object, representing\nthe final examination details stored explicitly within the finalExam property. Furthermore, to\naccommodate complex class schedules that meet at different times throughout the week, a\nCourse encapsulates an array of zero-to-many MeetingPattern objects stored within the\nmeetingPatterns field.\nTo further refine the granularity of the scheduling logic, the MeetingPattern entity itself maintains\na relational array of Day enumerations (zero-to-many) within the days field, precisely defining the\nspecific days of the week a particular meeting pattern occurs. Beyond the individual student's\ncourse load, the overarching application state also maintains a HolidayCalendar model, which is\nfundamentally designed to track university-wide closures, breaks, and academic exceptions. To\nachieve this, the HolidayCalendar root entity maintains a strict one-to-many compositional",
+    "question": "Verify that the system enforces a strict one-to-many compositional relationship between the HolidayCalendar root entity and its associated holiday schedule data, preventing orphan records or inconsistent state.",
+    "ground_truth_context": "the HolidayCalendar root entity maintains a strict one-to-many compositional"
+  },
+  {
+    "source": "synthetic",
+    "zone": "middle",
+    "block_ids": [
+      "p23_b0",
+      "p23_b1",
+      "p23_b2",
+      "p23_b3",
+      "p23_b4",
+      "p23_b5",
+      "p23_b6",
+      "p23_b7",
+      "p23_b8",
+      "p23_b9",
+      "p23_b10",
+      "p23_b11"
+    ],
+    "original_text": "meeting patterns, and exam details - is stored entirely as Plain Old Java Objects (POJOs). These\nPOJOs reside temporarily within the Java 1.7.0_40 environment running on the underlying\nApache Tomcat server. For example, after the schedule is fetched and parsed by the system, the\nresulting Java objects are bound directly to the user's active session using internal Struts 2\nexecution paths like Session.set(\"courses\", courses). This transient state strategy guarantees that\nonce the 2-to-4-hour idle timeout threshold is reached, or the user explicitly logs out, the in-\nmemory POJOs are destroyed, leaving no residual sensitive data warehoused on the underlying\nLinux host.\nSecuring the session identifiers utilized by the Tomcat container is paramount to the integrity of\nthe application. To protect the authenticated connection established by the SingleSignOnHandler,\nit is explicitly mandated that all session tokens and tracking cookies generated by the server must\nbe strictly configured with the HttpOnly and Secure flags. The inclusion of the HttpOnly flag",
+    "question": "Verify that all session tokens and tracking cookies generated by the server are configured with the HttpOnly and Secure flags.",
+    "ground_truth_context": "it is explicitly mandated that all session tokens and tracking cookies generated by the server must be strictly configured with the HttpOnly and Secure flags."
+  },
+  {
+    "source": "synthetic",
+    "zone": "middle",
+    "block_ids": [
+      "p24_b15",
+      "p24_b16",
+      "p24_b17",
+      "p24_b18",
+      "p25_b0",
+      "p25_b1",
+      "p25_b2",
+      "p25_b3",
+      "p25_b4",
+      "p25_b5",
+      "p25_b6",
+      "p25_b7",
+      "p25_b8"
+    ],
+    "original_text": "Google account. In this automated workflow, the internal gCalBuilder module securely traverses\nthe network boundary to authenticate with Google Auth Servers, programmatically pushing the\nparsed schedule payload directly into the Google Calendar API without any manual file handling\nby the user.\nFigure 3 SIS Calendar Enterprise Architecture and Integration Flow Diagram\nWhen data is transmitted from the SIS Gateway API to the SISCalendar Schedule Subsystem ,\nthe communication utilizes the HTTPS/TLS 1.2+ protocol. The expected payload type for this\nexchange is JSON . To ensure security in transit, all data crossing this boundary is encrypted\nusing standard SSL/TLS Certificates .\nWhen data is transmitted from the SISCalendar Application to the Google Calendar API , the\ncommunication utilizes the HTTPS/TLS 1.2+ protocol. The expected payload type for this\nexchange is RESTful API JSON Objects . To ensure security in transit, all data crossing this\nboundary is encrypted using OAuth 2.0 authentication tokens and TLS encryption .",
+    "question": "Verify that all data transmitted from the SIS Gateway API to the SISCalendar Schedule Subsystem is encrypted using standard SSL/TLS Certificates.",
+    "ground_truth_context": "When data is transmitted from the SIS Gateway API to the SISCalendar Schedule Subsystem , the communication utilizes the HTTPS/TLS 1.2+ protocol. The expected payload type for this exchange is JSON . To ensure security in transit, all data crossing this boundary is encrypted using standard SSL/TLS Certificates ."
+  },
+  {
+    "source": "synthetic",
+    "zone": "middle",
+    "block_ids": [
+      "p17_b0",
+      "p17_b1",
+      "p17_b2",
+      "p17_b3",
+      "p17_b4",
+      "p17_b5",
+      "p17_b6",
+      "p17_b7",
+      "p17_b8",
+      "p17_b9",
+      "p17_b10",
+      "p17_b11",
+      "p17_b12"
+    ],
+    "original_text": "calendar, these standard authentication parameters guarantee secure data transmission, validate\nsession integrity, and proactively prevent unauthorized access to the underlying networks.\n\u2022\nSIS Gateway Web Services - The primary internal API utilized by the SISCalendar\napplication to securely access all comprehensive academic course information related to\nan authenticated student account. This interface operates as a strict, read-only data\npipeline. When the application needs to retrieve a schedule, the GatewayAction\ncomponent initiates a direct request to this API. The JSON payload returned by the SIS\nGateway API contains the raw course schedules, exam times, and meeting patterns,\nwhich are then sequentially processed by the internal JSONParser into transient Plain Old\nJava Objects (POJOs). API calls require standard authentication parameters to ensure\nthe payload only contains academic records for the currently verified user session.\n\u2022\nGoogle Calendar API - Google's custom Application Programming Interface that handles\ndeep, programmatic integration with their remote cloud services. The SISCalendar",
+    "question": "Verify that the application uses standard authentication parameters to guarantee secure data transmission, validate session integrity, and prevent unauthorized access to the underlying networks.",
+    "ground_truth_context": "these standard authentication parameters guarantee secure data transmission, validate session integrity, and proactively prevent unauthorized access to the underlying networks."
+  },
+  {
+    "source": "synthetic",
+    "zone": "middle",
+    "block_ids": [
+      "p14_b3",
+      "p14_b4",
+      "p14_b5",
+      "p14_b6",
+      "p14_b7",
+      "p14_b8",
+      "p14_b9",
+      "p14_b10",
+      "p14_b11",
+      "p14_b12",
+      "p14_b13",
+      "p14_b14"
+    ],
+    "original_text": "the normalize.css library.\nThe intermediate control and business logic layers are built upon the Apache Struts 2 framework,\nspecifically version 2.3.15.2. This enterprise grade Model View Controller framework was selected\nbecause it represents the most up to date and stable release from Apache as of September 2013,\nthereby minimizing the risk of framework level bugs. The Struts 2 framework utilizes \"actions\" as\nits controller components, which serve as out of the box classes designed to process logic and\nsend the resulting information directly to the view to be rendered. A significant advantage of\nutilizing Struts 2 is its preexisting approval and support by RIT ITS within the Team Builder project.\nBy leveraging this established technology, the development team can reuse existing code\nspecifically regarding Shibboleth authentication, effectively shortening the development schedule\nand completely avoiding unforeseen integration challenges. The data layer itself relies entirely on\nPlain Old Java Objects (POJOs). The application transiently stores all critical operational data,",
+    "question": "Verify that the application uses Apache Struts 2 framework version 2.3.15.2 for the intermediate control and business logic layers.",
+    "ground_truth_context": "The intermediate control and business logic layers are built upon the Apache Struts 2 framework, specifically version 2.3.15.2."
+  },
+  {
+    "source": "synthetic",
+    "zone": "back",
+    "block_ids": [
+      "p32_b0",
+      "p32_b1",
+      "p32_b2",
+      "p32_b3",
+      "p32_b4",
+      "p32_b5",
+      "p32_b6",
+      "p32_b7",
+      "p32_b8",
+      "p32_b9",
+      "p32_b10",
+      "p32_b11",
+      "p32_b12",
+      "p32_b13",
+      "p33_b0"
+    ],
+    "original_text": "using the Secure Copy Protocol (SCP) via the command: scp dist/sisCalendar.war\n<username>@siscalendardev.rit.edu:~/. Following the secure transfer, the engineer establishes\na remote terminal session using SSH (ssh <username>@siscalendardev.rit.edu). Once\nauthenticated on the server, the deployment requires privilege escalation; the engineer executes\nsudo su - webapps to assume the necessary administrative role, copies the archive into the\nstaging directory (cp /home/<username>/sisCalendar.war ~/staging/sisCalendar.war), and finally\ntriggers the automated cluster rollout script located at bin/cluster/chgMgmt/deploySisCalendar.\nAlternatively, the architecture supports a highly controlled, SVN-integrated deployment pathway\nfor formal releases. In this paradigm, the compiled .war file is copied into the trunk/dev/release/\ndirectory and formally checked into version control using svn ci -m \"<CHECKIN MESSAGE>\".\nThe engineer then SSHs into siscalendardev.rit.edu, escalates privileges, and utilizes specific\nchange management scripts, executing bin/cluster/chgMgmt/getReleasedSisCalendar followed\nby the standard deploySisCalendar command to pull the verified artifact directly from the\nrepository into the live Tomcat cluster.\nFigure 4 SIS Calendar Deployment and Runtime Integration Architecture",
+    "question": "Verify that the deployment process requires privilege escalation via sudo su - webapps before executing deployment scripts.",
+    "ground_truth_context": "Once authenticated on the server, the deployment requires privilege escalation; the engineer executes sudo su - webapps to assume the necessary administrative role"
+  },
+  {
+    "source": "synthetic",
+    "zone": "back",
+    "block_ids": [
+      "p33_b1",
+      "p33_b2",
+      "p33_b3"
+    ],
+    "original_text": "The deployment architecture consists of the following key nodes:\n\u2022\nNode: Developer Workstation - The localized environment running Eclipse Kepler 4.3\nIDE where feature branching, raw Java development, and initial Apache ANT compilation",
+    "question": "Verify that the development environment is isolated and controlled to prevent unauthorized code changes from affecting the production build pipeline.",
+    "ground_truth_context": "The deployment architecture consists of the following key nodes:\n\u2022\nNode: Developer Workstation - The localized environment running Eclipse Kepler 4.3 IDE where feature branching, raw Java development, and initial Apache ANT compilation"
+  },
+  {
+    "source": "synthetic",
+    "zone": "back",
+    "block_ids": [
+      "p31_b16",
+      "p31_b17",
+      "p31_b18",
+      "p31_b19",
+      "p31_b20",
+      "p31_b21",
+      "p31_b22",
+      "p31_b23",
+      "p31_b24",
+      "p31_b25",
+      "p31_b26",
+      "p31_b27",
+      "p31_b28"
+    ],
+    "original_text": "IP addresses or verified university VPN connections .\nThe deployment architecture of the SISCalendar application is heavily engineered around a\nrobust, script-driven pipeline that pushes compiled artifacts to the remote Linux environments. To\nensure operational consistency, the development team follows the established deployment\nprecedent set by the university's Team Builder project. The core artifact of the application is a\nWeb Application Archive (.war) file, which is programmatically constructed using Apache ANT\nbuild scripts. This automation guarantees that the Struts 2 application, JSP views, and internal\nJava classes are packaged correctly for the target Apache Tomcat server instances.\nThe physical deployment to the designated staging and development servers, specifically\nsiscalendardev.rit.edu, is executed via secure shell protocols. The engineering team utilizes a\ntiered access approach. In a direct deployment scenario without utilizing the Subversion (SVN)\nrepository, a developer first runs the ANT build script locally to generate the dist/sisCalendar.war\nfile. This file is then securely transferred across the network boundary to the target Linux host",
+    "question": "Verify that the application deployment process restricts access to IP addresses or verified university VPN connections.",
+    "ground_truth_context": "IP addresses or verified university VPN connections ."
+  },
+  {
+    "source": "synthetic",
+    "zone": "back",
+    "block_ids": [
+      "p26_b1",
+      "p26_b2",
+      "p26_b3",
+      "p26_b4",
+      "p26_b5",
+      "p26_b6",
+      "p26_b7",
+      "p26_b8",
+      "p26_b9",
+      "p26_b10",
+      "p26_b11",
+      "p26_b12"
+    ],
+    "original_text": "The SISCalendar application architecture relies heavily on synchronous communication with\nseveral external systems, including the university's primary databases and third-party cloud\nservices. Because the application functions as a transient middleware layer utilizing Plain Old\nJava Objects (POJOs) generated from external data, establishing robust error handling guidelines\nis critically important to maintain system stability. When a student initiates a login or a schedule\nfetch, the application makes direct calls to the external Shibboleth Authentication System and the\nSIS Gateway API. If either of these upstream dependencies experiences latency, network\ntimeouts, or complete outages, the SISCalendar system must gracefully catch these connection\nexceptions. It is strictly mandated that the application must specify safe default failure states for\nany connection drop to the SIS Gateway API. Instead of cascading the failure and crashing the\nunderlying Java 1.7.0_40 environment or the active user session, the system must intercept the\ntimeout within the Struts 2 actions layer and return the user to a stable, isolated dashboard state",
+    "question": "Verify that the application specifies safe default failure states for any connection drop to the SIS Gateway API, intercepts timeouts within the Struts 2 actions layer, and returns the user to a stable, isolated dashboard state without cascading the failure or crashing the underlying Java environment or active user session.",
+    "ground_truth_context": "It is strictly mandated that the application must specify safe default failure states for any connection drop to the SIS Gateway API. Instead of cascading the failure and crashing the underlying Java 1.7.0_40 environment or the active user session, the system must intercept the timeout within the Struts 2 actions layer and return the user to a stable, isolated dashboard state."
+  },
+  {
+    "source": "synthetic",
+    "zone": "back",
+    "block_ids": [
+      "p39_b6",
+      "p39_b7"
+    ],
+    "original_text": "The primary external, read-only Web Services interface utilized by the\nSISCalendar backend to securely retrieve the raw, comprehensive academic\ncourse information associated with the authenticated student's university\naccount.\ngCalBuilder\nAn internal Java module created by the SIS.io team that utilizes the external\ngoogle-api library. Its specific purpose is to securely authenticate with remote\nGoogle servers and automatically push a student's parsed class information\ndirectly into their personal Google Calendar account.",
+    "question": "Verify that the gCalBuilder module securely authenticates with remote Google servers before pushing class information to a student's Google Calendar.",
+    "ground_truth_context": "Its specific purpose is to securely authenticate with remote Google servers and automatically push a student's parsed class information directly into their personal Google Calendar account."
+  },
+  {
+    "source": "synthetic",
+    "zone": "back",
+    "block_ids": [
+      "p30_b16",
+      "p30_b17",
+      "p30_b18",
+      "p30_b19",
+      "p30_b20",
+      "p30_b21",
+      "p30_b22",
+      "p30_b23",
+      "p30_b24",
+      "p30_b25",
+      "p30_b26",
+      "p30_b27"
+    ],
+    "original_text": "authentication tokens to interface with the Google Calendar API. It is explicitly mandated that all\nsensitive configuration materials, including Google API keys, Shibboleth configuration\nparameters, and any internal system passwords, must be read dynamically from secure host\nenvironment variables at runtime. Under no circumstances are these API keys to be committed,\npushed, or hardcoded within the local Git repositories or the centralized SVN (Subversion) release\ndirectories (such as trunk/dev/release/). By injecting these secrets exclusively at the runtime layer\non the target Linux servers, the system prevents credential leakage and ensures that the compiled\n.war files remain entirely agnostic of the sensitive environments they operate within.\nConfiguration is managed separately from the application code to ensure portability and security\nacross different deployment environments. The primary configuration management tool utilized is\nApache ANT scripting framework . Sensitive values, such as API keys and database\ncredentials, are securely injected into the runtime environment using dynamic host operating",
+    "question": "Verify that the application reads all sensitive configuration materials, including Google API keys, Shibboleth configuration parameters, and internal system passwords, dynamically from secure host environment variables at runtime, and that these secrets are not committed, pushed, or hardcoded in local Git repositories or centralized SVN release directories.",
+    "ground_truth_context": "It is explicitly mandated that all sensitive configuration materials, including Google API keys, Shibboleth configuration parameters, and any internal system passwords, must be read dynamically from secure host environment variables at runtime. Under no circumstances are these API keys to be committed, pushed, or hardcoded within the local Git repositories or the centralized SVN (Subversion) release directories (such as trunk/dev/release/)."
+  },
+  {
+    "source": "synthetic",
+    "zone": "back",
+    "block_ids": [
+      "p38_b0",
+      "p38_b1",
+      "p38_b2",
+      "p38_b3",
+      "p38_b4",
+      "p38_b5",
+      "p38_b6",
+      "p38_b7",
+      "p38_b8",
+      "p38_b9",
+      "p38_b10",
+      "p38_b11",
+      "p38_b12",
+      "p38_b13"
+    ],
+    "original_text": "\u2022\nSIS Gateway Availability Dependency: The application's core functionality is entirely\ndependent on the real-time availability of the SIS Gateway API; any upstream network\nlatency or API downtime will directly result in a total denial of service for schedule fetching.\n\u2022\nRead-Only Data Boundary: The application operates under a strict read-only mandate;\nit is physically and programmatically constrained from writing or modifying any student\nregistration records within the university's primary databases.\n\u2022\nTransient Memory Architecture: The system is constrained to a transient data model,\nrelying exclusively on Plain Old Java Objects (POJOs) stored in volatile server memory\nduring active sessions, preventing the long-term local storage or retrieval of historical user\nschedules.\n\u2022\nStrict Versioning Requirements: The development and production environments are\nstrictly locked to the Java 1.7.0_40 runtime and the Apache Struts 2.3.15.2 MVC\nframework, constraining the team from utilizing newer software libraries or language\n\u2022\nAuthentication Code Reuse: Due to restrictive project timelines and university security",
+    "question": "Verify that the application is constrained from writing or modifying any student registration records within the university's primary databases.",
+    "ground_truth_context": "The application operates under a strict read-only mandate; it is physically and programmatically constrained from writing or modifying any student registration records within the university's primary databases."
+  },
+  {
+    "source": "synthetic",
+    "zone": "back",
+    "block_ids": [
+      "p29_b0",
+      "p29_b1",
+      "p29_b2",
+      "p29_b3",
+      "p29_b4",
+      "p29_b5",
+      "p29_b6",
+      "p29_b7",
+      "p29_b8",
+      "p29_b9",
+      "p29_b10",
+      "p29_b11"
+    ],
+    "original_text": "programming interfaces (APIs), the development team avoids the massive overhead of\nengineering complex web routing, calendar formatting, and cloud synchronization tools from\nscratch. However, introducing external code into the university's ecosystem requires strict\ngovernance. Therefore, a rigorous dependency management strategy is enforced to ensure these\nlibraries do not introduce security risks or stability issues over the application's lifecycle.\nThe system relies on verified third-party components to deliver its functionality.\n\u2022\nThe application utilizes Apache Struts 2 framework (Version: 2.3.15.2 ). The primary\npurpose of this dependency is to provide: the foundational Model-View-Controller (MVC)\narchitecture for the enterprise web application. It supplies the core \"action\" controller\nclasses responsible for intercepting user requests, executing the underlying business\nlogic, and routing the formatted POJO data directly to the JSP view layer for rendering.\nThe strategy for updating and maintaining this library is defined as: a standard",
+    "question": "Verify that the application does not use a version of the Apache Struts 2 framework with known critical vulnerabilities, such as version 2.3.15.2.",
+    "ground_truth_context": "The application utilizes Apache Struts 2 framework (Version: 2.3.15.2 )."
+  },
+  {
+    "source": "synthetic",
+    "zone": "back",
+    "block_ids": [
+      "p37_b0",
+      "p37_b1",
+      "p37_b2",
+      "p37_b3",
+      "p37_b4",
+      "p37_b5",
+      "p37_b6",
+      "p37_b7",
+      "p37_b8",
+      "p37_b9",
+      "p37_b10",
+      "p37_b11",
+      "p37_b12",
+      "p37_b13",
+      "p37_b14",
+      "p37_b15"
+    ],
+    "original_text": "\u2022\nThe SIS Gateway Web Services API will reliably execute requests and return standard,\nconsistently formatted JSON data payloads that match the expected internal schema of\nthe SISCalendar JSONParser module.\n\u2022\nThe established Shibboleth Authentication System provided by the Team Builder project\nimplementation will continue to securely validate credentials without requiring extensive\narchitectural overhauls by the SIS.io development team.\n\u2022\nThe external RIT Interactive Map API will remain accessible and provide accurate, up-to-\ndate topographical coordinates and building data to render customized map overlays\ncorrectly.\n\u2022\nStudents utilizing the gCalBuilder automated synchronization functionality possess valid,\nactive Google profiles and consent to the OAuth token exchanges required to write data\nto their personal Google Calendars.\nConstraints: The constraints represent the rigid boundaries, non-negotiable architectural\nlimitations, and operational bottlenecks imposed upon the SISCalendar system by the university\nenvironment and the chosen technology stack. The most critical constraint governing the entire\napplication is its absolute reliance on the availability of the SIS Gateway Web Services. Because",
+    "question": "Verify that the SIS Gateway Web Services API reliably executes requests and returns standard, consistently formatted JSON data payloads that match the expected internal schema of the SISCalendar JSONParser module.",
+    "ground_truth_context": "The SIS Gateway Web Services API will reliably execute requests and return standard, consistently formatted JSON data payloads that match the expected internal schema of the SISCalendar JSONParser module."
+  },
+  {
+    "source": "synthetic",
+    "zone": "back",
+    "block_ids": [
+      "p39_b0",
+      "p39_b1",
+      "p39_b2",
+      "p39_b3"
+    ],
+    "original_text": "Shibboleth\nThe robust, university-wide authentication and authorization system utilized by\nRIT. SISCalendar relies on this external security system to rigorously verify a\nuser's identity and credentials before granting them access to the application's\ncore Schedule Subsystem.\niCal4j\nA dedicated, third-party Java library integrated directly into the SISCalendar\nBusiness Services layer. It is explicitly responsible for transforming the internal\nPOJO data structures into a universally standardized iCal format, ultimately\nenabling the system to create downloadable .ics calendar files for the end-user.\nANT\nApache ANT is a highly reliable Java-based build tool and scripting library\nutilized extensively by the development team. It automates the complex\ncompilation and deployment processes, seamlessly converting the raw Struts\napplication source code into deployable Web Application Archive (.war) files\nfor the Apache Tomcat servers.\nStruts 2\nAn enterprise-grade Model-View-Controller (MVC) framework published by\nApache. It serves as the architectural backbone of the SISCalendar\napplication, providing out-of-the-box \"action\" controller classes that handle\nlogic execution and route processed data directly to the view layers.",
+    "question": "Verify that the application relies on a robust, external authentication and authorization system to rigorously verify a user's identity and credentials before granting access to the core subsystems.",
+    "ground_truth_context": "Shibboleth\nA robust, university-wide authentication and authorization system utilized by RIT. SISCalendar relies on this external security system to rigorously verify a user's identity and credentials before granting them access to the application's core Schedule Subsystem."
+  }
+]

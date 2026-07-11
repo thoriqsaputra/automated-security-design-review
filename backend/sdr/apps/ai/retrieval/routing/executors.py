@@ -4,7 +4,14 @@ import logging
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Set, Tuple
 
-from sdr.apps.ai.retrieval.core import RetrievalCandidate, RetrievalResult, RetrievalStrategy, dedupe_candidates, merge_candidates
+from sdr.apps.ai.retrieval.core import (
+    RetrievalCandidate,
+    RetrievalResult,
+    RetrievalStrategy,
+    dedupe_candidates,
+    merge_candidates,
+    reciprocal_rank_fusion,
+)
 from sdr.apps.ai.retrieval.searchers.raptor import RAPTOR_LEVEL_HIGH, RAPTOR_LEVEL_LOW, RAPTOR_LEVEL_MID, RAPTORSearchResponse
 from sdr.apps.ai.retrieval.searchers.vector import VectorSearchResponse
 from sdr.apps.ai.tsd_processing.raptor import RAPTORTree
@@ -88,6 +95,9 @@ def _grade_with_secondary_search(
         )
         extra_dense_candidates = router._dense_tsd_results_to_candidates(extra_dense_response)
 
+    # Secondary-search top-up always uses the agreement-boost merge regardless
+    # of router.advanced_config.fusion_method — it's a small supplementary
+    # merge on top of already-fused candidates, not the primary fusion step.
     merged = merge_candidates(candidates, extra_bm25, extra_dense_candidates)
     deduped = dedupe_candidates(merged)
     followup_keywords = keywords + _extract_keywords(followup_query)
@@ -370,8 +380,14 @@ class RetrievalRouteExecutor:
 
         dense_candidate_lists = [router._dense_tsd_results_to_candidates(resp) for resp in dense_responses]
         raptor_candidates = router._raptor_results_to_candidates(raptor_response)
-        merged = merge_candidates(*bm25_candidate_lists, *dense_candidate_lists, raptor_candidates)
-        deduped = dedupe_candidates(merged)
+        ranked_lists = [*bm25_candidate_lists, *dense_candidate_lists, raptor_candidates]
+        if router.advanced_config.fusion_method == "rrf":
+            # Primary fusion via Reciprocal Rank Fusion across each searcher's
+            # own ranked list, replacing the dedupe+agreement-boost merge below.
+            # Downstream tiering/rerank/keyword-boost logic is unchanged either way.
+            deduped = reciprocal_rank_fusion(ranked_lists, k=router.advanced_config.rrf_k)
+        else:
+            deduped = dedupe_candidates(merge_candidates(*ranked_lists))
         scored = router._apply_keyword_coverage_boost(deduped, keywords)
         evidence_filtered, evidence_metadata = _grade_with_secondary_search(
             router,

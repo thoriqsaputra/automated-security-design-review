@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from enum import Enum
-from typing import Any, Dict, List, Optional, TYPE_CHECKING
+from typing import Any, Dict, List, Literal, Optional, TYPE_CHECKING
 
 from sdr.core.config import settings
 
@@ -29,6 +29,11 @@ class AdvancedRetrievalConfig:
     enable_cross_encoder_rerank: bool = False
     hybrid_max_workers: int = 3
     retrieve_many_max_concurrency: int = 2
+    # "agreement_boost" (default) keeps today's dedupe + flat per-source score
+    # bump. "rrf" fuses per-searcher ranked lists via Reciprocal Rank Fusion
+    # instead, as the primary merge step in execute_hybrid.
+    fusion_method: Literal["agreement_boost", "rrf"] = "agreement_boost"
+    rrf_k: int = 60
 
     @classmethod
     def from_settings(cls) -> "AdvancedRetrievalConfig":
@@ -41,6 +46,8 @@ class AdvancedRetrievalConfig:
                 1,
                 int(getattr(settings, "AI_RETRIEVAL_MANY_MAX_CONCURRENCY", 2)),
             ),
+            fusion_method=getattr(settings, "AI_RETRIEVAL_FUSION_METHOD", "agreement_boost"),
+            rrf_k=int(getattr(settings, "AI_RETRIEVAL_RRF_K", 60)),
         )
 
 

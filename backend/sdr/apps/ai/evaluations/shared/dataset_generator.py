@@ -1,8 +1,9 @@
 import json
 import logging
 import random
+import re
 import argparse
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 import sys
 import os
 
@@ -17,6 +18,7 @@ from sdr.apps.ai.client.base import AIProvider
 from sdr.apps.reviews.models import Finding, CitationAnchor
 from sdr.apps.reviews.models.choices import MetStatus
 from sdr.apps.ai.retrieval.postprocessing.quote_grounding import is_quote_grounded
+from sdr.apps.ai.evaluations.shared import data_path
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -122,6 +124,108 @@ def _merge_blocks_into_samples(
     return samples
 
 
+_PAGE_RE = re.compile(r"^p(\d+)_b\d+$")
+
+ZONES = ("front", "middle", "back")
+
+
+def _page_of_block(block_id: str) -> Optional[int]:
+    m = _PAGE_RE.match(block_id)
+    return int(m.group(1)) if m else None
+
+
+def _zone_of_sample(block_ids: List[str], total_pages: int) -> str:
+    """Assign zone by the average page of the sample's blocks."""
+    pages = [_page_of_block(bid) for bid in block_ids if _page_of_block(bid) is not None]
+    pages = [p for p in pages if p is not None]
+    if not pages or not total_pages:
+        return "unknown"
+    avg_page = sum(pages) / len(pages)
+    frac = avg_page / total_pages
+    if frac < 1 / 3:
+        return "front"
+    if frac < 2 / 3:
+        return "middle"
+    return "back"
+
+
+def build_zone_balanced_dataset(
+    tsd_doc, total_pages: int, samples_per_zone: int, *, seed: Optional[int] = None
+) -> List[Dict[str, Any]]:
+    """
+    Builds a synthetic QA dataset deliberately balanced across document
+    position: samples_per_zone QA pairs sampled from EACH of front (0-1/3),
+    middle (1/3-2/3), and back (2/3-1) thirds of the TSD by page number.
+
+    Needed for lost-in-the-middle evaluation: a generic/unbalanced sample
+    (like the fixed 30-question ablation datasets) may have very few middle-
+    zone questions, making any middle-zone comparison statistically weak. This
+    forces equal representation so front/middle/back are comparable.
+
+    Returns a flat list of QA dicts (each tagged with "zone"), suitable for
+    dumping straight to a dataset JSON file and loaded once, reused across
+    every subsequent eval run — the LLM-generation step should only need to
+    run once per (design, samples_per_zone) combination, not on every
+    evaluation invocation.
+    """
+    if seed is not None:
+        random.seed(seed)
+
+    all_samples = _merge_blocks_into_samples(tsd_doc.all_text_blocks, min_words=30, max_words=150)
+
+    by_zone: Dict[str, List[Dict[str, Any]]] = {z: [] for z in ZONES}
+    for s in all_samples:
+        zone = _zone_of_sample(s["block_ids"], total_pages)
+        if zone in by_zone:
+            by_zone[zone].append(s)
+
+    for zone, pool in by_zone.items():
+        logger.info(f"Zone '{zone}': {len(pool)} candidate samples")
+
+    dataset: List[Dict[str, Any]] = []
+    for zone in ZONES:
+        pool = by_zone[zone]
+        if not pool:
+            logger.warning(f"No samples found for zone '{zone}' — skipping.")
+            continue
+
+        random.shuffle(pool)
+        generated = 0
+        for sample in pool:
+            if generated >= samples_per_zone:
+                break
+            logger.info(
+                f"Generating QA [{zone}] {generated + 1}/{samples_per_zone} "
+                f"from blocks {sample['block_ids'][:3]}..."
+            )
+            qa = None
+            for attempt in range(2):
+                candidate = generate_qa_pair(sample["text"])
+                if not candidate:
+                    continue
+                if is_quote_grounded(candidate.get("ground_truth_context", ""), sample["text"]):
+                    qa = candidate
+                    break
+                logger.warning(
+                    f"[{zone}] ground_truth not grounded (attempt {attempt + 1}/2)"
+                    + (" — retrying" if attempt == 0 else " — skipping")
+                )
+            if qa:
+                dataset.append({
+                    "source": "synthetic",
+                    "zone": zone,
+                    "block_ids": sample["block_ids"],
+                    "original_text": sample["text"],
+                    "question": qa.get("question", ""),
+                    "ground_truth_context": qa.get("ground_truth_context", ""),
+                })
+                generated += 1
+
+        logger.info(f"Zone '{zone}': generated {generated} QA pairs")
+
+    return dataset
+
+
 def generate_qa_pair(text_snippet: str) -> Dict[str, str]:
     user_prompt = f"Generate a QA pair for the following text snippet:\n\n{text_snippet}"
     
@@ -152,20 +256,65 @@ def main():
     parser.add_argument(
         "--source",
         type=str,
-        choices=["real_review", "synthetic"],
+        choices=["real_review", "synthetic", "zone_balanced"],
         default="synthetic",
         help=(
             "real_review: build the dataset from an already-completed review's persisted "
             "Findings/citations (recommended — grounded in real, human-relevant requirements "
             "and real cited evidence). synthetic: have an LLM invent Q&A pairs from random TSD "
-            "text snippets (fallback for designs with no completed review yet)."
+            "text snippets (fallback for designs with no completed review yet). zone_balanced: "
+            "like synthetic, but samples --samples-per-zone QA pairs from EACH of the TSD's "
+            "front/middle/back thirds — for lost-in-the-middle evaluation, where an unbalanced "
+            "sample would make the middle-zone comparison statistically weak."
         ),
     )
     parser.add_argument("--review-id", type=int, help="Review ID to source Findings from (required for --source real_review)")
     parser.add_argument("--num-samples", type=int, default=10, help="Number of QA pairs to generate (synthetic mode only)")
-    parser.add_argument("--output", type=str, default="eval_dataset.json", help="Output JSON file name")
+    parser.add_argument(
+        "--samples-per-zone", type=int, default=10,
+        help="Number of QA pairs per zone (front/middle/back) for --source zone_balanced. Default: 10.",
+    )
+    parser.add_argument("--seed", type=int, default=42, help="Random seed for reproducible sampling (zone_balanced mode).")
+    parser.add_argument(
+        "--output", type=str, default="eval_dataset.json",
+        help="Output JSON file name. Written under evaluations/data/ for zone_balanced; under evaluations/shared/ otherwise (matches prior behavior).",
+    )
 
     args = parser.parse_args()
+
+    if args.source == "zone_balanced":
+        logger.info(f"Loading Design {args.design_id} from database...")
+        with SessionLocal() as db:
+            design = db.query(Design).filter(Design.id == args.design_id).first()
+            if not design:
+                logger.error(f"Design with ID {args.design_id} not found.")
+                return
+
+            store = DesignPreparationStore()
+            try:
+                prep, tsd_doc, indexes = store.load_prepared_assets(db, design)
+            except Exception as e:
+                logger.error(f"Failed to load prepared assets for Design {args.design_id}: {e}")
+                return
+
+        total_pages = len(tsd_doc.pages)
+        logger.info(
+            f"Loaded TSD: {tsd_doc.document_name} — {total_pages} pages, {len(tsd_doc.all_text_blocks)} blocks"
+        )
+
+        dataset = build_zone_balanced_dataset(
+            tsd_doc, total_pages, args.samples_per_zone, seed=args.seed
+        )
+
+        output_path = data_path(args.output)
+        with open(output_path, "w") as f:
+            json.dump(dataset, f, indent=2)
+
+        logger.info(
+            f"Successfully generated zone-balanced dataset with {len(dataset)} items "
+            f"({args.samples_per_zone} per zone) and saved to {output_path}"
+        )
+        return
 
     if args.source == "real_review":
         if not args.review_id:

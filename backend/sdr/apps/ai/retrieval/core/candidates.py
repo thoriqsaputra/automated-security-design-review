@@ -49,6 +49,33 @@ def _key_for_candidate(candidate: RetrievalCandidate) -> str:
     return f"txt:{text_hash(candidate.text)}"
 
 
+def _merge_dupe(existing: RetrievalCandidate, candidate: RetrievalCandidate) -> RetrievalCandidate:
+    """Merges two candidates that resolved to the same dedupe key, unioning
+    block_ids/metadata and tracking merged_sources. Keeps whichever candidate
+    has the higher raw score as the surviving object (so its text/id win),
+    returns that survivor with the unioned fields applied in place.
+    """
+    merged_block_ids = list(dict.fromkeys((existing.block_ids or []) + (candidate.block_ids or [])))
+    merged_metadata = dict(existing.metadata or {})
+    existing_sources = list(merged_metadata.get("merged_sources", []))
+    if existing.source_type not in existing_sources:
+        existing_sources.append(existing.source_type)
+    if candidate.source_type not in existing_sources:
+        existing_sources.append(candidate.source_type)
+    merged_metadata.update(candidate.metadata or {})
+    merged_metadata["merged_sources"] = existing_sources
+
+    if candidate.score > existing.score:
+        preferred = candidate
+        preferred.block_ids = merged_block_ids
+        preferred.metadata = merged_metadata
+        return preferred
+
+    existing.block_ids = merged_block_ids
+    existing.metadata = merged_metadata
+    return existing
+
+
 def dedupe_candidates(candidates: Iterable[RetrievalCandidate]) -> List[RetrievalCandidate]:
     deduped: Dict[str, RetrievalCandidate] = {}
     order: List[str] = []
@@ -60,25 +87,7 @@ def dedupe_candidates(candidates: Iterable[RetrievalCandidate]) -> List[Retrieva
             order.append(key)
             continue
 
-        existing = deduped[key]
-        merged_block_ids = list(dict.fromkeys((existing.block_ids or []) + (candidate.block_ids or [])))
-        merged_metadata = dict(existing.metadata or {})
-        existing_sources = list(merged_metadata.get("merged_sources", []))
-        if existing.source_type not in existing_sources:
-            existing_sources.append(existing.source_type)
-        if candidate.source_type not in existing_sources:
-            existing_sources.append(candidate.source_type)
-        merged_metadata.update(candidate.metadata or {})
-        merged_metadata["merged_sources"] = existing_sources
-
-        if candidate.score > existing.score:
-            preferred = candidate
-            preferred.block_ids = merged_block_ids
-            preferred.metadata = merged_metadata
-            deduped[key] = preferred
-        else:
-            existing.block_ids = merged_block_ids
-            existing.metadata = merged_metadata
+        deduped[key] = _merge_dupe(deduped[key], candidate)
 
     for candidate in deduped.values():
         agreement_count = len(candidate.metadata.get("merged_sources", [candidate.source_type]))
