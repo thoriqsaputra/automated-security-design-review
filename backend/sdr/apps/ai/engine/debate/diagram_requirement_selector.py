@@ -7,8 +7,6 @@ from typing import Any, List
 
 from sdr.apps.ai.client import get_embedding
 from sdr.apps.ai.tsd_processing.diagram_ocr import extract_diagram_text
-from sdr.apps.ai.retrieval.core.candidates import RetrievalCandidate
-from sdr.apps.ai.retrieval.postprocessing.reranker import SafeOptionalReranker
 from sdr.apps.ai.agents.vision import VisionAgent
 from sdr.apps.ai.prompts.agents import (
     DIAGRAM_GATEKEEPER_SYSTEM_PROMPT,
@@ -29,19 +27,14 @@ _RRF_K = 60
 # still outrank a same-typed-but-irrelevant one.
 _TYPE_MATCH_BONUS = 1.0 / _RRF_K
 
-# Adaptive-cutoff constants. `config.vision_diagram_requirements_max_items` is
-# treated as a ceiling, not a forced count — a diagram with genuinely few
-# relevant requirements shouldn't be padded with irrelevant ones just to hit
-# a fixed number, and one with many shouldn't be truncated below the ceiling
-# if more of them clear the relevance bar.
-#
-# Cutoff is a RELATIVE margin from the top-scoring candidate, not an absolute
-# threshold: ms-marco-MiniLM-L-6-v2's raw logits aren't centered at 0 (checked
-# empirically — a genuinely relevant pair scored -5.2, irrelevant pairs scored
-# -11.2 to -11.4), so sigmoid(score) >= 0.5 rejects almost everything
-# regardless of relevance. The ~6-point gap observed between a relevant and
-# irrelevant pair is what a relative margin is calibrated against.
-_RELEVANCE_MARGIN = 3.0
+# Hybrid-path result cap, as a fraction of `top_k`. Empirically (F1 sweep
+# against the design-14/15 diagram-requirement eval set — see
+# diagram_retrieval_eval.py), returning the full top_k ceiling maximizes
+# recall but hurts precision: the last ~1/8 of the RRF-fused ranking is
+# disproportionately false positives. Trimming to ~87.5% of the ceiling
+# (28/32 in the evaluated configuration) is the local F1 optimum
+# (P=0.577 R=0.865 F1=0.662 vs P=0.521 R=0.887 F1=0.630 at the full ceiling).
+_HYBRID_TRIM_RATIO = 0.875
 _MIN_RESULTS = 3
 
 # Gatekeeper: batch size for the primary (real-reasoning) selection path.
@@ -100,7 +93,6 @@ class DiagramRequirementSelector:
         self.config = config
         self.workflow_repository = workflow_repository
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self._reranker = SafeOptionalReranker(enable_cross_encoder=True)
         self._gatekeeper = VisionAgent()
 
     def select_for_diagram(
@@ -110,18 +102,30 @@ class DiagramRequirementSelector:
         tsd_document,
         category,
         ingestion_job,
+        force_strategy: str | None = None,
     ) -> List[Any]:
+        """`force_strategy` is an eval-only seam ("gatekeeper" | "hybrid" |
+        "naive") to isolate one retrieval path for measurement. Leave it
+        `None` in production — that preserves the exact fallback chain below
+        (gatekeeper -> hybrid -> naive) unchanged."""
         top_k = self.config.vision_diagram_requirements_max_items
         caption = (getattr(diagram, "caption", "") or "").strip()
         surrounding = (getattr(diagram, "surrounding_text", "") or "").strip()
         ocr_text = self._extract_ocr_text(diagram)  # also ensures diagram.image_b64 is loaded
         diagram_type = _classify_diagram_type(caption, surrounding, ocr_text)
 
+        if force_strategy == "naive":
+            return self._fallback_requirements(
+                category_id=category.id,
+                ingestion_job_id=ingestion_job.id,
+                top_k=top_k,
+            )
+
         # Primary path: real reasoning over the diagram image, batched. Only
         # falls through to the embedding/BM25 hybrid path below if every
         # batch errors out or the diagram has no usable image.
         image_b64 = getattr(diagram, "image_b64", "") or ""
-        if image_b64:
+        if force_strategy in (None, "gatekeeper") and image_b64:
             try:
                 pool = self.workflow_repository.list_diagram_requirements(
                     category_id=category.id,
@@ -143,47 +147,55 @@ class DiagramRequirementSelector:
                 requirements = []
             if requirements:
                 return requirements
+            # "gatekeeper" isolation mode must not fall through to hybrid,
+            # even on an empty/failed result, or the measurement would be
+            # contaminated by the fallback path.
+            if force_strategy == "gatekeeper":
+                return requirements
 
-        query_text = self._build_query_text(
-            diagram=diagram, tsd_document=tsd_document,
-            caption=caption, surrounding=surrounding, ocr_text=ocr_text,
-        )
-        if not query_text:
-            return self._fallback_requirements(
-                category_id=category.id,
-                ingestion_job_id=ingestion_job.id,
-                top_k=top_k,
+        if force_strategy == "hybrid" or force_strategy is None:
+            query_text = self._build_query_text(
+                diagram=diagram, tsd_document=tsd_document,
+                caption=caption, surrounding=surrounding, ocr_text=ocr_text,
             )
-
-        try:
-            query_vector = get_embedding(text=query_text, dimensions=1024)
-        except Exception as exc:
-            self.logger.warning(
-                "DiagramRequirementSelector.select_for_diagram: embedding failed for diagram_id=%s: %s",
-                getattr(diagram, "diagram_id", None),
-                exc,
-            )
-            query_vector = []
-
-        if query_vector:
-            try:
-                requirements = self._hybrid_search(
+            if not query_text:
+                if force_strategy == "hybrid":
+                    return []
+                return self._fallback_requirements(
                     category_id=category.id,
                     ingestion_job_id=ingestion_job.id,
-                    query_text=query_text,
-                    query_vector=query_vector,
                     top_k=top_k,
-                    diagram_type=diagram_type,
                 )
+
+            try:
+                query_vector = get_embedding(text=query_text, dimensions=1024)
             except Exception as exc:
                 self.logger.warning(
-                    "DiagramRequirementSelector.select_for_diagram: hybrid search failed for diagram_id=%s: %s",
+                    "DiagramRequirementSelector.select_for_diagram: embedding failed for diagram_id=%s: %s",
                     getattr(diagram, "diagram_id", None),
                     exc,
                 )
-                requirements = []
-            if requirements:
-                return requirements
+                query_vector = []
+
+            if query_vector:
+                try:
+                    requirements = self._hybrid_search(
+                        category_id=category.id,
+                        ingestion_job_id=ingestion_job.id,
+                        query_text=query_text,
+                        query_vector=query_vector,
+                        top_k=top_k,
+                        diagram_type=diagram_type,
+                    )
+                except Exception as exc:
+                    self.logger.warning(
+                        "DiagramRequirementSelector.select_for_diagram: hybrid search failed for diagram_id=%s: %s",
+                        getattr(diagram, "diagram_id", None),
+                        exc,
+                    )
+                    requirements = []
+                if requirements or force_strategy == "hybrid":
+                    return requirements
 
         return self._fallback_requirements(
             category_id=category.id,
@@ -290,10 +302,19 @@ class DiagramRequirementSelector:
         top_k: int,
         diagram_type: str | None = None,
     ) -> List[Any]:
-        """BM25 + vector cosine, fused via Reciprocal Rank Fusion, optionally
-        cross-encoder reranked. The category's requirement pool is small
-        (tens of items), so both rankers score the FULL pool — no need for
-        approximate/top-k-limited search at either stage."""
+        """BM25 + vector cosine, fused via Reciprocal Rank Fusion. The
+        category's requirement pool is small (tens of items), so both
+        rankers score the FULL pool — no need for approximate/top-k-limited
+        search at either stage.
+
+        No cross-encoder reranking step: empirically (measured against the
+        design-14/15 diagram-requirement eval set — see
+        diagram_retrieval_eval.py), ms-marco-MiniLM-L-6-v2 reranking HURTS
+        ranking quality here (MAP 0.640 vs 0.719 for the RRF-fused order
+        alone). It's a general web-passage reranker trained on MS MARCO
+        query/passage pairs and doesn't transfer to short diagram
+        captions/OCR text scored against formal ASVS-style requirement text
+        — the RRF-fused order is used directly instead."""
         vector_pairs = self.workflow_repository.list_diagram_requirements_with_similarity(
             category_id=category_id,
             ingestion_job_id=ingestion_job_id,
@@ -327,44 +348,8 @@ class DiagramRequirementSelector:
             return score
 
         fused = sorted(pool, key=rrf_score, reverse=True)
-        # Must be >= top_k (the result-count ceiling) or we'd silently cap
-        # recall below whatever `top_k` allows; must also stay below the pool
-        # size or the fusion stage (BM25 + vector + type-boost) becomes a
-        # no-op, since the cross-encoder would just see the entire pool
-        # regardless of fusion order. 22 is a floor for when `top_k` itself is
-        # small enough that fusion would otherwise barely filter anything.
-        shortlist_size = max(top_k, 22)
-        shortlist = fused[: min(len(fused), shortlist_size)]
-
-        candidates = [
-            RetrievalCandidate(
-                id=str(req.id),
-                source_type="diagram_requirement",
-                text=req.requirement_text,
-                score=rrf_score(req),
-            )
-            for req in shortlist
-        ]
-        by_id = {str(req.id): req for req in shortlist}
-        # Rerank the whole shortlist (not just top_k) so every candidate gets
-        # a cross-encoder score to threshold on below.
-        ranked_candidates = self._reranker.rerank(query_text, candidates, len(candidates))
-
-        # Adaptive cutoff: `top_k` is a ceiling, not a forced count. Keep
-        # everything within _RELEVANCE_MARGIN of the top-scoring candidate
-        # (relative, not absolute — see constant comment above for why), up
-        # to the ceiling; always keep at least _MIN_RESULTS even if the margin
-        # would otherwise leave fewer, so a diagram never comes back empty.
-        if ranked_candidates:
-            top_score = ranked_candidates[0].score
-            selected = [c for c in ranked_candidates if c.score >= top_score - _RELEVANCE_MARGIN]
-        else:
-            selected = []
-        if len(selected) < _MIN_RESULTS:
-            selected = ranked_candidates[:_MIN_RESULTS]
-        selected = selected[:top_k]
-
-        return [by_id[c.id] for c in selected if c.id in by_id]
+        effective_k = max(_MIN_RESULTS, min(len(fused), round(top_k * _HYBRID_TRIM_RATIO)))
+        return fused[:effective_k]
 
     def _extract_ocr_text(self, diagram) -> str:
         try:

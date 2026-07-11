@@ -1,5 +1,17 @@
 {
   "version": "ASVS 4.0.3",
+  "ground_truth_review": {
+    "reviewed_at": "2026-07-11",
+    "rubric": "TSD-verifiability taxonomy used by category_eval.py",
+    "changes": [
+      {
+        "control_id": "1.6.2",
+        "from": "design",
+        "to": "infrastructure",
+        "reason": "The requirement explicitly requires key vault use, a deployment/secrets-management configuration, matching the v5 taxonomy."
+      }
+    ]
+  },
   "note": "Hand-labeled ground truth for extraction category accuracy evaluation. Labels follow the TSD-anchored definition: 'design' means verifiable from the Technical Specification Document alone (architecture, data flows, trust boundaries, protocol choices, encryption strategy, access control model, key management). Extend this set for broader coverage.",
   "category_definitions": {
     "design": "TSD-verifiable: architecture, data flows, trust boundaries, protocol/encryption strategy, access control model, key/secret management approach",
@@ -83,8 +95,8 @@
     {
       "control_id": "1.6.2",
       "requirement_excerpt": "Verify that consumers of cryptographic services protect key material",
-      "expected_category": "design",
-      "rationale": "How key material is protected by consuming components is an architectural concern"
+      "expected_category": "infrastructure",
+      "rationale": "Using key vaults for key material is a secrets-management deployment configuration."
     },
     {
       "control_id": "1.9.1",

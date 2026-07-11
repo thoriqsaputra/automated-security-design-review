@@ -80,6 +80,66 @@ OUTPUT: Valid JSON only. No markdown fences, no analysis, no reasoning.
 {standard_text}
 """
 
+
+REQUIREMENT_CATEGORY_VALIDATION_SYSTEM_PROMPT = """\
+You are a deterministic security-requirement classifier. Classify each item
+using the TSD-verifiability rubric exactly as written. Return strict JSON only.
+Do not add, remove, reorder, or rewrite items.
+"""
+
+
+def build_requirement_category_validation_prompt(items_json: str) -> str:
+    return f"""\
+Classify every requirement below into exactly one category. The category means
+the evidence needed to verify the requirement, not the technology words it contains.
+
+Apply this precedence and stop at the first matching rule:
+1. process: a recurring organizational activity, governance artifact, or lifecycle
+   practice (for example SDLC, training, threat-model cadence, inventory/SBOM upkeep,
+   remediation timeframes, discovery/inventory programs, retention-classification schedules).
+2. infrastructure: server, gateway, OS, deployment, CI/CD, or runtime configuration
+   (for example HTTP response headers, TLS versions/ciphers, redirects, default OS/DB
+   accounts, reverse proxies, load-balancer caches, application-cache/server-cache behavior,
+   dependency currency, automated build/deploy pipelines, key vault deployment).
+3. code: source-level implementation behavior or exact algorithm/validation logic
+   (for example encoding order, cookie flags, parameterized queries, per-object checks,
+   token generation/validation, GraphQL depth limits, rate-limit counters, per-user action limits,
+   URL-vs-body placement enforcement, password hashing, cryptographic RNG usage, log encoding).
+4. design: a TSD-visible architecture, documented policy/rule, data flow, trust boundary,
+   protocol choice, or access-control model.
+
+Important boundaries:
+- A requirement explicitly about documentation, defining rules, or architectural placement
+  is design unless it is an ongoing organizational process.
+- A runtime HTTP header or server/cache/deployment setting is infrastructure even when an
+  application can emit it dynamically.
+- A requirement to prove enforcement, exact limits, or implementation flow is code unless
+  it explicitly asks for the policy/documentation itself.
+- If the requirement is about classifying data, documented timeout/risk decisions, tenant-isolation
+  model, or controls defined according to security documentation, classify it as design.
+- If the requirement is about discovering all cryptography, keeping an inventory, or deleting data
+  on a defined governance schedule, classify it as process.
+
+Anchor examples:
+- "cookie-based session tokens have the Secure/HttpOnly attribute set" => code
+- "build and deployment processes are secure and repeatable" => infrastructure
+- "all components are up to date using a dependency checker" => infrastructure
+- "anti-caching headers" / "HSTS" / "CORS allowlist header" / "HTTP to HTTPS redirect behavior" => infrastructure
+- "query allowlist, depth limiting, or query cost analysis" => code
+- "session token verification uses a trusted backend service" => code
+- "terminate all other active sessions after auth-factor change" => code
+- "sensitive data only in body/header, not URL/query string" => code
+- "cryptographic discovery mechanisms identify all cryptography" => process
+- "sensitive information is subject to data retention classification and deletion schedule" => process
+- "classified into protection levels" / "cross-tenant controls model" / "inactivity timeout according to risk analysis" => design
+
+Input JSON array (preserve every index):
+{items_json}
+
+Respond with exactly:
+{{"items":[{{"index":0,"requirement_category":"design"}}]}}
+"""
+
 # ---------------------------------------------------------------------------
 # Standard Screening Prompt
 # ---------------------------------------------------------------------------

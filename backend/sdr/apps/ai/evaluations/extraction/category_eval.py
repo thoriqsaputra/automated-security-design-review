@@ -31,6 +31,7 @@ Usage:
         --explain-mismatches --output eval_category_accuracy.json
 """
 import argparse
+import hashlib
 import json
 import logging
 import os
@@ -76,7 +77,26 @@ Respond in JSON: {{"is_correct": true/false, "explanation": "..."}}"""
 def _load_ground_truth(gt_path: str) -> list[dict]:
     with open(gt_path) as f:
         data = json.load(f)
-    return data.get("items", [])
+    items = data.get("items", [])
+    if not isinstance(items, list):
+        raise ValueError("ground truth field 'items' must be a list")
+
+    seen_control_ids = set()
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            raise ValueError(f"ground truth item {index} must be an object")
+        control_id = str(item.get("control_id", "")).strip()
+        category = str(item.get("expected_category", "")).strip().lower()
+        if not control_id:
+            raise ValueError(f"ground truth item {index} has no control_id")
+        if control_id in seen_control_ids:
+            raise ValueError(f"ground truth contains duplicate control_id {control_id}")
+        if category not in VALID_CATEGORIES:
+            raise ValueError(
+                f"ground truth item {control_id} has invalid expected_category {category!r}"
+            )
+        seen_control_ids.add(control_id)
+    return items
 
 
 def _build_id_index(rows: list) -> dict[str, list]:
@@ -142,7 +162,17 @@ def main():
         help="Call the LLM eval_judge to explain each mismatch (adds LLM cost)"
     )
     parser.add_argument("--output", type=str, default="eval_extraction_category.json")
+    parser.add_argument("--min-accuracy", type=float, default=0.95)
+    parser.add_argument("--min-design-recall", type=float, default=0.95)
+    parser.add_argument("--min-match-rate", type=float, default=0.99)
+    parser.add_argument(
+        "--strict", action="store_true", default=False,
+        help="Return a non-zero exit status when quality targets or duplicate controls fail",
+    )
     args = parser.parse_args()
+
+    if not args.job_id and not (args.category_code and args.active_only):
+        parser.error("pass --job-id, or --category-code together with --active-only")
 
     gt_path = args.ground_truth or data_path("extraction_ground_truth.json")
     if args.ground_truth and not os.path.isabs(args.ground_truth) and not os.path.exists(args.ground_truth):
@@ -154,7 +184,13 @@ def main():
         logger.error(f"Ground truth file not found: {gt_path}")
         return
 
-    ground_truth = _load_ground_truth(gt_path)
+    try:
+        ground_truth = _load_ground_truth(gt_path)
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        logger.error("Invalid ground truth %s: %s", gt_path, exc)
+        return 2
+    with open(gt_path, "rb") as f:
+        ground_truth_sha256 = hashlib.sha256(f.read()).hexdigest()
     logger.info(f"Loaded {len(ground_truth)} ground-truth items from {gt_path}")
 
     with SessionLocal() as db:
@@ -207,6 +243,7 @@ def main():
     # Evaluation loop
     per_item_results = []
     not_found = []
+    duplicate_matches = []
 
     # confusion_matrix[true][predicted] = count
     confusion: dict[str, dict[str, int]] = {c: {p: 0 for p in VALID_CATEGORIES} for c in VALID_CATEGORIES}
@@ -224,7 +261,22 @@ def main():
             not_found.append({"control_id": control_id, "expected_category": true_cat})
             continue
 
-        # Use the first matching row (most recent by ID if duplicates exist)
+        # A clean job has one row per control ID. Keep deterministic behavior for
+        # historical jobs while surfacing duplicate candidates in the report.
+        if len(db_rows) > 1:
+            duplicate_matches.append(
+                {
+                    "control_id": control_id,
+                    "candidate_count": len(db_rows),
+                    "candidate_row_ids": sorted(row.id for row in db_rows),
+                    "candidate_categories": sorted(
+                        {
+                            (row.requirement_category or "unknown").strip().lower()
+                            for row in db_rows
+                        }
+                    ),
+                }
+            )
         db_row = max(db_rows, key=lambda r: r.id)
         matched += 1
         predicted_cat = (db_row.requirement_category or "unknown").strip().lower()
@@ -290,11 +342,29 @@ def main():
         sum(m["f1"] for m in per_category_metrics.values()) / len(VALID_CATEGORIES), 4
     )
 
+    quality_targets = {
+        "min_accuracy": args.min_accuracy,
+        "min_design_recall": args.min_design_recall,
+        "min_match_rate": args.min_match_rate,
+        "no_duplicate_control_matches": True,
+    }
+    quality_gate_checks = {
+        "accuracy": accuracy >= args.min_accuracy,
+        "design_recall": (
+            per_category_metrics.get("design", {}).get("recall", 0)
+            >= args.min_design_recall
+        ),
+        "match_rate": match_rate >= args.min_match_rate,
+        "no_duplicate_control_matches": not duplicate_matches,
+    }
+
     summary = {
         "job_label": job_label,
+        "ground_truth_path": os.path.abspath(gt_path),
+        "ground_truth_sha256": ground_truth_sha256,
         "ground_truth_items": len(ground_truth),
         "matched_in_db": matched,
-        "not_found_in_db": len(not_found),
+        "not_found_in_db_count": len(not_found),
         "match_rate": match_rate,
         "correct_predictions": correct,
         "accuracy": accuracy,
@@ -302,6 +372,8 @@ def main():
         "macro_recall": macro_recall,
         "macro_f1": macro_f1,
         "high_impact_error_count": len(high_impact_errors),
+        "duplicate_control_match_count": len(duplicate_matches),
+        "quality_targets": quality_targets,
         "thresholds": {
             "accuracy_gte_0.80": accuracy >= 0.80,
             "design_recall_gte_0.85": per_category_metrics.get("design", {}).get("recall", 0) >= 0.85,
@@ -316,6 +388,7 @@ def main():
         "per_category_metrics": per_category_metrics,
         "high_impact_errors": high_impact_errors,
         "not_found_in_db": not_found,
+        "duplicate_control_matches": duplicate_matches,
         "per_item_results": per_item_results,
     }
 
@@ -332,6 +405,7 @@ def main():
     logger.info(f"  Macro recall:      {macro_recall:.4f}")
     logger.info(f"  Macro F1:          {macro_f1:.4f}")
     logger.info(f"  High-impact errors:{len(high_impact_errors)}  (design FN or design FP)")
+    logger.info(f"  Duplicate controls: {len(duplicate_matches)}")
     logger.info(f"\n  Per-category metrics:")
     for cat, m in per_category_metrics.items():
         logger.info(f"    {cat:15s}: P={m['precision']:.2f}  R={m['recall']:.2f}  F1={m['f1']:.2f}  (tp={m['tp']} fp={m['fp']} fn={m['fn']})")
@@ -342,7 +416,10 @@ def main():
         row_vals = "  ".join(f"{confusion[true_cat][pred]:12d}" for pred in VALID_CATEGORIES)
         logger.info(f"  {true_cat:12s} {row_vals}")
     logger.info(f"\nResults saved to {output_path}")
+    if args.strict and not all(quality_gate_checks.values()):
+        return 1
+    return 0
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

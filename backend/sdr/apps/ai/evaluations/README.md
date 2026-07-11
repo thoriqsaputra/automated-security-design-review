@@ -49,7 +49,7 @@ Current state (update when you re-ingest):
 ## Extraction evaluations
 
 These three scripts validate the standard ingestion pipeline. Run them after every re-ingestion.
-Always pass `--job-id` for a specific version, or `--active-only` for the current active job.
+Always pass `--job-id` for a specific version, or `--category-code` together with `--active-only` for the current active job.
 
 ### 1. Purity — schema quality
 
@@ -111,7 +111,12 @@ enter the downstream debate pipeline.
 
 ```bash
 docker exec automated-security-design-review-backend-1 \
-  python /app/sdr/apps/ai/evaluations/extraction/category_eval.py --job-id 53
+  python /app/sdr/apps/ai/evaluations/extraction/category_eval.py --job-id 53 \
+  --strict --ground-truth extraction_ground_truth.json
+
+docker exec automated-security-design-review-backend-1 \
+  python /app/sdr/apps/ai/evaluations/extraction/category_eval.py --job-id 55 \
+  --strict --ground-truth extraction_ground_truth_v5.json
 
 # Add LLM judge explanations for each mismatch (costs API tokens):
 docker exec automated-security-design-review-backend-1 \
@@ -121,9 +126,13 @@ docker exec automated-security-design-review-backend-1 \
 
 | Metric | Threshold | Meaning |
 |--------|-----------|---------|
-| `accuracy` | ≥ 0.80 | Overall label match rate |
-| `design_recall` | ≥ 0.85 | Fraction of true-design items correctly tagged (gating metric) |
-| `match_rate` | ≥ 0.90 | Fraction of GT items found in DB (extraction completeness) |
+| `accuracy` | ≥ 0.95 | Overall label match rate |
+| `design_recall` | ≥ 0.95 | Fraction of true-design items correctly tagged (gating metric) |
+| `match_rate` | ≥ 0.99 | Fraction of GT items found in DB (extraction completeness) |
+
+`--strict` exits non-zero when a target fails or a ground-truth control maps to
+multiple database rows. The result includes the ground-truth SHA-256 and duplicate
+candidate details for reproducibility.
 
 Output: `results/eval_extraction_category.json`
 

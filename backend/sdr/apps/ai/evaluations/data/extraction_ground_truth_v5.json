@@ -1,5 +1,41 @@
 { 
   "version": "ASVS 5.0", 
+  "ground_truth_review": {
+    "reviewed_at": "2026-07-11",
+    "rubric": "TSD-verifiability taxonomy used by category_eval.py",
+    "changes": [
+      {
+        "control_id": "2.4.1",
+        "from": "code",
+        "to": "design",
+        "reason": "Anti-automation is treated here as a system-level control and policy choice, not a specific counter implementation detail."
+      },
+      {
+        "control_id": "6.3.1",
+        "from": "code",
+        "to": "design",
+        "reason": "The requirement explicitly ties the control to the application's security documentation, making it a design-level documented control."
+      },
+      {
+        "control_id": "7.3.1",
+        "from": "code",
+        "to": "design",
+        "reason": "The timeout behavior is driven by risk analysis and documented security decisions, so the expected category is design."
+      },
+      {
+        "control_id": "8.4.1",
+        "from": "code",
+        "to": "design",
+        "reason": "Cross-tenant isolation is treated as an architectural authorization model visible in design documentation."
+      },
+      {
+        "control_id": "14.2.7",
+        "from": "design",
+        "to": "process",
+        "reason": "Retention classification and scheduled deletion are ongoing governance and lifecycle activities."
+      }
+    ]
+  },
   "note": "Hand-labeled ground truth for extraction category accuracy evaluation based on ASVS 5.0.0. Labels follow the TSD-anchored definition: 'design' means verifiable from the Technical Specification Document alone (architecture, data flows, trust boundaries, rules/policies). Extend this set for broader coverage.", 
   "category_definitions": { 
     "design":         "TSD-verifiable: architecture, data classification, trust boundaries, defined limits/rules, encryption strategy, access control model", 
@@ -299,8 +335,8 @@
     {
       "control_id": "14.2.7", 
       "requirement_excerpt": "Verify that sensitive information is subject to data retention classification, ensuring that outdated or unnecessary data is deleted", 
-      "expected_category": "design", 
-      "rationale": "Data retention rules are business logic policies defined during the design phase."
+      "expected_category": "process", 
+      "rationale": "Retention classification and scheduled deletion are ongoing governance and lifecycle activities."
     },
     {
       "control_id": "15.1.3", 
@@ -401,8 +437,8 @@
     {
       "control_id": "2.4.1", 
       "requirement_excerpt": "Verify that anti-automation controls are in place to protect against excessive calls to application functions", 
-      "expected_category": "code", 
-      "rationale": "Verifying the implementation of rate limiting variables/counters is a code-level activity."
+      "expected_category": "design", 
+      "rationale": "Anti-automation is treated here as a system-level control and policy choice, not a specific code-level counter implementation."
     },
     {
       "control_id": "3.2.2", 
@@ -461,8 +497,8 @@
     {
       "control_id": "6.3.1", 
       "requirement_excerpt": "Verify that controls to prevent attacks such as credential stuffing and password brute force are implemented according to the application’s security documentation.", 
-      "expected_category": "code", 
-      "rationale": "Verifying the actual implementation logic of credential stuffing controls requires code review."
+      "expected_category": "design", 
+      "rationale": "The requirement anchors the control to the application's documented security design rather than a specific implementation detail."
     },
     {
       "control_id": "6.4.1", 
@@ -497,8 +533,8 @@
     {
       "control_id": "7.3.1", 
       "requirement_excerpt": "Verify that there is an inactivity timeout such that re-authentication is enforced according to risk analysis", 
-      "expected_category": "code", 
-      "rationale": "The technical enforcement of a session timeout requires code inspection."
+      "expected_category": "design", 
+      "rationale": "The timeout requirement is driven by risk analysis and documented security decisions, so it is categorized as design."
     },
     {
       "control_id": "7.4.1", 
@@ -527,8 +563,8 @@
     {
       "control_id": "8.4.1", 
       "requirement_excerpt": "Verify that multi-tenant applications use cross-tenant controls to ensure consumer operations will never affect tenants with which they do not have permissions", 
-      "expected_category": "code", 
-      "rationale": "Tenant isolation enforcement requires analyzing the query filters in code."
+      "expected_category": "design", 
+      "rationale": "Cross-tenant isolation is treated as an architectural authorization model rather than a source-only implementation detail."
     },
     {
       "control_id": "9.1.1", 

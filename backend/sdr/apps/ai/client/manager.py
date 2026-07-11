@@ -47,6 +47,11 @@ class AIServiceManager:
     def _get_model_setting(self, component: str) -> Optional[str]:
         models = {
             'standard_extraction': getattr(settings, 'AI_MODEL_STANDARD_EXTRACTION', 'meta/llama-3.1-8b-instruct'),
+            'standard_category_validation': getattr(
+                settings,
+                'AI_MODEL_STANDARD_CATEGORY_VALIDATION',
+                getattr(settings, 'AI_MODEL_EVAL_JUDGE', 'meta/llama-3.1-70b-instruct'),
+            ),
             'diagram_requirement_extraction': getattr(settings, 'AI_MODEL_DIAGRAM_REQUIREMENT_EXTRACTION', 'meta/llama-3.1-8b-instruct'),
             'tsd_ingestion': getattr(settings, 'AI_MODEL_TSD_INGESTION', 'meta/llama-3.1-8b-instruct'),
             'vision': getattr(settings, 'AI_MODEL_VISION', 'meta/llama-3.2-90b-vision-instruct'),

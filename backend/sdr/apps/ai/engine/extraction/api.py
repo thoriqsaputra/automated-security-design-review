@@ -42,7 +42,10 @@ def detect_asvs_page_ranges(
 
 
 def extract_structured_requirements(source_doc_text: str, source_name: str = "") -> Dict[str, List[Any]]:
-    service = StructuredRequirementExtractionService(llm_client=_build_llm_client())
+    service = StructuredRequirementExtractionService(
+        llm_client=_build_llm_client(),
+        config=_build_config(),
+    )
     return service.extract(source_doc_text, source_name=source_name)
 
 
@@ -56,6 +59,7 @@ def extract_requirements_from_document(
         document_reader=_build_document_reader(),
         structured_extractor=StructuredRequirementExtractionService(
             llm_client=_build_llm_client(),
+            config=_build_config(),
         ),
         requirement_level_detector=None,
         config=_build_config(),

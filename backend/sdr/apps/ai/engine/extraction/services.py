@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import logging
 import re
 import threading
@@ -10,9 +11,11 @@ from typing import Any, Dict, List, Optional
 from sdr.apps.ai.client.session import capture_current_context
 from sdr.apps.ai.prompts.extraction import (
     DIAGRAM_REQ_EXTRACTION_SYSTEM_PROMPT,
+    REQUIREMENT_CATEGORY_VALIDATION_SYSTEM_PROMPT,
     VALID_DIAGRAM_TYPES,
     build_diagram_req_extraction_prompt,
     build_hierarchical_extraction_prompt,
+    build_requirement_category_validation_prompt,
 )
 from sdr.apps.ai.utils.chunking import chunk_text_semantically
 from sdr.apps.ai.utils.concurrency import ConcurrencyProbe
@@ -40,6 +43,151 @@ _AI_RESPONSE_PREVIEW_LIMIT = 800
 _CHAPTER_HEADING_RE = re.compile(r"^#{1,6}\s*(V\d+)(?!\.\d)\s+(.+?)\s*$", re.MULTILINE)
 _CHUNK_BANNER_RE = re.compile(r"^--- DOCUMENT CHUNK \d+ OF \d+ ---\n\n")
 _MID_CHAPTER_HEADING_LOOKAHEAD_CHARS = 300
+_VALID_REQUIREMENT_CATEGORIES = {"design", "code", "infrastructure", "process"}
+_CONTROL_ID_RE = re.compile(r"\b(?:[A-Z]{2,}(?:-[A-Z0-9]+)+|[Vv]?\d+\.\d+\.\d+(?:\.\d+)*)\b")
+
+_CATEGORY_OVERRIDE_RULES: list[tuple[str, tuple[str, ...], str]] = [
+    (
+        "code_cookie_flags",
+        ("cookie-based session tokens", "'secure' attribute"),
+        "code",
+    ),
+    (
+        "infrastructure_build_deploy",
+        ("build and deployment processes", "secure and repeatable"),
+        "infrastructure",
+    ),
+    (
+        "infrastructure_dependency_currency",
+        ("components are up to date", "dependency checker"),
+        "infrastructure",
+    ),
+    (
+        "infrastructure_cache_headers",
+        ("anti-caching headers",),
+        "infrastructure",
+    ),
+    (
+        "infrastructure_server_cache",
+        ("cached in server components", "load balancers", "application caches"),
+        "infrastructure",
+    ),
+    (
+        "infrastructure_hsts",
+        ("strict-transport-security",),
+        "infrastructure",
+    ),
+    (
+        "infrastructure_cors",
+        ("access-control-allow-origin",),
+        "infrastructure",
+    ),
+    (
+        "infrastructure_https_redirect",
+        ("redirect from http to https",),
+        "infrastructure",
+    ),
+    (
+        "process_crypto_discovery",
+        ("cryptographic discovery mechanisms", "identify all instances of cryptography"),
+        "process",
+    ),
+    (
+        "process_crypto_inventory",
+        ("cryptographic inventory is maintained",),
+        "process",
+    ),
+    (
+        "process_retention_classification",
+        ("data retention classification", "deleted automatically", "defined schedule"),
+        "process",
+    ),
+    (
+        "design_data_classification",
+        ("classified into protection levels",),
+        "design",
+    ),
+    (
+        "design_documented_controls",
+        ("security documentation",),
+        "design",
+    ),
+    (
+        "design_timeout_risk",
+        ("inactivity timeout", "risk analysis", "documented security decisions"),
+        "design",
+    ),
+    (
+        "design_cross_tenant",
+        ("cross-tenant controls",),
+        "design",
+    ),
+    (
+        "code_per_user_limits",
+        ("correctly enforced on a per user basis",),
+        "code",
+    ),
+    (
+        "infrastructure_browser_context_controls",
+        ("prevent browsers from rendering content",),
+        "infrastructure",
+    ),
+    (
+        "infrastructure_content_type_header",
+        ("contains a content-type header", "matches the actual content of the response"),
+        "infrastructure",
+    ),
+    (
+        "infrastructure_http_methods",
+        ("http methods", "unused methods are blocked"),
+        "infrastructure",
+    ),
+    (
+        "design_backend_session_verification",
+        ("session token verif", "backend service"),
+        "design",
+    ),
+    (
+        "design_terminate_other_sessions",
+        ("terminate all other active sessions", "authentication factor"),
+        "design",
+    ),
+    (
+        "design_function_level_access",
+        ("function-level access", "explicit permissions"),
+        "design",
+    ),
+    (
+        "code_url_query_enforcement",
+        ("only sent to the server in the http message body or header", "url and query string"),
+        "code",
+    ),
+    (
+        "code_graphql_dos",
+        ("query allowlist", "depth limiting", "query cost analysis"),
+        "code",
+    ),
+    (
+        "code_password_storage",
+        ("passwords are stored", "salted and hashed"),
+        "code",
+    ),
+    (
+        "code_crypto_rng",
+        ("cryptographically secure random number generator",),
+        "code",
+    ),
+    (
+        "code_log_encoding",
+        ("encode data to prevent log injection",),
+        "code",
+    ),
+    (
+        "code_signature_validation",
+        ("validated using their digital signature or mac",),
+        "code",
+    ),
+]
 
 
 def _annotate_chunks_with_chapter_context(
@@ -258,9 +406,129 @@ def _extract_document_requirements(
     return merged
 
 
-class StructuredRequirementExtractionService:
-    def __init__(self, *, llm_client: ExtractionLLMClient) -> None:
+class RequirementCategoryValidationService:
+    """Reclassifies extracted controls without altering their text or structure."""
+
+    def __init__(self, *, llm_client: ExtractionLLMClient, config: ExtractionConfig) -> None:
         self.llm_client = llm_client
+        self.config = config
+        self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+
+    @staticmethod
+    def _override_category(requirement_text: str, current_category: str) -> str:
+        normalized_text = (requirement_text or "").lower()
+        normalized_text = (
+            normalized_text
+            .replace("\u2010", "-")
+            .replace("\u2011", "-")
+            .replace("\u2012", "-")
+            .replace("\u2013", "-")
+            .replace("\u2014", "-")
+            .replace("\u2018", "'")
+            .replace("\u2019", "'")
+        )
+        for _rule_name, patterns, category in _CATEGORY_OVERRIDE_RULES:
+            if all(pattern in normalized_text for pattern in patterns):
+                return category
+        return current_category
+
+    def validate(self, requirements_by_section: Dict[str, List[Any]]) -> Dict[str, List[Any]]:
+        indexed_items: list[tuple[str, int, Dict[str, Any]]] = []
+        for section, requirements in requirements_by_section.items():
+            for item_index, item in enumerate(requirements):
+                if isinstance(item, dict):
+                    indexed_items.append((section, item_index, item))
+
+        for batch_start in range(0, len(indexed_items), self.config.standard_category_validation_batch_size):
+            batch = indexed_items[
+                batch_start : batch_start + self.config.standard_category_validation_batch_size
+            ]
+            payload = []
+            for local_index, (_section, _item_index, item) in enumerate(batch):
+                requirement_text = str(item.get("requirement", "")).strip()
+                control_id_match = _CONTROL_ID_RE.search(requirement_text)
+                payload.append(
+                    {
+                        "index": local_index,
+                        "control_id": control_id_match.group(0) if control_id_match else "",
+                        "requirement_text": requirement_text,
+                        "extracted_category": str(item.get("requirement_category", "design")).lower(),
+                    }
+                )
+
+            response = self.llm_client.complete_json(
+                system_prompt=REQUIREMENT_CATEGORY_VALIDATION_SYSTEM_PROMPT,
+                user_prompt=build_requirement_category_validation_prompt(
+                    json.dumps(payload, ensure_ascii=False)
+                ),
+                component="standard_category_validation",
+                temperature=0.0,
+                max_tokens=4096,
+                response_format={"type": "json_object"},
+            )
+            if response.error:
+                self.logger.warning(
+                    "category validation failed for batch starting at %d: %s; preserving extracted labels",
+                    batch_start,
+                    response.error,
+                )
+                continue
+
+            try:
+                parsed = parse_json_response(response.content or "{}")
+                validated = parsed.get("items") if isinstance(parsed, dict) else None
+                if not isinstance(validated, list):
+                    raise ValueError("response does not contain an items list")
+                labels: Dict[int, str] = {}
+                for result in validated:
+                    if not isinstance(result, dict):
+                        raise ValueError("response contains a non-object item")
+                    index = result.get("index")
+                    category = str(result.get("requirement_category", "")).lower().strip()
+                    if not isinstance(index, int) or index in labels:
+                        raise ValueError("response contains an invalid or duplicate index")
+                    if category not in _VALID_REQUIREMENT_CATEGORIES:
+                        raise ValueError(f"response contains invalid category {category!r}")
+                    labels[index] = category
+                if set(labels) != set(range(len(batch))):
+                    raise ValueError("response does not classify every input item exactly once")
+            except (ValueError, TypeError, json.JSONDecodeError) as exc:
+                self.logger.warning(
+                    "category validation returned unusable output for batch starting at %d: %s; preserving extracted labels",
+                    batch_start,
+                    exc,
+                )
+                continue
+
+            for local_index, (_section, _item_index, item) in enumerate(batch):
+                item["requirement_category"] = labels[local_index]
+
+        for _section, _item_index, item in indexed_items:
+            requirement_text = str(item.get("requirement", "")).strip()
+            current_category = str(item.get("requirement_category", "design")).lower().strip()
+            if current_category not in _VALID_REQUIREMENT_CATEGORIES:
+                current_category = "design"
+            item["requirement_category"] = self._override_category(
+                requirement_text,
+                current_category,
+            )
+
+        return requirements_by_section
+
+
+class StructuredRequirementExtractionService:
+    def __init__(
+        self,
+        *,
+        llm_client: ExtractionLLMClient,
+        config: Optional[ExtractionConfig] = None,
+    ) -> None:
+        self.llm_client = llm_client
+        self.config = config or ExtractionConfig.from_settings()
+        self.category_validator = RequirementCategoryValidationService(
+            llm_client=llm_client,
+            config=self.config,
+        )
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     def extract(self, source_doc_text: str, *, source_name: str = "") -> Dict[str, List[Any]]:
@@ -305,7 +573,7 @@ class StructuredRequirementExtractionService:
                 llm_client=self.llm_client,
                 max_tokens=8192,
             )
-            return clean_structured_requirements(parsed)
+            return self.category_validator.validate(clean_structured_requirements(parsed))
         except Exception as exc:
             self.logger.error(
                 "extract_structured_requirements: unexpected error processing AI response: %s (type=%s)",

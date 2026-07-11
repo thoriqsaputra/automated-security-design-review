@@ -53,9 +53,13 @@ class Settings(BaseSettings):
     ROUTELLM_FAST_MODEL: str = Field(default="gpt-4o-mini")
 
     AI_MODEL_STANDARD_EXTRACTION: str = Field(default="meta/llama-3.1-8b-instruct")
+    AI_MODEL_STANDARD_CATEGORY_VALIDATION: str = Field(
+        default="gpt-4o|routellm"
+    )
     AI_MODEL_DIAGRAM_REQUIREMENT_EXTRACTION: str = Field(default="meta/llama-3.1-8b-instruct")
     AI_STANDARD_EXTRACTION_MAX_WORKERS: int = Field(default=3)
     AI_STANDARD_EXTRACTION_CHUNK_TOKEN_TARGET: int = Field(default=4500)
+    AI_STANDARD_CATEGORY_VALIDATION_BATCH_SIZE: int = Field(default=25)
     AI_STANDARD_EXTRACTION_CACHE_TTL_SECONDS: int = Field(default=86400)
     AI_DIAGRAM_REQUIREMENT_EXTRACTION_MAX_CONCURRENCY: int = Field(default=3)
     AI_MODEL_TSD_INGESTION: str = Field(default="meta/llama-3.1-8b-instruct")

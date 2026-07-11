@@ -23,6 +23,7 @@ from .page_detection import (
 from .services import (
     DiagramRequirementExtractionService,
     RequirementDocumentExtractionService,
+    RequirementCategoryValidationService,
     StructuredRequirementExtractionService,
 )
 from .api import detect_asvs_page_ranges
@@ -39,6 +40,7 @@ __all__ = [
     "extract_diagram_requirements",
     "StructuredRequirementExtractionService",
     "RequirementDocumentExtractionService",
+    "RequirementCategoryValidationService",
     "_extract_logical_id",
     "_canonicalize_diagram_requirements",
     "canonicalize_requirement_items",
