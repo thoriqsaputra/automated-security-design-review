@@ -10,16 +10,10 @@ from sdr.apps.ai.tsd_processing.raptor import RAPTORNode, RAPTORTree
 
 _TOKEN_RE = re.compile(r"[a-zA-Z0-9_]+")
 
-# Saturating-transform constant for BM25 score normalization: score / (score + K).
-# Chosen so a raw BM25 score around this magnitude (a solid, multi-term keyword
-# match on our block-sized chunks) lands near 0.5, with genuinely weak matches
-# compressed toward 0 rather than always being stretched to 1.0. Tune against
-# the retrieval eval harness (backend/sdr/apps/ai/evaluations/retrieval/) if the
-# corpus's raw BM25 score distribution shifts.
 _BM25_SATURATION_K = 10.0
 
 try:
-    from rank_bm25 import BM25Okapi  # type: ignore
+    from rank_bm25 import BM25Okapi
 
     BM25_AVAILABLE = True
 except Exception:
@@ -60,13 +54,6 @@ class KeywordSearcher:
         else:
             scores = self._fallback_scores(query_tokens, corpus_tokens)
 
-        # Fixed-scale saturating transform instead of per-query min-max: min-max
-        # would rescale the single best hit for THIS query to exactly 1.0 no
-        # matter how weak the actual match is, making it directly comparable
-        # (and often superior) to a genuinely strong RAPTOR/dense cosine
-        # similarity (~0.6-0.95) after merging. This transform instead reflects
-        # absolute match strength, so a weak query (no good keyword matches)
-        # doesn't manufacture an artificial top score.
         scores = [max(0.0, s) / (max(0.0, s) + _BM25_SATURATION_K) for s in scores]
 
         paired = sorted(zip(nodes, scores), key=lambda x: x[1], reverse=True)

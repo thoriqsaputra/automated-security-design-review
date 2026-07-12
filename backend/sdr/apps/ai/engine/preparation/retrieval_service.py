@@ -1,37 +1,22 @@
 from __future__ import annotations
 
-import json
 import logging
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from collections import defaultdict
-from typing import List, Optional, Dict, Any, Tuple, Iterable
-
-
-from sdr.core.config import settings
+from typing import Any, Dict, List, Optional, Tuple
 
 from sdr.apps.ai.client.session import capture_current_context
 from sdr.apps.ai.tsd_processing.document_models import TSDDocument
-from sdr.apps.ai.tsd_processing.content_filter import (
-    content_filter_enabled,
-    iter_filtered_scope_parts,
-)
 from sdr.apps.ai.tsd_processing.raptor import RAPTORTree, RAPTORTreeBuilder
-from sdr.apps.ai.tsd_processing.prepared_view import prepare_tsd_view
-from sdr.apps.ai.retrieval.core import RetrievalCandidate, RetrievalResult
+from sdr.apps.ai.retrieval.core import RetrievalResult
 from sdr.apps.ai.retrieval.routing.router import HybridRetrievalRouter
-from sdr.apps.ai.utils.parsing import strip_thinking_block
-from sdr.apps.ai.client import chat_completion
 from sdr.apps.standards.models import (
     StandardCategory,
     StandardIngestionJob,
 )
-from sdr.apps.standards.utils import build_parameter_analysis_text
 from sdr.apps.ai.engine.dto import DebatableParameter, RetrievalIndexes
 
 logger = logging.getLogger(__name__)
-
-_MAX_SCOPE_EVIDENCE_TERMS = 6
 
 
 class RetrievalService:
@@ -62,11 +47,9 @@ class RetrievalService:
         )
         progress_callbacks = progress_callbacks or {}
         total_started = time.monotonic()
-        prepared_view = prepare_tsd_view(tsd_document)
         raptor_tree = self._build_raptor_tree(
             tsd_document,
             progress_callbacks.get("raptor"),
-            prepared_view,
         )
         total_seconds = time.monotonic() - total_started
         self.logger.info(
@@ -100,56 +83,8 @@ class RetrievalService:
             override_query_text=override_query_text,
         )
 
-        # If router selected VECTOR_ONLY and there is no RAPTOR/Graph index
-        # available, avoid letting parameter-baseline text (vector matches)
-        # be treated as citation-grade evidence. Prefer TSD-derived chunks
-        # when possible; otherwise return empty context so Hunter defaults
-        # to not_met rather than hallucinating from baseline wording.
         try:
-            if (
-                result.strategy_used == result.strategy_used.VECTOR_ONLY
-                and (not indexes.raptor_tree or indexes.raptor_tree.is_empty())
-            ):
-                if tsd_document is not None and getattr(tsd_document, "full_text", None):
-                    from sdr.apps.ai.utils.chunking import chunk_text_with_context
-
-                    chunks = chunk_text_with_context(tsd_document.full_text)
-                    result.context_chunks = [c["text"] for c in chunks]
-                    result.context_chunk_block_ids = [[] for _ in result.context_chunks]
-                    result.error = None
-                else:
-                    result.context_chunks = []
-                    result.context_chunk_block_ids = []
-                    result.error = (
-                        "No TSD-backed indexes available; vector-only matches "
-                        "are not used as evidence."
-                    )
-        except Exception:
-            self.logger.exception(
-                "RetrievalService.retrieve_for_parameter: fallback handling failed for parameter id=%s",
-                parameter.id,
-            )
-
-        try:
-            explicit_diagrams = result.get_diagram_block_ids() or []
-            skipped_diagrams: List[Dict[str, Any]] = []
-            if explicit_diagrams and tsd_document is not None:
-                explicit_diagrams, skipped_diagrams = self._filter_loadable_diagram_block_ids(
-                    explicit_diagrams,
-                    tsd_document=tsd_document,
-                    max_diagrams=len(explicit_diagrams),
-                )
-                result.diagram_block_ids = explicit_diagrams
-            if not explicit_diagrams and tsd_document is not None:
-                result.diagram_block_ids = []
-            elif explicit_diagrams:
-                result.evidence_metadata = {
-                    **(result.evidence_metadata or {}),
-                    "diagram_id_source": "explicit",
-                    "diagram_inference": {
-                        "skipped_diagrams": skipped_diagrams,
-                    },
-                }
+            self._attach_explicit_diagram_metadata(result, tsd_document=tsd_document)
         except Exception:
             self.logger.exception(
                 "RetrievalService.retrieve_for_parameter: explicit diagram block handling failed for parameter id=%s",
@@ -236,6 +171,36 @@ class RetrievalService:
                     results[parameter_id] = RetrievalResult(error=str(exc))
         return results
 
+    def _attach_explicit_diagram_metadata(
+        self,
+        result: RetrievalResult,
+        *,
+        tsd_document: Optional[TSDDocument],
+    ) -> None:
+        explicit_diagrams = result.get_diagram_block_ids() or []
+        skipped_diagrams: List[Dict[str, Any]] = []
+
+        if explicit_diagrams and tsd_document is not None:
+            explicit_diagrams, skipped_diagrams = self._filter_loadable_diagram_block_ids(
+                explicit_diagrams,
+                tsd_document=tsd_document,
+                max_diagrams=len(explicit_diagrams),
+            )
+            result.diagram_block_ids = explicit_diagrams
+        elif tsd_document is not None:
+            result.diagram_block_ids = []
+
+        if not explicit_diagrams:
+            return
+
+        result.evidence_metadata = {
+            **(result.evidence_metadata or {}),
+            "diagram_id_source": "explicit",
+            "diagram_inference": {
+                "skipped_diagrams": skipped_diagrams,
+            },
+        }
+
     def _filter_loadable_diagram_block_ids(
         self,
         diagram_block_ids: List[str],
@@ -285,32 +250,18 @@ class RetrievalService:
         ]
         return "\n".join([p for p in parts if p]).strip() or None
 
-    def _extract_json_payload(self, text: str) -> str:
-        text = strip_thinking_block(text)
-        text = text.strip()
-        if text.startswith("```"):
-            lines = text.splitlines()
-            if lines and lines[0].startswith("```"):
-                lines = lines[1:]
-            if lines and lines[-1].startswith("```"):
-                lines = lines[:-1]
-            text = "\n".join(lines).strip()
-        return text
-
-    def _build_raptor_tree(self, tsd_document: TSDDocument, progress_callback=None, prepared_view=None) -> Optional[RAPTORTree]:
+    def _build_raptor_tree(self, tsd_document: TSDDocument, progress_callback=None) -> RAPTORTree:
         try:
             started = time.monotonic()
             self.logger.info(
                 "RetrievalService._build_raptor_tree: building for '%s'",
                 tsd_document.document_name,
             )
-            tree = self.raptor_builder.build(tsd_document, progress_callback=progress_callback, prepared_view=prepared_view)
+            tree = self.raptor_builder.build(tsd_document, progress_callback=progress_callback)
             if tree.is_empty():
-                self.logger.warning(
-                    "RetrievalService._build_raptor_tree: empty tree for '%s'",
-                    tsd_document.document_name,
+                raise ValueError(
+                    f"RAPTOR tree is empty for '{tsd_document.document_name}'."
                 )
-                return None
             self.logger.info(
                 "RetrievalService._build_raptor_tree: [SUCCESS] %d node(s)",
                 tree.total_nodes,
@@ -328,4 +279,4 @@ class RetrievalService:
                         "current_step": "RAPTOR index failed",
                     }
                 )
-            return None
+            raise

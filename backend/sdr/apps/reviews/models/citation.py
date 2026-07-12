@@ -9,17 +9,6 @@ from .choices import AnchorType
 
 
 class CitationAnchor(Base):
-    """
-    Stores precise source location metadata for a Finding so the frontend
-    can implement "click-to-source" navigation in the PDF viewer.
-
-    A single Finding may have multiple CitationAnchors — the Mediator
-    agent may cite 3 different text blocks across 2 pages as evidence
-    for a single verdict. Each anchor maps to one block_id from the
-    TSD ingestion pipeline.
-
-    One Finding → Many CitationAnchors.
-    """
     __tablename__ = "reviews_citationanchor"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
@@ -29,12 +18,9 @@ class CitationAnchor(Base):
     finding_id: Mapped[int] = mapped_column(ForeignKey("reviews_finding.id", ondelete="CASCADE"), index=True)
     anchor_type: Mapped[str] = mapped_column(String(16), default=AnchorType.TEXT.value)
     
-    # Matches TextBlock.block_id or DiagramBlock.diagram_id from TSD ingestor
-    # Format: "p{page_number}_b{block_idx}" or "p{page_number}_d{diagram_idx}"
     block_id: Mapped[str] = mapped_column(String(64), index=True)
     page_number: Mapped[int] = mapped_column(Integer)
     
-    # Bounding box in PDF coordinate space (points from bottom-left)
     bbox_x0: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     bbox_y0: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     bbox_x1: Mapped[Optional[float]] = mapped_column(Float, nullable=True)

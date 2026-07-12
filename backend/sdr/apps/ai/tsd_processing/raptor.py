@@ -13,7 +13,6 @@ from sdr.core.config import settings
 from sdr.apps.ai.client import chat_completion, get_embeddings
 from sdr.apps.ai.client.session import capture_current_context
 from sdr.apps.ai.tsd_processing.document_models import TextBlock, TSDDocument
-from sdr.apps.ai.tsd_processing.prepared_view import PreparedTSDView, prepare_tsd_view
 from sdr.apps.ai.utils.concurrency import ConcurrencyProbe
 from sdr.apps.ai.prompts.indexing import (
     RAPTOR_SUMMARISATION_SYSTEM_PROMPT,
@@ -23,53 +22,47 @@ from sdr.apps.ai.prompts.indexing import (
 
 logger = logging.getLogger(__name__)
 
-
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
-
-# Token budget per level — each level allows progressively larger summaries
 _LEVEL_TOKEN_BUDGETS = {
-    0: 400,    # leaf: raw text chunk size
-    1: 800,    # section summary
-    2: 1200,   # chapter summary
-    3: 2000,   # document root summary
+    0: 400,
+    1: 800,
+    2: 1200,
+    3: 2000,
 }
-
-# Minimum number of leaf nodes required to build a tree worth using.
-# Below this threshold, the document is too short for RAPTOR to add value.
 _MIN_LEAF_NODES = 3
-
-# Target cluster size at each level — how many child nodes per parent.
-# Kept small so summaries remain focused.
 _TARGET_CLUSTER_SIZE = 5
-
-# Minimum cluster size — clusters smaller than this are merged with neighbours.
 _MIN_CLUSTER_SIZE = 2
-
-# Maximum tree depth — prevents runaway recursion on very large documents.
 _MAX_TREE_DEPTH = 3
-
-# Progress bands (0-100 scale within the RAPTOR-index step) for each level's
-# summarize/embed sub-phases. Fixed since _MAX_TREE_DEPTH is a constant — each
-# level gets a summarize slice followed by an embed slice, both monotonically
-# increasing across levels so the raw progress signal never regresses.
 _LEVEL_PROGRESS_BANDS: Dict[int, Tuple[int, int, int]] = {
-    # level: (summarize_end, embed_start, embed_end)
     1: (30, 30, 45),
     2: (55, 55, 70),
     3: (80, 80, 90),
 }
-
-# Embedding model dimensions — must match CategoryParameterEmbedding.model_dim [3]
 _EMBEDDING_DIMENSIONS = 1024
-
-# Summarisation model — Claude Sonnet via BedrockService [4]
 _SUMMARY_TEMPERATURE = 0.1
 _SUMMARY_MAX_TOKENS = 1024
 _MAX_SUMMARY_WORKERS = 3
 _MAX_EMBED_WORKERS = 4
 _DEFAULT_EMBED_BATCH_SIZE = 32
+_LEVEL_INSTRUCTIONS = {
+    1: (
+        "Produce a detailed section-level summary. Preserve specific "
+        "security controls, protocol names, configuration details, "
+        "and any explicit compliance statements. These details are "
+        "critical for security requirement matching."
+    ),
+    2: (
+        "Produce a chapter-level summary covering the main security "
+        "themes. Identify which security domains are addressed "
+        "(e.g. authentication, encryption, access control) and note "
+        "any significant gaps or strengths."
+    ),
+    3: (
+        "Produce a document-level executive summary of the overall "
+        "security posture described in this Technical Software Document. "
+        "Identify the primary system components, key security controls "
+        "implemented, and any notable omissions."
+    ),
+}
 
 
 def _bounded_worker_count(configured: int, default: int) -> int:
@@ -79,25 +72,16 @@ def _bounded_worker_count(configured: int, default: int) -> int:
         return default
 
 
-# ---------------------------------------------------------------------------
-# RAPTOR node dataclass
-# ---------------------------------------------------------------------------
-
 @dataclass
 class RAPTORNode:
-    node_id: str                              # "level{L}_node{idx}"
-    level: int                                # 0 = leaf, 1+ = summary
-    text: str                                 # raw text or AI summary
+    node_id: str
+    level: int
+    text: str
     embedding: List[float] = field(default_factory=list)
-    # block_ids this node covers — union of all descendant leaf block_ids
     source_block_ids: List[str] = field(default_factory=list)
-    # Direct children in the tree (empty for leaf nodes)
     children: List[RAPTORNode] = field(default_factory=list)
-    # Page numbers covered by this node (for context display)
     page_numbers: List[int] = field(default_factory=list)
-    # Section heading associated with this node (from TSDPage.section_heading)
     section_heading: Optional[str] = None
-    # Whether embedding was successfully generated
     has_embedding: bool = False
 
     @property
@@ -106,15 +90,9 @@ class RAPTORNode:
 
     @property
     def token_estimate(self) -> int:
-        """Rough token estimate: ~4 characters per token."""
         return len(self.text) // 4
 
     def to_retrieval_dict(self) -> Dict[str, Any]:
-        """
-        Serialises this node to a flat dict for use by the retrieval layer.
-        Does NOT include the children list — retrieval operates on
-        individual nodes, not the tree structure.
-        """
         return {
             "node_id": self.node_id,
             "level": self.level,
@@ -128,10 +106,6 @@ class RAPTORNode:
         }
 
 
-# ---------------------------------------------------------------------------
-# RAPTOR tree dataclass
-# ---------------------------------------------------------------------------
-
 @dataclass
 class RAPTORTree:
     document_name: str
@@ -142,33 +116,25 @@ class RAPTORTree:
     build_stats: Dict[str, Any] = field(default_factory=dict)
 
     def get_nodes_at_level(self, level: int) -> List[RAPTORNode]:
-        """Returns all nodes at the specified level. Empty list if out of range."""
         if level < 0 or level >= len(self.levels):
             return []
         return self.levels[level]
 
     def get_all_nodes(self) -> List[RAPTORNode]:
-        """Returns all nodes across all levels in level-ascending order."""
         nodes = []
         for level_nodes in self.levels:
             nodes.extend(level_nodes)
         return nodes
 
     def get_leaf_nodes(self) -> List[RAPTORNode]:
-        """Returns all Level-0 leaf nodes."""
         return self.get_nodes_at_level(0)
 
     def get_nodes_with_embeddings(self) -> List[RAPTORNode]:
-        """Returns all nodes that have valid embedding vectors."""
         return [n for n in self.get_all_nodes() if n.has_embedding]
 
     def is_empty(self) -> bool:
         return self.total_nodes == 0
 
-
-# ---------------------------------------------------------------------------
-# RAPTOR Tree Builder
-# ---------------------------------------------------------------------------
 
 class RAPTORTreeBuilder:
     def __init__(
@@ -222,20 +188,13 @@ class RAPTORTreeBuilder:
             getattr(settings, "AI_RAPTOR_CONTEXT_CONCURRENCY", 8)
         )
 
-    # ------------------------------------------------------------------
-    # Public entry point
-    # ------------------------------------------------------------------
-
     def build(
         self,
         tsd_document: TSDDocument,
         progress_callback=None,
-        prepared_view: Optional[PreparedTSDView] = None,
     ) -> RAPTORTree:
         tree = RAPTORTree(document_name=tsd_document.document_name)
-        prepared = prepared_view or prepare_tsd_view(tsd_document)
-        tree.build_stats.update({f"content_filter_{key}": value for key, value in prepared.stats.items()})
-        valid_blocks = list(prepared.valid_blocks)
+        valid_blocks = self._get_valid_blocks(tsd_document)
 
         if len(valid_blocks) < _MIN_LEAF_NODES:
             self.logger.warning(
@@ -246,18 +205,16 @@ class RAPTORTreeBuilder:
                 len(valid_blocks),
                 _MIN_LEAF_NODES,
             )
-            if progress_callback:
-                progress_callback(
-                    {
-                        "status": "skipped",
-                        "progress_percent": 100,
-                        "current_step": "RAPTOR skipped for short document",
-                        "leaf_nodes": len(valid_blocks),
-                        "summary_levels_completed": 0,
-                        "total_nodes": 0,
-                        "embedded_nodes": 0,
-                    }
-                )
+            self._emit_progress(
+                progress_callback,
+                status="skipped",
+                progress_percent=100,
+                current_step="RAPTOR skipped for short document",
+                leaf_nodes=len(valid_blocks),
+                summary_levels_completed=0,
+                total_nodes=0,
+                embedded_nodes=0,
+            )
             return tree
 
         self.logger.info(
@@ -270,35 +227,25 @@ class RAPTORTreeBuilder:
             self.embed_max_concurrency,
         )
 
-        # ------------------------------------------------------------------
-        # Step 1: Build Level-0 leaf nodes from text blocks
-        # ------------------------------------------------------------------
-        leaf_nodes = self._build_leaf_nodes(valid_blocks, tsd_document, prepared.filtered_view.pages)
+        leaf_nodes = self._build_leaf_nodes(valid_blocks, tsd_document)
         tree.levels.append(leaf_nodes)
-        if progress_callback:
-            progress_callback(
-                {
-                    "status": "running",
-                    "progress_percent": 5,
-                    "current_step": "Creating RAPTOR leaf nodes",
-                    "leaf_nodes": len(leaf_nodes),
-                    "summary_levels_completed": 0,
-                }
-            )
+        self._emit_progress(
+            progress_callback,
+            status="running",
+            progress_percent=5,
+            current_step="Creating RAPTOR leaf nodes",
+            leaf_nodes=len(leaf_nodes),
+            summary_levels_completed=0,
+        )
 
         self.logger.info(
             "RAPTORTreeBuilder.build: Level 0 — %d leaf node(s) created.",
             len(leaf_nodes),
         )
 
-        # Contextual enrichment: prepend a 1-2 sentence section context to each
-        # leaf before embedding so the vector captures both content and location.
         if self.contextual_enrichment_enabled and leaf_nodes:
             self._enrich_leaf_nodes_with_context(leaf_nodes, tsd_document)
 
-        # Embed leaf nodes now (rather than only at the very end) so
-        # clustering can group them by similarity instead of falling back
-        # to document-order chunking.
         self._embed_all_nodes(
             leaf_nodes,
             progress_callback=progress_callback,
@@ -306,9 +253,6 @@ class RAPTORTreeBuilder:
             phase_label="Embedding leaf nodes",
         )
 
-        # ------------------------------------------------------------------
-        # Steps 2–4: Iteratively cluster and summarise up the tree
-        # ------------------------------------------------------------------
         current_level_nodes = leaf_nodes
         current_level = 0
 
@@ -353,23 +297,19 @@ class RAPTORTreeBuilder:
             summarize_end, embed_start, embed_end = _LEVEL_PROGRESS_BANDS.get(
                 next_level, _LEVEL_PROGRESS_BANDS[max(_LEVEL_PROGRESS_BANDS)]
             )
-            if progress_callback:
-                progress_callback(
-                    {
-                        "status": "running",
-                        "progress_percent": summarize_end,
-                        "current_step": (
-                            f"Summarizing RAPTOR level {next_level} of {self.max_depth} "
-                            f"— {len(clusters)} cluster(s)"
-                        ),
-                        "leaf_nodes": len(leaf_nodes),
-                        "summary_levels_completed": next_level,
-                        "total_nodes": sum(len(level_nodes) for level_nodes in tree.levels),
-                    }
-                )
+            self._emit_progress(
+                progress_callback,
+                status="running",
+                progress_percent=summarize_end,
+                current_step=(
+                    f"Summarizing RAPTOR level {next_level} of {self.max_depth} "
+                    f"— {len(clusters)} cluster(s)"
+                ),
+                leaf_nodes=len(leaf_nodes),
+                summary_levels_completed=next_level,
+                total_nodes=sum(len(level_nodes) for level_nodes in tree.levels),
+            )
 
-            # Embed this level's nodes immediately so the next loop
-            # iteration can cluster them by similarity as well.
             self._embed_all_nodes(
                 summary_nodes,
                 progress_callback=progress_callback,
@@ -380,17 +320,11 @@ class RAPTORTreeBuilder:
             current_level_nodes = summary_nodes
             current_level = next_level
 
-        # ------------------------------------------------------------------
-        # Step 5: Set the root node — the last remaining node after
-        #         recursive summarisation, or a synthesised root if
-        #         multiple nodes remain at the top level
-        # ------------------------------------------------------------------
         top_level_nodes = tree.levels[-1] if tree.levels else []
 
         if len(top_level_nodes) == 1:
             tree.root_node = top_level_nodes[0]
         elif len(top_level_nodes) > 1:
-            # Multiple top-level nodes — create a single root summary
             root_node = self._synthesise_root(
                 top_level_nodes=top_level_nodes,
                 level=len(tree.levels),
@@ -400,26 +334,18 @@ class RAPTORTreeBuilder:
                 tree.levels.append([root_node])
                 tree.root_node = root_node
 
-        # ------------------------------------------------------------------
-        # Step 6: Generate embeddings for any remaining nodes (leaf and
-        # summary nodes were already embedded per-level above so they could
-        # be clustered by similarity; this catches the synthesised root
-        # node, plus anything left unembedded by an earlier failure).
-        # ------------------------------------------------------------------
         all_nodes = tree.get_all_nodes()
         nodes_to_embed = [node for node in all_nodes if not node.has_embedding]
-        if progress_callback:
-            progress_callback(
-                {
-                    "status": "running",
-                    "progress_percent": 90,
-                    "current_step": "Embedding remaining RAPTOR nodes",
-                    "leaf_nodes": len(leaf_nodes),
-                    "summary_levels_completed": max(0, len(tree.levels) - 1),
-                    "total_nodes": len(all_nodes),
-                    "embedded_nodes": len(all_nodes) - len(nodes_to_embed),
-                }
-            )
+        self._emit_progress(
+            progress_callback,
+            status="running",
+            progress_percent=90,
+            current_step="Embedding remaining RAPTOR nodes",
+            leaf_nodes=len(leaf_nodes),
+            summary_levels_completed=max(0, len(tree.levels) - 1),
+            total_nodes=len(all_nodes),
+            embedded_nodes=len(all_nodes) - len(nodes_to_embed),
+        )
         self._embed_all_nodes(
             nodes_to_embed,
             progress_callback=progress_callback,
@@ -427,9 +353,6 @@ class RAPTORTreeBuilder:
             phase_label="Embedding remaining RAPTOR nodes",
         )
 
-        # ------------------------------------------------------------------
-        # Finalise tree metadata
-        # ------------------------------------------------------------------
         tree.total_nodes = len(all_nodes)
         tree.max_level = len(tree.levels) - 1
 
@@ -441,39 +364,40 @@ class RAPTORTreeBuilder:
             tree.total_nodes,
             len(tree.get_nodes_with_embeddings()),
         )
-        if progress_callback:
-            progress_callback(
-                {
-                    "status": "completed",
-                    "progress_percent": 100,
-                    "current_step": "RAPTOR index ready",
-                    "leaf_nodes": len(leaf_nodes),
-                    "summary_levels_completed": max(0, len(tree.levels) - 1),
-                    "total_nodes": tree.total_nodes,
-                    "embedded_nodes": len(tree.get_nodes_with_embeddings()),
-                }
-            )
+        self._emit_progress(
+            progress_callback,
+            status="completed",
+            progress_percent=100,
+            current_step="RAPTOR index ready",
+            leaf_nodes=len(leaf_nodes),
+            summary_levels_completed=max(0, len(tree.levels) - 1),
+            total_nodes=tree.total_nodes,
+            embedded_nodes=len(tree.get_nodes_with_embeddings()),
+        )
 
         return tree
 
-    # ------------------------------------------------------------------
-    # Level-0 leaf node construction
-    # ------------------------------------------------------------------
+    def _get_valid_blocks(self, tsd_document: TSDDocument) -> List[TextBlock]:
+        return [
+            block
+            for page in tsd_document.pages
+            for block in page.text_blocks
+            if block.is_valid()
+        ]
+
+    def _emit_progress(self, progress_callback=None, **payload: Any) -> None:
+        if progress_callback:
+            progress_callback(payload)
 
     def _build_leaf_nodes(
         self,
         text_blocks: List[TextBlock],
         tsd_document: TSDDocument,
-        pages: Optional[List[Any]] = None,
     ) -> List[RAPTORNode]:
-        # Group page-level markdown by section heading so retrieval uses the
-        # markdown-first ingestion output, including image references.
         section_groups: List[Dict[str, Any]] = []
-
-        source_pages = pages if pages is not None else tsd_document.pages
         allowed_block_ids = {block.block_id for block in text_blocks if block.is_valid()}
 
-        for page in source_pages:
+        for page in tsd_document.pages:
             page_text = page.all_text.strip()
             if not page_text:
                 continue
@@ -486,9 +410,6 @@ class RAPTORTreeBuilder:
             distinct_headings = {block.section_heading for block in valid_blocks}
 
             if len(distinct_headings) <= 1:
-                # Common case: the whole page is one section — use the
-                # markdown-first page text as before (preserves image
-                # references and markdown fidelity).
                 heading_key = page.section_heading or f"__page_{page.page_number}__"
                 page_entries = [
                     {
@@ -499,38 +420,10 @@ class RAPTORTreeBuilder:
                     }
                 ]
             else:
-                # This page contains a heading transition partway down (e.g.
-                # one section ends and another begins on the same physical
-                # page). Splitting by each block's own section_heading avoids
-                # embedding both topics as one diluted leaf — see the
-                # per-block heading fix in ingestor.py::_process_page. This
-                # falls back to raw block text (not page-level markdown) for
-                # just these split runs.
-                page_entries = []
-                current_run: List[Any] = []
-                current_heading: Optional[str] = None
-                for block in valid_blocks:
-                    if current_run and block.section_heading != current_heading:
-                        page_entries.append(
-                            {
-                                "heading_key": current_heading or f"__page_{page.page_number}_run{len(page_entries)}__",
-                                "text": "\n".join(b.text for b in current_run),
-                                "block_ids": [b.block_id for b in current_run],
-                                "page_number": page.page_number,
-                            }
-                        )
-                        current_run = []
-                    current_heading = block.section_heading
-                    current_run.append(block)
-                if current_run:
-                    page_entries.append(
-                        {
-                            "heading_key": current_heading or f"__page_{page.page_number}_run{len(page_entries)}__",
-                            "text": "\n".join(b.text for b in current_run),
-                            "block_ids": [b.block_id for b in current_run],
-                            "page_number": page.page_number,
-                        }
-                    )
+                page_entries = self._split_page_entries_by_heading(
+                    page.page_number,
+                    valid_blocks,
+                )
 
             for entry in page_entries:
                 heading_key = entry["heading_key"]
@@ -556,28 +449,18 @@ class RAPTORTreeBuilder:
         leaf_nodes: List[RAPTORNode] = []
         node_idx = 0
         token_budget = self.leaf_token_budget
-        char_budget = token_budget * 4  # 1 token ≈ 4 chars, matches _split_text_to_budget
+        char_budget = token_budget * 4
         max_pages = max(1, self.leaf_max_pages)
 
         for group in section_groups:
             heading_key = group["heading_key"]
-            section_heading = (
-                None if heading_key.startswith("__page_") else heading_key
-            )
-
-            # Pack whole pages into each leaf node, up to the token budget,
-            # so a leaf's source_block_ids only ever reflects the pages
-            # actually contributing to its text — never the whole (possibly
-            # many-page) section group. A single page whose own text exceeds
-            # the budget falls back to word-splitting just that page, so the
-            # worst-case over-attribution is bounded to one page instead of
-            # an entire multi-page section.
+            section_heading = None if heading_key.startswith("__page_") else heading_key
             current_texts: List[str] = []
             current_block_ids: List[str] = []
             current_page_numbers: List[int] = []
             current_char_count = 0
 
-            def flush():
+            def flush() -> None:
                 nonlocal node_idx
                 if not current_texts:
                     return
@@ -598,8 +481,6 @@ class RAPTORTreeBuilder:
                 page_len = len(page_text)
 
                 if page_len > char_budget:
-                    # This single page alone exceeds the budget — flush
-                    # whatever's pending, then split this page on its own.
                     flush()
                     current_texts, current_block_ids, current_page_numbers = [], [], []
                     current_char_count = 0
@@ -617,10 +498,6 @@ class RAPTORTreeBuilder:
                         node_idx += 1
                     continue
 
-                # Flush on char budget OR a hard page-count cap — the latter
-                # guards against sparse, block-dense pages (e.g. tables with
-                # many short labelled fields) that could otherwise pack well
-                # past a sane page count under char budget alone.
                 if current_texts and (
                     current_char_count + page_len > char_budget
                     or len(current_page_numbers) >= max_pages
@@ -644,19 +521,50 @@ class RAPTORTreeBuilder:
         )
         return leaf_nodes
 
-    # ------------------------------------------------------------------
-    # Contextual Enrichment
-    # ------------------------------------------------------------------
+    def _split_page_entries_by_heading(
+        self,
+        page_number: int,
+        valid_blocks: List[TextBlock],
+    ) -> List[Dict[str, Any]]:
+        page_entries: List[Dict[str, Any]] = []
+        current_run: List[TextBlock] = []
+        current_heading: Optional[str] = None
+
+        for block in valid_blocks:
+            if current_run and block.section_heading != current_heading:
+                page_entries.append(
+                    self._build_page_entry(page_number, current_heading, current_run, len(page_entries))
+                )
+                current_run = []
+            current_heading = block.section_heading
+            current_run.append(block)
+
+        if current_run:
+            page_entries.append(
+                self._build_page_entry(page_number, current_heading, current_run, len(page_entries))
+            )
+
+        return page_entries
+
+    def _build_page_entry(
+        self,
+        page_number: int,
+        heading: Optional[str],
+        blocks: List[TextBlock],
+        entry_index: int,
+    ) -> Dict[str, Any]:
+        return {
+            "heading_key": heading or f"__page_{page_number}_run{entry_index}__",
+            "text": "\n".join(block.text for block in blocks),
+            "block_ids": [block.block_id for block in blocks],
+            "page_number": page_number,
+        }
 
     def _enrich_leaf_nodes_with_context(
         self,
         leaf_nodes: List[RAPTORNode],
         tsd_document: TSDDocument,
     ) -> None:
-        """Prepend a 1-2 sentence section context to each leaf node's text.
-        Runs concurrently using the same ThreadPoolExecutor pattern as
-        _summarise_clusters. Failures are caught per-node and logged as warnings
-        so one bad LLM response never aborts the full ingestion."""
         doc_title = getattr(tsd_document, "title", None) or tsd_document.document_name or "Technical Security Design Document"
         nodes_to_enrich = [n for n in leaf_nodes if n.text and n.text.strip()]
         if not nodes_to_enrich:
@@ -689,7 +597,6 @@ class RAPTORTreeBuilder:
                     )
 
     def _generate_leaf_context(self, node: RAPTORNode, doc_title: str) -> str:
-        """Call LLM to produce a short context prefix for a single leaf node."""
         prompt = build_raptor_leaf_context_prompt(
             doc_title=doc_title,
             section_heading=node.section_heading or "General",
@@ -714,7 +621,6 @@ class RAPTORTreeBuilder:
         if not nodes:
             return []
 
-        # Single node — no clustering needed, return as one cluster
         if len(nodes) == 1:
             return [nodes]
 
@@ -741,13 +647,11 @@ class RAPTORTreeBuilder:
                 clusters.append(current_cluster)
                 current_cluster = []
 
-        # Handle the remaining nodes
         if current_cluster:
             if (
                 len(current_cluster) < self.min_cluster_size
                 and clusters
             ):
-                # Merge undersized trailing cluster into the last cluster
                 self.logger.debug(
                     "RAPTORTreeBuilder._cluster_nodes_sequential: merging "
                     "trailing cluster of %d node(s) into previous cluster.",
@@ -863,17 +767,15 @@ class RAPTORTreeBuilder:
                     summary_node = None
                 if summary_node is not None:
                     summary_nodes_by_cluster[cluster_idx] = summary_node
-                if progress_callback:
-                    completed_clusters = len(summary_nodes_by_cluster)
-                    cluster_progress = int(round((completed_clusters / max(len(clusters), 1)) * 100))
-                    progress_callback(
-                        {
-                            "status": "running",
-                            "progress_percent": min(65, 20 + level * 15),
-                            "current_step": f"Summarizing RAPTOR level {level} ({cluster_progress}% of clusters)",
-                            "summary_levels_completed": max(0, level - 1),
-                        }
-                    )
+                completed_clusters = len(summary_nodes_by_cluster)
+                cluster_progress = int(round((completed_clusters / max(len(clusters), 1)) * 100))
+                self._emit_progress(
+                    progress_callback,
+                    status="running",
+                    progress_percent=min(65, 20 + level * 15),
+                    current_step=f"Summarizing RAPTOR level {level} ({cluster_progress}% of clusters)",
+                    summary_levels_completed=max(0, level - 1),
+                )
 
         summary_nodes = [
             summary_nodes_by_cluster[cluster_idx]
@@ -920,23 +822,8 @@ class RAPTORTreeBuilder:
             level,
         )
         node_id = f"level{level}_node{cluster_idx}"
-
-        all_block_ids: List[str] = []
-        all_page_numbers: List[int] = []
+        source_block_ids, page_numbers = self._collect_cluster_metadata(cluster)
         section_heading = cluster[0].section_heading
-
-        for child_node in cluster:
-            all_block_ids.extend(child_node.source_block_ids)
-            all_page_numbers.extend(child_node.page_numbers)
-
-        seen_ids: set = set()
-        unique_block_ids = []
-        for bid in all_block_ids:
-            if bid not in seen_ids:
-                unique_block_ids.append(bid)
-                seen_ids.add(bid)
-
-        unique_page_numbers = sorted(set(all_page_numbers))
         summary_text = self._call_summarisation_llm(
             cluster=cluster,
             level=level,
@@ -956,11 +843,24 @@ class RAPTORTreeBuilder:
             node_id=node_id,
             level=level,
             text=summary_text,
-            source_block_ids=unique_block_ids,
+            source_block_ids=source_block_ids,
             children=list(cluster),
-            page_numbers=unique_page_numbers,
+            page_numbers=page_numbers,
             section_heading=section_heading,
         )
+
+    def _collect_cluster_metadata(
+        self,
+        nodes: List[RAPTORNode],
+    ) -> Tuple[List[str], List[int]]:
+        block_ids: List[str] = []
+        page_numbers: List[int] = []
+
+        for node in nodes:
+            block_ids.extend(node.source_block_ids)
+            page_numbers.extend(node.page_numbers)
+
+        return list(dict.fromkeys(block_ids)), sorted(set(page_numbers))
 
     def _call_summarisation_llm(
         self,
@@ -972,31 +872,7 @@ class RAPTORTreeBuilder:
             f"[Node {n.node_id}]\n{n.text}" for n in cluster
         )
 
-        level_instructions = {
-            1: (
-                "Produce a detailed section-level summary. Preserve specific "
-                "security controls, protocol names, configuration details, "
-                "and any explicit compliance statements. These details are "
-                "critical for security requirement matching."
-            ),
-            2: (
-                "Produce a chapter-level summary covering the main security "
-                "themes. Identify which security domains are addressed "
-                "(e.g. authentication, encryption, access control) and note "
-                "any significant gaps or strengths."
-            ),
-            3: (
-                "Produce a document-level executive summary of the overall "
-                "security posture described in this Technical Software Document. "
-                "Identify the primary system components, key security controls "
-                "implemented, and any notable omissions."
-            ),
-        }
-
-        instruction = level_instructions.get(
-            level,
-            level_instructions[1],
-        )
+        instruction = _LEVEL_INSTRUCTIONS.get(level, _LEVEL_INSTRUCTIONS[1])
 
         prompt = build_raptor_summarisation_prompt(
             instruction=instruction,
@@ -1047,10 +923,6 @@ class RAPTORTreeBuilder:
             )
             return None
 
-    # ------------------------------------------------------------------
-    # Root synthesis
-    # ------------------------------------------------------------------
-
     def _synthesise_root(
         self,
         top_level_nodes: List[RAPTORNode],
@@ -1063,23 +935,7 @@ class RAPTORTreeBuilder:
             len(top_level_nodes),
             document_name,
         )
-
-        # Aggregate all block_ids and page numbers from top-level nodes
-        all_block_ids: List[str] = []
-        all_page_numbers: List[int] = []
-
-        for node in top_level_nodes:
-            all_block_ids.extend(node.source_block_ids)
-            all_page_numbers.extend(node.page_numbers)
-
-        seen: set = set()
-        unique_block_ids = [
-            bid for bid in all_block_ids
-            if not (bid in seen or seen.add(bid))
-        ]
-        unique_page_numbers = sorted(set(all_page_numbers))
-
-        # Use level 3 summarisation instruction for the root
+        source_block_ids, page_numbers = self._collect_cluster_metadata(top_level_nodes)
         root_summary = self._call_summarisation_llm(
             cluster=top_level_nodes,
             level=3,
@@ -1098,15 +954,11 @@ class RAPTORTreeBuilder:
             node_id=f"level{level}_root",
             level=level,
             text=root_summary,
-            source_block_ids=unique_block_ids,
+            source_block_ids=source_block_ids,
             children=list(top_level_nodes),
-            page_numbers=unique_page_numbers,
-            section_heading=None,   # root covers the entire document
+            page_numbers=page_numbers,
+            section_heading=None,
         )
-
-    # ------------------------------------------------------------------
-    # Embedding generation
-    # ------------------------------------------------------------------
 
     def _embed_all_nodes(
         self,
@@ -1136,9 +988,7 @@ class RAPTORTreeBuilder:
                 failure_count += 1
                 continue
 
-            text_hash = hashlib.sha256(
-                node.text.encode("utf-8")
-            ).hexdigest()
+            text_hash = hashlib.sha256(node.text.encode("utf-8")).hexdigest()
             hash_to_text[text_hash] = node.text
             hash_to_nodes[text_hash].append(node)
 
@@ -1211,19 +1061,17 @@ class RAPTORTreeBuilder:
                                 node.embedding = []
                                 node.has_embedding = False
                                 failure_count += 1
-                    if progress_callback:
-                        processed = success_count + failure_count
-                        low, high = progress_range
-                        embed_progress = low + int(round((processed / max(len(nodes), 1)) * (high - low)))
-                        progress_callback(
-                            {
-                                "status": "running",
-                                "progress_percent": min(high, embed_progress),
-                                "current_step": f"{phase_label} ({processed} of {len(nodes)})",
-                                "total_nodes": len(nodes),
-                                "embedded_nodes": success_count,
-                            }
-                        )
+                    processed = success_count + failure_count
+                    low, high = progress_range
+                    embed_progress = low + int(round((processed / max(len(nodes), 1)) * (high - low)))
+                    self._emit_progress(
+                        progress_callback,
+                        status="running",
+                        progress_percent=min(high, embed_progress),
+                        current_step=f"{phase_label} ({processed} of {len(nodes)})",
+                        total_nodes=len(nodes),
+                        embedded_nodes=success_count,
+                    )
         embed_stats = probe.snapshot().to_dict()
         self._last_embed_concurrency_stats = embed_stats
 
@@ -1242,11 +1090,6 @@ class RAPTORTreeBuilder:
             embed_stats["elapsed_seconds"],
         )
 
-
-# ---------------------------------------------------------------------------
-# Module-level pure utility functions
-# ---------------------------------------------------------------------------
-
 def _split_text_to_budget(
     text: str,
     token_budget: int,
@@ -1254,23 +1097,19 @@ def _split_text_to_budget(
     if not text or not text.strip():
         return []
 
-    # Fast path — text already fits within budget
-    char_budget = token_budget * 4   # 1 token ≈ 4 chars
+    char_budget = token_budget * 4
     if len(text) <= char_budget:
         return [text.strip()]
 
-    # Split on paragraph boundaries first, then sentence boundaries,
-    # then word boundaries as a last resort — preserves coherence
     words = text.split()
     chunks: List[str] = []
     current_words: List[str] = []
     current_char_count = 0
 
     for word in words:
-        word_len = len(word) + 1   # +1 for the space
+        word_len = len(word) + 1
 
         if current_char_count + word_len > char_budget and current_words:
-            # Flush the current chunk
             chunks.append(" ".join(current_words).strip())
             current_words = [word]
             current_char_count = word_len
@@ -1278,11 +1117,9 @@ def _split_text_to_budget(
             current_words.append(word)
             current_char_count += word_len
 
-    # Flush the final chunk
     if current_words:
         chunks.append(" ".join(current_words).strip())
 
-    # Filter any empty strings produced by edge cases
     return [c for c in chunks if c]
 
 
@@ -1302,19 +1139,10 @@ def _compute_cosine_similarity(
 
     return dot_product / (magnitude_a * magnitude_b)
 
-
-# ---------------------------------------------------------------------------
-# Public exports
-# ---------------------------------------------------------------------------
-
 __all__ = [
-    # Dataclasses — imported by retrieval/raptor_search.py
-    # and analysis_service.py
     "RAPTORNode",
     "RAPTORTree",
-    # Main builder class
     "RAPTORTreeBuilder",
-    # Pure utilities — usable independently in tests and retrieval layer
     "_split_text_to_budget",
     "_compute_cosine_similarity",
 ]

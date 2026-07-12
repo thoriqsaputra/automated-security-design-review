@@ -6,8 +6,9 @@ import logging
 import re
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
+from sdr.apps.ai.client import chat_completion
 from sdr.apps.ai.client.session import capture_current_context
 from sdr.apps.ai.prompts.extraction import (
     DIAGRAM_REQ_EXTRACTION_SYSTEM_PROMPT,
@@ -23,186 +24,28 @@ from sdr.apps.standards.models import StandardSourceDocument
 
 from .config import ExtractionConfig
 from .document_reader import StandardDocumentReader
-from .llm_client import ExtractionLLMClient
 from .normalizers import (
     _canonicalize_diagram_requirements,
     _count_tokens,
-    _remove_table_of_contents,
     clean_structured_requirements,
     parse_json_response,
     parse_json_with_repair,
 )
-from .screening import StandardScreeningError, StandardScreeningService
+from .screening import StandardScreeningService
 
 logger = logging.getLogger(__name__)
 _AI_RESPONSE_PREVIEW_LIMIT = 800
 
-# Matches a markdown top-level OWASP-style chapter heading (e.g. "## V1 Architecture,
-# Design and Threat Modeling") while excluding sub-section headings (e.g. "## V1.12
-# Secure File Upload Architecture") via the negative lookahead on a following dot-digit.
 _CHAPTER_HEADING_RE = re.compile(r"^#{1,6}\s*(V\d+)(?!\.\d)\s+(.+?)\s*$", re.MULTILINE)
 _CHUNK_BANNER_RE = re.compile(r"^--- DOCUMENT CHUNK \d+ OF \d+ ---\n\n")
 _MID_CHAPTER_HEADING_LOOKAHEAD_CHARS = 300
 _VALID_REQUIREMENT_CATEGORIES = {"design", "code", "infrastructure", "process"}
 _CONTROL_ID_RE = re.compile(r"\b(?:[A-Z]{2,}(?:-[A-Z0-9]+)+|[Vv]?\d+\.\d+\.\d+(?:\.\d+)*)\b")
 
-_CATEGORY_OVERRIDE_RULES: list[tuple[str, tuple[str, ...], str]] = [
-    (
-        "code_cookie_flags",
-        ("cookie-based session tokens", "'secure' attribute"),
-        "code",
-    ),
-    (
-        "infrastructure_build_deploy",
-        ("build and deployment processes", "secure and repeatable"),
-        "infrastructure",
-    ),
-    (
-        "infrastructure_dependency_currency",
-        ("components are up to date", "dependency checker"),
-        "infrastructure",
-    ),
-    (
-        "infrastructure_cache_headers",
-        ("anti-caching headers",),
-        "infrastructure",
-    ),
-    (
-        "infrastructure_server_cache",
-        ("cached in server components", "load balancers", "application caches"),
-        "infrastructure",
-    ),
-    (
-        "infrastructure_hsts",
-        ("strict-transport-security",),
-        "infrastructure",
-    ),
-    (
-        "infrastructure_cors",
-        ("access-control-allow-origin",),
-        "infrastructure",
-    ),
-    (
-        "infrastructure_https_redirect",
-        ("redirect from http to https",),
-        "infrastructure",
-    ),
-    (
-        "process_crypto_discovery",
-        ("cryptographic discovery mechanisms", "identify all instances of cryptography"),
-        "process",
-    ),
-    (
-        "process_crypto_inventory",
-        ("cryptographic inventory is maintained",),
-        "process",
-    ),
-    (
-        "process_retention_classification",
-        ("data retention classification", "deleted automatically", "defined schedule"),
-        "process",
-    ),
-    (
-        "design_data_classification",
-        ("classified into protection levels",),
-        "design",
-    ),
-    (
-        "design_documented_controls",
-        ("security documentation",),
-        "design",
-    ),
-    (
-        "design_timeout_risk",
-        ("inactivity timeout", "risk analysis", "documented security decisions"),
-        "design",
-    ),
-    (
-        "design_cross_tenant",
-        ("cross-tenant controls",),
-        "design",
-    ),
-    (
-        "code_per_user_limits",
-        ("correctly enforced on a per user basis",),
-        "code",
-    ),
-    (
-        "infrastructure_browser_context_controls",
-        ("prevent browsers from rendering content",),
-        "infrastructure",
-    ),
-    (
-        "infrastructure_content_type_header",
-        ("contains a content-type header", "matches the actual content of the response"),
-        "infrastructure",
-    ),
-    (
-        "infrastructure_http_methods",
-        ("http methods", "unused methods are blocked"),
-        "infrastructure",
-    ),
-    (
-        "design_backend_session_verification",
-        ("session token verif", "backend service"),
-        "design",
-    ),
-    (
-        "design_terminate_other_sessions",
-        ("terminate all other active sessions", "authentication factor"),
-        "design",
-    ),
-    (
-        "design_function_level_access",
-        ("function-level access", "explicit permissions"),
-        "design",
-    ),
-    (
-        "code_url_query_enforcement",
-        ("only sent to the server in the http message body or header", "url and query string"),
-        "code",
-    ),
-    (
-        "code_graphql_dos",
-        ("query allowlist", "depth limiting", "query cost analysis"),
-        "code",
-    ),
-    (
-        "code_password_storage",
-        ("passwords are stored", "salted and hashed"),
-        "code",
-    ),
-    (
-        "code_crypto_rng",
-        ("cryptographically secure random number generator",),
-        "code",
-    ),
-    (
-        "code_log_encoding",
-        ("encode data to prevent log injection",),
-        "code",
-    ),
-    (
-        "code_signature_validation",
-        ("validated using their digital signature or mac",),
-        "code",
-    ),
-]
-
 
 def _annotate_chunks_with_chapter_context(
     chunks: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
-    """
-    Chunking splits the document with zero overlap, so a chunk that opens
-    mid-chapter (e.g. right after "V1.11...", before "V1.12...") never sees the
-    top-level chapter heading that appeared only once, in an earlier chunk. The
-    extraction prompt requires the LLM to key requirements by that top-level
-    heading, so without it the LLM has no reliable way to attribute orphaned
-    trailing sub-sections to the correct chapter. This carries the last-seen
-    top-level heading forward as an explicit context line on any chunk that
-    doesn't open with its own new top-level heading.
-    """
     active_heading: Optional[str] = None
     for chunk in chunks:
         text = chunk.get("text", "")
@@ -234,11 +77,49 @@ def _annotate_chunks_with_chapter_context(
     return chunks
 
 
+def _complete_json(
+    *,
+    chat_completion_fn: Callable[..., Any],
+    system_prompt: str,
+    user_prompt: str,
+    component: str,
+    temperature: float,
+    max_tokens: int,
+    response_format: Optional[Dict[str, Any]] = None,
+) -> Any:
+    messages = []
+    if system_prompt:
+        messages.append({"role": "system", "content": system_prompt})
+    messages.append({"role": "user", "content": user_prompt})
+    kwargs: Dict[str, Any] = {
+        "messages": messages,
+        "component": component,
+        "temperature": temperature,
+        "max_tokens": max_tokens,
+    }
+    if response_format is not None:
+        kwargs["response_format"] = response_format
+    return chat_completion_fn(**kwargs)
+
+
+def _repair_json(
+    *,
+    chat_completion_fn: Callable[..., Any],
+    user_prompt: str,
+    max_tokens: int,
+) -> Any:
+    return chat_completion_fn(
+        messages=[{"role": "user", "content": user_prompt}],
+        component="fallback",
+        temperature=0.0,
+        max_tokens=max_tokens,
+    )
+
+
 def _extract_document_requirements(
     *,
     document_reader: StandardDocumentReader,
     structured_extractor: "StructuredRequirementExtractionService",
-    requirement_level_detector: Optional[Any],
     config: ExtractionConfig,
     source_doc: StandardSourceDocument,
     start_page: Optional[int] = None,
@@ -276,18 +157,10 @@ def _extract_document_requirements(
         )
         return {}
 
-    source_doc_text = _remove_table_of_contents(source_doc_text)
-    if not source_doc_text.strip():
-        logger.warning(
-            "extract_requirements_from_document: ✗ [PREPROCESS] document '%s' had no extractable body text after table-of-contents removal.",
-            source_doc.name,
-        )
-        return {}
-
     if progress_callback:
         progress_callback("Screening Document", 10)
     
-    screening_service = StandardScreeningService(llm_client=structured_extractor.llm_client)
+    screening_service = StandardScreeningService(chat_completion_fn=structured_extractor.chat_completion)
     screening_service.screen_document(source_doc_text)
 
     if progress_callback:
@@ -332,10 +205,7 @@ def _extract_document_requirements(
             token_count,
         )
         chunk_started_at = time.monotonic()
-        try:
-            result = structured_extractor.extract(text, source_name=source_doc.name)
-        except TypeError:
-            result = structured_extractor.extract(text)
+        result = structured_extractor.extract(text)
         elapsed = time.monotonic() - chunk_started_at
         logger.info(
             "extract_requirements_from_document: [MAP %d/%d] FINISHED on thread %s in %.2fs",
@@ -404,33 +274,11 @@ def _extract_document_requirements(
     )
 
     return merged
-
-
 class RequirementCategoryValidationService:
-    """Reclassifies extracted controls without altering their text or structure."""
-
-    def __init__(self, *, llm_client: ExtractionLLMClient, config: ExtractionConfig) -> None:
-        self.llm_client = llm_client
+    def __init__(self, *, chat_completion_fn: Callable[..., Any], config: ExtractionConfig) -> None:
+        self.chat_completion = chat_completion_fn
         self.config = config
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-
-    @staticmethod
-    def _override_category(requirement_text: str, current_category: str) -> str:
-        normalized_text = (requirement_text or "").lower()
-        normalized_text = (
-            normalized_text
-            .replace("\u2010", "-")
-            .replace("\u2011", "-")
-            .replace("\u2012", "-")
-            .replace("\u2013", "-")
-            .replace("\u2014", "-")
-            .replace("\u2018", "'")
-            .replace("\u2019", "'")
-        )
-        for _rule_name, patterns, category in _CATEGORY_OVERRIDE_RULES:
-            if all(pattern in normalized_text for pattern in patterns):
-                return category
-        return current_category
 
     def validate(self, requirements_by_section: Dict[str, List[Any]]) -> Dict[str, List[Any]]:
         indexed_items: list[tuple[str, int, Dict[str, Any]]] = []
@@ -456,7 +304,8 @@ class RequirementCategoryValidationService:
                     }
                 )
 
-            response = self.llm_client.complete_json(
+            response = _complete_json(
+                chat_completion_fn=self.chat_completion,
                 system_prompt=REQUIREMENT_CATEGORY_VALIDATION_SYSTEM_PROMPT,
                 user_prompt=build_requirement_category_validation_prompt(
                     json.dumps(payload, ensure_ascii=False)
@@ -504,14 +353,10 @@ class RequirementCategoryValidationService:
                 item["requirement_category"] = labels[local_index]
 
         for _section, _item_index, item in indexed_items:
-            requirement_text = str(item.get("requirement", "")).strip()
             current_category = str(item.get("requirement_category", "design")).lower().strip()
             if current_category not in _VALID_REQUIREMENT_CATEGORIES:
                 current_category = "design"
-            item["requirement_category"] = self._override_category(
-                requirement_text,
-                current_category,
-            )
+            item["requirement_category"] = current_category
 
         return requirements_by_section
 
@@ -520,18 +365,18 @@ class StructuredRequirementExtractionService:
     def __init__(
         self,
         *,
-        llm_client: ExtractionLLMClient,
+        chat_completion_fn: Callable[..., Any] = chat_completion,
         config: Optional[ExtractionConfig] = None,
     ) -> None:
-        self.llm_client = llm_client
+        self.chat_completion = chat_completion_fn
         self.config = config or ExtractionConfig.from_settings()
         self.category_validator = RequirementCategoryValidationService(
-            llm_client=llm_client,
+            chat_completion_fn=chat_completion_fn,
             config=self.config,
         )
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
-    def extract(self, source_doc_text: str, *, source_name: str = "") -> Dict[str, List[Any]]:
+    def extract(self, source_doc_text: str) -> Dict[str, List[Any]]:
         self.logger.debug(
             "extract_structured_requirements: starting extraction. Text length=%d chars, %d lines.",
             len(source_doc_text),
@@ -539,7 +384,8 @@ class StructuredRequirementExtractionService:
         )
         prompt = build_hierarchical_extraction_prompt(source_doc_text)
         try:
-            response = self.llm_client.complete_json(
+            response = _complete_json(
+                chat_completion_fn=self.chat_completion,
                 system_prompt=(
                     "You are an expert security analyst. "
                     "Extract ONLY actionable, technical security requirements from the real "
@@ -570,7 +416,10 @@ class StructuredRequirementExtractionService:
                 return {}
             parsed = parse_json_with_repair(
                 response.content or "{}",
-                llm_client=self.llm_client,
+                repair_json=lambda **kwargs: _repair_json(
+                    chat_completion_fn=self.chat_completion,
+                    **kwargs,
+                ),
                 max_tokens=8192,
             )
             return self.category_validator.validate(clean_structured_requirements(parsed))
@@ -589,12 +438,10 @@ class RequirementDocumentExtractionService:
         *,
         document_reader: StandardDocumentReader,
         structured_extractor: StructuredRequirementExtractionService,
-        requirement_level_detector: Optional[Any] = None,
         config: ExtractionConfig,
         ) -> None:
         self.document_reader = document_reader
         self.structured_extractor = structured_extractor
-        self.requirement_level_detector = requirement_level_detector
         self.config = config
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
@@ -615,7 +462,6 @@ class RequirementDocumentExtractionService:
         return _extract_document_requirements(
             document_reader=self.document_reader,
             structured_extractor=self.structured_extractor,
-            requirement_level_detector=self.requirement_level_detector,
             config=self.config,
             source_doc=source_doc,
             start_page=start_page,
@@ -629,10 +475,10 @@ class DiagramRequirementExtractionService:
     def __init__(
         self,
         *,
-        llm_client: ExtractionLLMClient,
+        chat_completion_fn: Callable[..., Any] = chat_completion,
         config: ExtractionConfig,
     ) -> None:
-        self.llm_client = llm_client
+        self.chat_completion = chat_completion_fn
         self.config = config
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
@@ -671,7 +517,8 @@ class DiagramRequirementExtractionService:
                 thread_name,
                 len(batch),
             )
-            response = self.llm_client.complete_json(
+            response = _complete_json(
+                chat_completion_fn=self.chat_completion,
                 system_prompt=DIAGRAM_REQ_EXTRACTION_SYSTEM_PROMPT,
                 user_prompt=build_diagram_req_extraction_prompt(
                     requirements_text="\n".join(batch)

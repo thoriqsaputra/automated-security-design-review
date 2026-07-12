@@ -31,32 +31,20 @@ class CategoryDiagramRequirement(Base, StandardsBigIntBase):
         nullable=True,
         index=True,
     )
-    # Unique identifier for this diagram requirement (e.g. "D-V1")
     stable_key: Mapped[str] = mapped_column(String(255), index=True)
 
-    # Links back to the source text parameter's stable_key.
-    # "composite" if this diagram req was merged from multiple text params.
     source_requirement_key: Mapped[str] = mapped_column(String(255))
 
-    # Compact one-line requirement written for visual verification.
-    # Max ~100 chars to fit prompt budget.
     requirement_text: Mapped[str] = mapped_column(String)
 
-    # Detailed visual criteria for the VisionCritic to verify against.
-    # Not included in the Hunter prompt to save tokens.
     verification_hint: Mapped[str] = mapped_column(String)
 
-    # Parent section title (e.g. "V1 Architecture")
     parent_section: Mapped[str] = mapped_column(String(255))
 
-    # Which diagram type this requirement targets: "data_flow", "sequence", or "architecture".
-    # Empty string means the LLM did not return a valid type.
     diagram_type: Mapped[str] = mapped_column(String(64), server_default="", default="")
 
-    # Ordering within the category baseline
     ordinal: Mapped[int] = mapped_column(Integer, default=0)
 
-    # Relationships
     category = relationship("StandardCategory", backref="diagram_requirements")
     ingestion_job = relationship(
         "StandardIngestionJob",

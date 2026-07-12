@@ -131,7 +131,6 @@ OUTPUT: Strict JSON only. No prose outside the JSON object.
 def build_mediator_prompt(
     parameter_text: str,
     parameter_section: str,
-    contract: dict,
     hunter_verdict: str,
     hunter_confidence: float,
     critic_outcome: str,
@@ -164,7 +163,6 @@ def build_mediator_prompt(
 
 Section: {parameter_section}
 Requirement: {parameter_text}
-Contract: {contract or {}}
 
 ## HUNTER'S INITIAL FINDING
 

@@ -2,13 +2,12 @@ from __future__ import annotations
 
 import logging
 import json
-from typing import Callable, Dict, List, Optional
+from typing import Callable, List, Optional
 
 from sdr.apps.ai.prompts.agents import (
     MEDIATOR_RECOMMENDATION_SYSTEM_PROMPT,
     MEDIATOR_SYSTEM_PROMPT,
     build_mediator_prompt,
-    build_batch_mediator_prompt,
     build_mediator_recommendation_prompt,
 )
 from .base import (
@@ -45,7 +44,6 @@ class MediatorAgent(BaseAgent):
         self,
         parameter_text: str,
         parameter_section: str,
-        contract: dict,
         hunter_result: HunterResult,
         critic_result: CriticResult,
         debate_history: Optional[List[dict]] = None,
@@ -58,7 +56,6 @@ class MediatorAgent(BaseAgent):
         return build_mediator_prompt(
             parameter_text=parameter_text,
             parameter_section=parameter_section,
-            contract=contract,
             hunter_verdict=hunter_result.verdict,
             hunter_confidence=hunter_result.confidence,
             critic_outcome=critic_result.outcome,
@@ -82,7 +79,6 @@ class MediatorAgent(BaseAgent):
         self,
         parameter_text: str,
         parameter_section: str,
-        contract: dict,
         hunter_result: HunterResult,
         critic_result: CriticResult,
         debate_history: Optional[List[dict]] = None,
@@ -125,7 +121,6 @@ class MediatorAgent(BaseAgent):
         user_prompt = self._build_user_prompt(
             parameter_text=parameter_text,
             parameter_section=parameter_section,
-            contract=contract,
             hunter_result=hunter_result,
             critic_result=critic_result,
             debate_history=debate_history,
@@ -349,225 +344,6 @@ class MediatorAgent(BaseAgent):
             debate_rounds_used=debate_rounds_used,
             raw_response=response.content,
             error=None,
-        )
-
-    def run_batch(
-        self,
-        child_inputs: List[dict],
-        parameter_section: str,
-        hunter_results: Dict[str, HunterResult],
-        critic_results: Dict[str, CriticResult],
-        debate_history_by_child: Optional[Dict[str, List[dict]]] = None,
-    ) -> Dict[str, MediatorResult]:
-        if not child_inputs:
-            return {}
-
-        auto_upheld_results: Dict[str, MediatorResult] = {}
-        llm_child_inputs: List[dict] = []
-        
-        for item in child_inputs:
-            child_id = str(item.get("id"))
-            if not child_id or child_id == "None":
-                continue
-            parameter_text = item.get("requirement") or str(item.get("text") or "")
-            hunter_result = hunter_results.get(child_id) or HunterResult()
-            critic_result = critic_results.get(child_id) or CriticResult()
-            debate_history = (debate_history_by_child or {}).get(child_id, [])
-
-            fast_path_result = self._try_fast_path(
-                parameter_text=parameter_text,
-                hunter_result=hunter_result,
-                critic_result=critic_result,
-                debate_history=debate_history,
-            )
-            
-            if fast_path_result is not None:
-                auto_upheld_results[child_id] = fast_path_result
-            else:
-                llm_child_inputs.append(item)
-
-        results: Dict[str, MediatorResult] = auto_upheld_results.copy()
-
-        if not llm_child_inputs:
-            return results
-
-        response = self._call_llm_with_truncation_retry(
-            self._build_batch_user_prompt(
-                child_inputs=llm_child_inputs,
-                parameter_section=parameter_section,
-                hunter_results=hunter_results,
-                critic_results=critic_results,
-                debate_history_by_child=debate_history_by_child or {},
-            )
-        )
-        if response.error:
-            msg = f"LLM call failed: {response.error}"
-            self.logger.error("MediatorAgent.run_batch: %s", msg)
-            for item in llm_child_inputs:
-                c_id = str(item.get("id"))
-                results[c_id] = self._fallback_to_critic(
-                    critic_result=critic_results.get(c_id) or CriticResult(),
-                    error_msg=msg,
-                    raw=response.content,
-                    parameter_text=item.get("requirement") or str(item.get("text") or ""),
-                )
-            return results
-
-        if self._response_was_truncated(response):
-            msg = (
-                "LLM response was truncated by max_tokens; "
-                "falling back to Critic output without JSON repair."
-            )
-            self.logger.error("MediatorAgent.run_batch: %s", msg)
-            for item in llm_child_inputs:
-                c_id = str(item.get("id"))
-                results[c_id] = self._fallback_to_critic(
-                    critic_result=critic_results.get(c_id) or CriticResult(),
-                    error_msg=msg,
-                    raw=response.content,
-                    parameter_text=item.get("requirement") or str(item.get("text") or ""),
-                )
-            return results
-
-        parsed = self._parse_json_response(response)
-        if parsed is None:
-            self.logger.error("MediatorAgent.run_batch: failed to parse batch JSON.")
-            return results
-
-        allowed_ids = {str(item.get("id")) for item in llm_child_inputs if item.get("id") is not None}
-        for item in parsed.get("results", []):
-            if not isinstance(item, dict):
-                continue
-            child_id = str(item.get("child_id") or item.get("parameter_id") or "").strip()
-            if child_id not in allowed_ids or child_id in results:
-                continue
-            critic_result = critic_results.get(child_id) or CriticResult()
-            hunter_result = hunter_results.get(child_id) or HunterResult()
-            raw_final_verdict = self._validate_internal_verdict(
-                item.get("final_verdict"),
-                fallback=VERDICT_NOT_MET,
-            )
-            if raw_final_verdict == VERDICT_PARTIAL:
-                hunter_said_met = hunter_result.verdict == VERDICT_MET
-                final_verdict = VERDICT_MET if (hunter_said_met and critic_result.valid_citations) else VERDICT_NOT_MET
-            else:
-                final_verdict = raw_final_verdict
-            confidence = self._clamp_confidence(item.get("confidence"), default=0.5)
-            reasoning_fields = self._extract_reasoning_fields(
-                item,
-                reasoning_fallback="No reasoning provided by the Mediator agent.",
-            )
-            severity = self._extract_severity(item, final_verdict)
-            recommendation = self._extract_recommendation(item, final_verdict)
-            final_citations = self._reconcile_final_citations(
-                llm_citations=self._extract_citations(
-                    item.get("final_citations", []),
-                    field_name="final_citations",
-                ),
-                critic_valid_citations=critic_result.valid_citations,
-                parameter_text=str(child_id),
-            )
-            final_verdict, confidence, recommendation, reasoning_fields = (
-                self._enforce_citation_grounding(
-                    final_verdict=final_verdict,
-                    confidence=confidence,
-                    final_citations=final_citations,
-                    recommendation=recommendation,
-                    reasoning_fields=reasoning_fields,
-                    parameter_text=str(child_id),
-                )
-            )
-            if final_verdict in {VERDICT_MET, VERDICT_NA}:
-                severity = None
-                recommendation = None
-            if final_verdict == VERDICT_NOT_MET and severity is None:
-                severity = "medium"
-            applicability_status = self._extract_applicability_status(item, verdict=final_verdict)
-            applicability_reason = self._extract_applicability_reason(
-                item,
-                default="No applicability reasoning provided by the Mediator agent.",
-            )
-            missing_expected_evidence = self._extract_missing_expected_evidence(item)
-            if final_verdict == VERDICT_NA:
-                applicability_status = APPLICABILITY_NOT_ESTABLISHED
-            elif final_verdict in {VERDICT_MET, VERDICT_NOT_MET}:
-                applicability_status = APPLICABILITY_ESTABLISHED
-            if final_verdict == VERDICT_NOT_MET and not missing_expected_evidence:
-                missing_expected_evidence = list(critic_result.missing_expected_evidence or [])
-            if final_verdict != VERDICT_NOT_MET:
-                missing_expected_evidence = []
-            try:
-                debate_rounds_used = int(item.get("debate_rounds_used") or 1)
-            except (TypeError, ValueError):
-                debate_rounds_used = 1
-            finding_description = self._extract_text_field(
-                item,
-                "finding_description",
-                default="No specific finding description provided.",
-                max_chars=2000,
-            )
-
-            results[child_id] = MediatorResult(
-                final_verdict=final_verdict,
-                confidence=confidence,
-                applicability_status=applicability_status,
-                applicability_reason=applicability_reason,
-                missing_expected_evidence=missing_expected_evidence,
-                finding_description=finding_description,
-                reasoning=reasoning_fields["reasoning"],
-                assumptions=reasoning_fields["assumptions"],
-                logic_summary=reasoning_fields["logic_summary"],
-                cot_trace=reasoning_fields["cot_trace"],
-                final_citations=final_citations,
-                severity=severity,
-                recommendation=recommendation,
-                raw_final_verdict=raw_final_verdict,
-                verified_evidence=self._extract_string_list(item, "verified_evidence"),
-                rejected_evidence=self._extract_string_list(item, "rejected_evidence"),
-                debate_rounds_used=debate_rounds_used,
-                raw_response=response.content,
-                error=None,
-            )
-        return results
-
-    def _build_batch_user_prompt(
-        self,
-        *,
-        child_inputs: List[dict],
-        parameter_section: str,
-        hunter_results: Dict[str, HunterResult],
-        critic_results: Dict[str, CriticResult],
-        debate_history_by_child: Dict[str, List[dict]],
-    ) -> str:
-        payload = {}
-        for child_id, critic in critic_results.items():
-            hunter = hunter_results.get(str(child_id)) or HunterResult()
-            payload[str(child_id)] = {
-                "hunter": {
-                    "verdict": hunter.verdict,
-                    "confidence": hunter.confidence,
-                    "reasoning": hunter.logic_summary or hunter.reasoning,
-                    "assumptions": list(hunter.assumptions),
-                    "cot_trace": hunter.cot_trace,
-                },
-                "critic": {
-                    "outcome": critic.outcome,
-                    "revised_verdict": critic.revised_verdict,
-                    "revised_confidence": critic.revised_confidence,
-                    "reasoning": critic.logic_summary or critic.reasoning,
-                    "assumptions": list(critic.assumptions),
-                    "cot_trace": critic.cot_trace,
-                    "valid_citations": [citation.to_dict() for citation in critic.valid_citations],
-                    "weak_evidence": list(critic.weak_evidence),
-                    "missed_evidence": list(critic.missed_evidence),
-                    "objections": list(critic.objections),
-                },
-                "debate_history": debate_history_by_child.get(str(child_id), []),
-            }
-        return build_batch_mediator_prompt(
-            parameter_section=parameter_section,
-            child_inputs=child_inputs,
-            payload=payload,
         )
 
     # ------------------------------------------------------------------

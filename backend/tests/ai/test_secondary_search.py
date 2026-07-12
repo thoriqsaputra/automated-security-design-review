@@ -12,7 +12,6 @@ def _router() -> HybridRetrievalRouter:
     router = HybridRetrievalRouter.__new__(HybridRetrievalRouter)
     router.vector_top_k = 8
     router.raptor_top_k = 5
-    router.graph_top_k = 6
     router.max_context_chunks = 12
     router.advanced_config = AdvancedRetrievalConfig()
     router._generate_query_embedding = lambda text: [0.1, 0.2]

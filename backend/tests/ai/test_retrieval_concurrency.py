@@ -55,14 +55,14 @@ def _parameter(parameter_id: int, *, stable_key: str | None = None, parent=None,
 
 def test_advanced_retrieval_config_reads_concurrency_settings(monkeypatch):
     monkeypatch.setattr(settings, "AI_RETRIEVAL_HYBRID_MAX_WORKERS", 5, raising=False)
-    monkeypatch.setattr(settings, "AI_RETRIEVAL_GRAPH_LOCAL_MAX_WORKERS", 4, raising=False)
     monkeypatch.setattr(settings, "AI_RETRIEVAL_MANY_MAX_CONCURRENCY", 0, raising=False)
+    monkeypatch.setattr(settings, "AI_RETRIEVAL_ENABLE_CROSS_ENCODER_RERANK", True, raising=False)
 
     config = AdvancedRetrievalConfig.from_settings()
 
     assert config.hybrid_max_workers == 5
-    assert config.graph_local_max_workers == 4
     assert config.retrieve_many_max_concurrency == 1
+    assert config.enable_cross_encoder_rerank is True
 
 
 def test_hybrid_executor_caps_worker_count_to_active_branches(monkeypatch):
@@ -74,10 +74,8 @@ def test_hybrid_executor_caps_worker_count_to_active_branches(monkeypatch):
     router = HybridRetrievalRouter.__new__(HybridRetrievalRouter)
     router.vector_top_k = 8
     router.raptor_top_k = 5
-    router.graph_top_k = 6
     router.max_context_chunks = 12
     router.advanced_config = AdvancedRetrievalConfig(hybrid_max_workers=9)
-    router._vector_searcher = SimpleNamespace(search=lambda **kwargs: SimpleNamespace(results=[], error=None))
     router._raptor_searcher = SimpleNamespace(search_collapsed_raptor=lambda **kwargs: None)
     router._keyword_searcher = SimpleNamespace(search=lambda **kwargs: [])
     router._dense_tsd_results_to_candidates = lambda response: []
@@ -93,10 +91,9 @@ def test_hybrid_executor_caps_worker_count_to_active_branches(monkeypatch):
         category=SimpleNamespace(id=1, code="web_application"),
         ingestion_job=SimpleNamespace(id=1),
         raptor_tree=None,
-        graph=None,
         query_embedding=[0.1],
         keywords=["mfa"],
-        inferred_relations=set(),
+        query_variants=[],
     )
 
     assert result.error is None
@@ -124,7 +121,6 @@ def test_hybrid_executor_includes_dense_and_raptor_branches_when_tree_available(
     router = HybridRetrievalRouter.__new__(HybridRetrievalRouter)
     router.vector_top_k = 8
     router.raptor_top_k = 5
-    router.graph_top_k = 6
     router.max_context_chunks = 12
     router.advanced_config = AdvancedRetrievalConfig(hybrid_max_workers=9)
     router._raptor_searcher = SimpleNamespace(search_collapsed_raptor=lambda **kwargs: dense_response)
@@ -140,14 +136,12 @@ def test_hybrid_executor_includes_dense_and_raptor_branches_when_tree_available(
         category=SimpleNamespace(id=1, code="web_application"),
         ingestion_job=SimpleNamespace(id=1),
         raptor_tree=SimpleNamespace(is_empty=lambda: False),
-        graph=None,
         query_embedding=[0.1],
         keywords=["mfa"],
-        inferred_relations=set(),
+        query_variants=[],
     )
 
     assert result.error is None
-    assert result.vector_response is None
     dense_candidates = [c for c in result.context_chunks]
     assert any("enforces MFA" in chunk for chunk in dense_candidates)
 
@@ -198,7 +192,6 @@ def test_run_single_analysis_for_category_runs_parameters_concurrently():
         mediator_agent_factory=lambda: None,
     )
     coordinator.seed_live_debates = lambda **kwargs: None
-    coordinator.retry_if_needed = lambda **kwargs: kwargs["debate_output"]
     coordinator.extract_killed_assumptions_from_output = lambda output, parameter: []
 
     lock = threading.Lock()

@@ -14,13 +14,6 @@ from sdr.apps.standards.utils import build_parameter_analysis_text, normalize_re
 logger = logging.getLogger(__name__)
 
 _token_encoder = None
-_TOC_HEADING_RE = re.compile(
-    r"^\s*(daftar\s+isi|table\s+of\s+contents|contents)\s*$",
-    re.IGNORECASE,
-)
-_TOC_ENTRY_DOTTED_RE = re.compile(r"\.{2,}\s*\d{1,4}\s*$")
-_TOC_ENTRY_SPACED_RE = re.compile(r".{6,}\s{2,}\d{1,4}\s*$")
-_TOC_LABEL_RE = re.compile(r"^\s*(halaman|page|pages?)\s*$", re.IGNORECASE)
 _NOTE_PREFIX_RE = re.compile(r"^\s*note\s*:", re.IGNORECASE)
 _OWASP_SUBSECTION_HEADING_RE = re.compile(
     r"^\s*V\d+\.\d+\b(?!\s*-\s*\d+\.\d+\.\d+\b)",
@@ -81,51 +74,6 @@ def _count_tokens(text: str) -> int:
     return len(_token_encoder.encode(text))
 
 
-def _looks_like_toc_entry(line: str) -> bool:
-    text = (line or "").strip()
-    if len(text) < 4:
-        return False
-    if _TOC_ENTRY_DOTTED_RE.search(text) or _TOC_ENTRY_SPACED_RE.search(text):
-        return True
-    return bool(
-        re.match(
-            r"^(?:bab|chapter|section)?\s*[ivxlcdm\d]+(?:\.\d+)*\.?\s+.{3,}\s+\d{1,4}$",
-            text,
-            re.IGNORECASE,
-        )
-    )
-
-
-def _remove_table_of_contents(text: str) -> str:
-    if not text:
-        return ""
-
-    lines = text.splitlines()
-    cleaned_lines: List[str] = []
-    in_toc = False
-    skipped_lines = 0
-
-    for line in lines:
-        stripped = line.strip()
-        if _TOC_HEADING_RE.match(stripped):
-            in_toc = True
-            skipped_lines += 1
-            continue
-        if in_toc:
-            if not stripped or _TOC_LABEL_RE.match(stripped) or _looks_like_toc_entry(stripped):
-                skipped_lines += 1
-                continue
-            in_toc = False
-        cleaned_lines.append(line)
-
-    if skipped_lines:
-        logger.info(
-            "_remove_table_of_contents: removed %d table-of-contents line(s) before extraction.",
-            skipped_lines,
-        )
-    return "\n".join(cleaned_lines)
-
-
 def _extract_json_payload(text: str) -> str:
     cleaned = strip_markdown_code_blocks(strip_thinking_block(text or "{}")).strip()
     if cleaned.startswith("{") and cleaned.endswith("}"):
@@ -153,7 +101,7 @@ def parse_json_response(raw_text: str) -> Any:
         return json.loads(_sanitize_json_payload(payload))
 
 
-def parse_json_with_repair(raw_text: str, *, llm_client, max_tokens: int) -> Any:
+def parse_json_with_repair(raw_text: str, *, repair_json, max_tokens: int) -> Any:
     content = _extract_json_payload(raw_text or "{}")
     try:
         return json.loads(content)
@@ -164,7 +112,7 @@ def parse_json_with_repair(raw_text: str, *, llm_client, max_tokens: int) -> Any
             pass
         logger.warning("parse_json_with_repair: initial JSON parse failed, issuing repair LLM call.")
         repair_prompt = build_json_repair_prompt(content)
-        repair_resp = llm_client.repair_json(user_prompt=repair_prompt, max_tokens=max_tokens)
+        repair_resp = repair_json(user_prompt=repair_prompt, max_tokens=max_tokens)
         if repair_resp.error:
             raise ValueError(f"JSON repair API error: {repair_resp.error}")
         return json.loads(_extract_json_payload(repair_resp.content or "{}"))

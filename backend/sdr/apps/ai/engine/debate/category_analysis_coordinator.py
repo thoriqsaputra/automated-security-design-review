@@ -90,11 +90,6 @@ class CategoryAnalysisCoordinator:
         diagram_errors: List[BaseException] = []
         if analysis_mode != "text_only":
             self.run_state.update_stage(review, summary, "6_7_concurrent_debate")
-            # Diagram debate has no data dependency on text-debate output, so it's
-            # started here on a background thread to run concurrently with the
-            # text-debate phase below rather than waiting for it to finish first.
-            # AnalysisSummary.lock (see dto.py) guards the now-concurrent writes
-            # from both phases' driver threads.
             def _run_diagram_phase() -> None:
                 try:
                     self.diagram_analysis.run(
@@ -105,7 +100,7 @@ class CategoryAnalysisCoordinator:
                         summary=summary,
                         cancel_check=lambda: self.run_state.is_cancelled(review),
                     )
-                except BaseException as exc:  # noqa: BLE001 - re-raised on join below
+                except BaseException as exc:
                     diagram_errors.append(exc)
 
             diagram_thread = threading.Thread(

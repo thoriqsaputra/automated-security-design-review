@@ -31,7 +31,6 @@ class StandardIngestionJob(Base, StandardsBigIntBase):
     is_active: Mapped[bool] = mapped_column(Boolean, default=False)
     activated_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # Relationships
     category = relationship("StandardCategory", backref="ingestion_jobs")
     # requested_by = relationship("User", backref="standard_ingestion_jobs") # Assuming User model exists
     
@@ -49,11 +48,6 @@ class StandardIngestionJob(Base, StandardsBigIntBase):
         if stored_percentage is not None:
             percentage = stored_percentage
         else:
-            # No detailed_progress recorded yet (e.g. the job was just marked
-            # RUNNING but the extraction pipeline hasn't emitted its first
-            # progress update) — a job in this state is genuinely at 0%, not
-            # halfway. Using a nonzero placeholder here made the progress bar
-            # visibly jump backward once the first real percentage arrived.
             percentage = 100 if self.status in ["completed", "failed"] else 0
         
         return {
@@ -68,7 +62,6 @@ class StandardIngestionJob(Base, StandardsBigIntBase):
         }
 
     __table_args__ = (
-        # Note: In PostgreSQL, partial unique indexes are created directly via DDL or alembic
         Index("unique_active_ingestion_job_per_category", "category_id", unique=True, postgresql_where=(is_active == True)),
     )
 
@@ -103,8 +96,6 @@ def delete_standard_file_on_delete(mapper, connection, target):
     Deletes the associated file from storage when a StandardSourceDocument object is deleted.
     """
     if target.document:
-        # target.document is a string path representing the file location
-        # from a base directory or absolute path. We do our best to remove it safely.
         print(f"Deleting file: {target.document}")
         try:
             if os.path.exists(target.document):

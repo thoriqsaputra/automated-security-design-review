@@ -27,14 +27,6 @@ _RRF_K = 60
 # still outrank a same-typed-but-irrelevant one.
 _TYPE_MATCH_BONUS = 1.0 / _RRF_K
 
-# Hybrid-path result cap, as a fraction of `top_k`. Empirically (F1 sweep
-# against the design-14/15 diagram-requirement eval set — see
-# diagram_retrieval_eval.py), returning the full top_k ceiling maximizes
-# recall but hurts precision: the last ~1/8 of the RRF-fused ranking is
-# disproportionately false positives. Trimming to ~87.5% of the ceiling
-# (28/32 in the evaluated configuration) is the local F1 optimum
-# (P=0.577 R=0.865 F1=0.662 vs P=0.521 R=0.887 F1=0.630 at the full ceiling).
-_HYBRID_TRIM_RATIO = 0.875
 _MIN_RESULTS = 3
 
 # Gatekeeper: batch size for the primary (real-reasoning) selection path.
@@ -78,6 +70,13 @@ def _tokenize(text: str) -> List[str]:
     return [t.lower() for t in _TOKEN_RE.findall(text or "")]
 
 
+def _normalize_query_segment(text: str, *, max_chars: int | None = None) -> str:
+    normalized = " ".join((text or "").split()).strip()
+    if max_chars is not None:
+        normalized = normalized[:max_chars].strip()
+    return normalized
+
+
 def _classify_diagram_type(*texts: str) -> str | None:
     combined = " ".join(t for t in texts if t).lower()
     if not combined:
@@ -106,8 +105,8 @@ class DiagramRequirementSelector:
     ) -> List[Any]:
         """`force_strategy` is an eval-only seam ("gatekeeper" | "hybrid" |
         "naive") to isolate one retrieval path for measurement. Leave it
-        `None` in production — that preserves the exact fallback chain below
-        (gatekeeper -> hybrid -> naive) unchanged."""
+        `None` in production — that uses the recall-oriented hybrid default
+        path, with naive fallback if hybrid has no usable signal."""
         top_k = self.config.vision_diagram_requirements_max_items
         caption = (getattr(diagram, "caption", "") or "").strip()
         surrounding = (getattr(diagram, "surrounding_text", "") or "").strip()
@@ -121,11 +120,8 @@ class DiagramRequirementSelector:
                 top_k=top_k,
             )
 
-        # Primary path: real reasoning over the diagram image, batched. Only
-        # falls through to the embedding/BM25 hybrid path below if every
-        # batch errors out or the diagram has no usable image.
         image_b64 = getattr(diagram, "image_b64", "") or ""
-        if force_strategy in (None, "gatekeeper") and image_b64:
+        if force_strategy == "gatekeeper" and image_b64:
             try:
                 pool = self.workflow_repository.list_diagram_requirements(
                     category_id=category.id,
@@ -145,12 +141,7 @@ class DiagramRequirementSelector:
                     exc,
                 )
                 requirements = []
-            if requirements:
-                return requirements
-            # "gatekeeper" isolation mode must not fall through to hybrid,
-            # even on an empty/failed result, or the measurement would be
-            # contaminated by the fallback path.
-            if force_strategy == "gatekeeper":
+            if requirements or force_strategy == "gatekeeper":
                 return requirements
 
         if force_strategy == "hybrid" or force_strategy is None:
@@ -348,7 +339,7 @@ class DiagramRequirementSelector:
             return score
 
         fused = sorted(pool, key=rrf_score, reverse=True)
-        effective_k = max(_MIN_RESULTS, min(len(fused), round(top_k * _HYBRID_TRIM_RATIO)))
+        effective_k = max(_MIN_RESULTS, min(len(fused), top_k))
         return fused[:effective_k]
 
     def _extract_ocr_text(self, diagram) -> str:
@@ -368,27 +359,45 @@ class DiagramRequirementSelector:
 
     def _build_query_text(self, *, diagram, tsd_document, caption: str, surrounding: str, ocr_text: str) -> str:
         parts = []
-        if caption:
-            parts.append(caption)
-        if surrounding:
-            parts.append(surrounding)
-
-        if not parts:
-            page_number = getattr(diagram, "page_number", None)
-            pages = getattr(tsd_document, "pages", None) or []
-            if isinstance(page_number, int) and 1 <= page_number <= len(pages):
-                page_text = (getattr(pages[page_number - 1], "all_text", "") or "").strip()
-                if page_text:
-                    parts.append(page_text[:1200])
+        caption_segment = _normalize_query_segment(caption)
+        if caption_segment:
+            parts.append(caption_segment)
+        surrounding_segment = _normalize_query_segment(surrounding)
+        if surrounding_segment:
+            parts.append(surrounding_segment)
 
         # Caption/surrounding text describes what KIND of diagram this is, but
         # rarely names what's actually drawn in it (component/technology names
         # like "DMZ", "MySQL Database") — that's the vocabulary an embedding
         # needs to connect a diagram to the specific requirements it implicates.
-        if ocr_text:
-            parts.append(f"Visible diagram elements: {ocr_text}")
+        ocr_segment = _normalize_query_segment(ocr_text, max_chars=1200)
+        if ocr_segment:
+            parts.append(f"Visible diagram elements: {ocr_segment}")
 
-        return "\n\n".join(parts).strip()
+        page_number = getattr(diagram, "page_number", None)
+        pages = getattr(tsd_document, "pages", None) or []
+        if isinstance(page_number, int) and pages:
+            page_window_parts = []
+            for candidate_page_number in (page_number - 1, page_number, page_number + 1):
+                if 1 <= candidate_page_number <= len(pages):
+                    page_text = _normalize_query_segment(
+                        getattr(pages[candidate_page_number - 1], "all_text", "") or ""
+                    )
+                    if page_text:
+                        page_window_parts.append(page_text)
+            page_window = _normalize_query_segment(" ".join(page_window_parts), max_chars=1800)
+            if page_window:
+                parts.append(f"Nearby page context: {page_window}")
+
+        deduped_parts = []
+        seen = set()
+        for part in parts:
+            normalized = _normalize_query_segment(part)
+            if normalized and normalized not in seen:
+                seen.add(normalized)
+                deduped_parts.append(normalized)
+
+        return "\n\n".join(deduped_parts).strip()
 
     def _fallback_requirements(
         self,

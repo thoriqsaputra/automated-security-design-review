@@ -1,13 +1,12 @@
 import logging
 import re
-from typing import Optional
+from typing import Any, Callable, Optional
 
 from sdr.apps.ai.prompts.extraction.standards import (
     STANDARD_SCREENING_SYSTEM_PROMPT,
     build_standard_screening_prompt,
     build_json_repair_prompt,
 )
-from .llm_client import ExtractionLLMClient
 from .normalizers import parse_json_response
 
 logger = logging.getLogger(__name__)
@@ -55,15 +54,10 @@ def _coerce_bool(value, default: bool = True) -> bool:
 
 
 def _has_enough_control_ids(text: str) -> bool:
-    """Fast-path: a document dense with X.Y.Z control IDs is almost certainly a standard."""
     return len(_CONTROL_ID_PATTERN.findall(text)) >= _CONTROL_ID_FAST_PASS_COUNT
 
 
 def _build_standard_screening_sample(text: str) -> str:
-    """
-    Take representative slices from the beginning, middle, and end of the document
-    so the LLM sees actual requirement content rather than just front matter.
-    """
     length = len(text)
     if length <= _SAMPLE_MAX_CHARS:
         return text
@@ -78,11 +72,6 @@ def _build_standard_screening_sample(text: str) -> str:
 
 
 def _should_reject(result: dict) -> bool:
-    """
-    Only reject when the LLM is confident AND its explanation matches a known non-standard type.
-    Uncertain rejections (unknown document_type, no keyword match) pass through — fail-open is
-    safer than false rejections for edge cases.
-    """
     is_standard = _coerce_bool(result.get("is_security_standard", True), default=True)
     if is_standard:
         return False
@@ -103,15 +92,14 @@ def _should_reject(result: dict) -> bool:
 
 
 class StandardScreeningService:
-    def __init__(self, llm_client: ExtractionLLMClient) -> None:
-        self.llm_client = llm_client
+    def __init__(self, chat_completion_fn: Callable[..., Any]) -> None:
+        self.chat_completion = chat_completion_fn
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     def screen_document(self, text_sample: str) -> None:
         if not text_sample.strip():
             return
 
-        # Fast-path: many X.Y.Z control IDs → confirmed standard, skip LLM call.
         if _has_enough_control_ids(text_sample):
             self.logger.info("StandardScreeningService: fast-pass — sufficient control IDs found.")
             return
@@ -119,9 +107,11 @@ class StandardScreeningService:
         sample = _build_standard_screening_sample(text_sample)
 
         try:
-            response = self.llm_client.complete_json(
-                system_prompt=STANDARD_SCREENING_SYSTEM_PROMPT,
-                user_prompt=build_standard_screening_prompt(sample),
+            response = self.chat_completion(
+                messages=[
+                    {"role": "system", "content": STANDARD_SCREENING_SYSTEM_PROMPT},
+                    {"role": "user", "content": build_standard_screening_prompt(sample)},
+                ],
                 component="standard_extraction",
                 temperature=0.0,
                 max_tokens=300,
@@ -134,13 +124,11 @@ class StandardScreeningService:
             content = response.content or "{}"
             result = parse_json_response(content)
 
-            # Attempt JSON repair if parsing returned empty / incomplete.
             if not result:
                 self.logger.warning("StandardScreeningService: empty parse result — attempting JSON repair.")
-                repair_response = self.llm_client.complete_json(
-                    system_prompt="",
-                    user_prompt=build_json_repair_prompt(content),
-                    component="standard_extraction",
+                repair_response = self.chat_completion(
+                    messages=[{"role": "user", "content": build_json_repair_prompt(content)}],
+                    component="fallback",
                     temperature=0.0,
                     max_tokens=300,
                     response_format={"type": "json_object"},

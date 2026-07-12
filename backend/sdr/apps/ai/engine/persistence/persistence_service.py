@@ -76,16 +76,6 @@ class PersistenceService:
                 anchorable_citations or (mediator.final_citations or []),
                 debate_output.analysis_trace or {},
             )
-            # anchorable_citations reflects whether a citation could be resolved
-            # to a precise UI bounding-box/page-span location — a rendering
-            # concern, not evidence validity. The debate's own gating
-            # (_apply_mediator_evidence_policy's accepted_met branch) already
-            # requires non-empty Critic-verified valid_citations before it will
-            # ever set final_verdict="met", so a "met" verdict reaching here
-            # already has real, debate-verified evidence. Only fall back to na
-            # if that evidence was itself empty (a defensive case that
-            # shouldn't occur given the debate's own gating) — never because
-            # anchoring merely failed to place a bounding box for it.
             if persisted_met_status == "met" and not (mediator.final_citations or []):
                 persisted_met_status = "na"
                 raw_final_verdict = "met_without_grounded_citations"
@@ -468,31 +458,12 @@ class PersistenceService:
 
     def _build_requirement_provenance(self, analysis_trace: dict) -> dict:
         trace = dict(analysis_trace or {})
-        evidence_gate_outcome = trace.get("evidence_gate_outcome")
-        verdict_policy = trace.get("verdict_policy") or {}
         retrieval_query_details = trace.get("retrieval_query_details") or {}
         retrieval_metadata = retrieval_query_details.get("retrieval_evidence_metadata") or {}
-        outcome_source = "debate"
-        synth_mode = (trace.get("contract") or {}).get("synth_mode", "")
-        if evidence_gate_outcome in {
-            "downgraded_to_na_missing_citations",
-            "downgraded_to_na_applicability_not_established",
-            "downgraded_to_na_no_applicability_signal",
-            "downgraded_to_na_no_applicability_signal_after_retry",
-        }:
-            outcome_source = "evidence_gate_downgrade"
         return {
-            "analysis_outcome_source": outcome_source,
-            "verdict_policy_source": verdict_policy.get("source"),
-            "applicability_established": verdict_policy.get("applicability_established"),
-            "not_assessable_reason": verdict_policy.get("not_assessable_reason"),
-            "evidence_sufficiency": verdict_policy.get("evidence_sufficiency"),
-            "verified_control_evidence_ids": list(verdict_policy.get("verified_control_evidence_ids") or []),
+            "analysis_outcome_source": "debate",
             "prefilter_reason": trace.get("prefilter_reason"),
             "prefilter_confidence": trace.get("prefilter_confidence"),
-            "evidence_gate_attempted": bool(trace.get("evidence_gate_attempted", False)),
-            "evidence_gate_outcome": evidence_gate_outcome,
-            "downgrade_reason": trace.get("downgrade_reason"),
             "retrieval_evidence_quality": retrieval_metadata.get("evidence_quality"),
         }
 
@@ -501,8 +472,6 @@ class PersistenceService:
         synth_mode = str((trace.get("contract") or {}).get("synth_mode") or "").strip()
         if synth_mode == "rag_gate_no_evidence":
             return "rag_gate_no_evidence"
-        if trace.get("evidence_gate_outcome"):
-            return f"evidence_gate:{trace.get('evidence_gate_outcome')}"
         return "text_debate"
 
     def _ensure_not_met_recommendation(

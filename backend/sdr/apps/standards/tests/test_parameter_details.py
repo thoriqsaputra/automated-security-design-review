@@ -3,7 +3,6 @@ from unittest.mock import patch
 
 from sdr.apps.ai.engine.extraction import (
     _canonicalize_diagram_requirements,
-    _remove_table_of_contents,
     canonicalize_requirement_items,
     extract_diagram_requirements,
     extract_structured_requirements,
@@ -35,31 +34,6 @@ def test_build_diagram_requirement_analysis_text_enriches_with_source_parameter(
     assert "V1 Architecture" in text
     assert "Show trust boundary" in text
     assert "Applications should identify and document trust boundaries." in text
-
-
-
-
-
-def test_remove_table_of_contents_keeps_real_body_sections():
-    text = """
-DAFTAR ISI
-Halaman
-5.4 API dan Web Service .......... 12
-5.4.1 Generic Web Service Security .......... 13
-
-5.4 API dan Web Service
-5.4.1 Generic Web Service Security
-a. semua API mendefinisikan dan mendokumentasikan antarmuka.
-"""
-
-    cleaned = _remove_table_of_contents(text)
-
-    assert ".........." not in cleaned
-    assert "Halaman" not in cleaned
-    assert "5.4 API dan Web Service" in cleaned
-    assert "semua API mendefinisikan" in cleaned
-
-
 def test_extract_structured_requirements_preserves_details():
     response = SimpleNamespace(
         error=None,

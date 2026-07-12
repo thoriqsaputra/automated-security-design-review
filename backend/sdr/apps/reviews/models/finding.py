@@ -10,14 +10,6 @@ from .choices import FindingStatus, FindingType, MetStatus, Severity
 
 
 class Finding(Base):
-    """
-    One Finding = one security parameter evaluated against the TSD.
-
-    Produced by the Multi-Agent Debate pipeline:
-      - Hunter agent identifies evidence (or lack thereof)
-      - Critic agent challenges the Hunter's finding
-      - Mediator agent produces the final binding verdict
-    """
     __tablename__ = "reviews_finding"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)

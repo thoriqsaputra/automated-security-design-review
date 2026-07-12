@@ -49,39 +49,13 @@ _SUSPICIOUS_FILENAME_PATTERNS = frozenset([
 # ---------------------------------------------------------------------------
 
 def validate_standard_file(file: UploadFile) -> bool:
-    """
-    Validates a single uploaded standard document file.
-
-    Checks performed (in order):
-        1. File size — must be > 0 and <= MAX_FILE_SIZE_BYTES
-        2. Filename safety — no path traversal chars, no suspicious patterns
-        3. MIME type via python-magic (if available) + magic number header check
-        4. Extension fallback when python-magic is not installed
-        5. PDF structure check (b'%PDF' header) for PDF files
-
-    Args:
-        file: A FastAPI UploadFile instance.
-
-    Returns:
-        True on success. Raises ValueError on any failure.
-    """
-    # ------------------------------------------------------------------
-    # 1. File size
-    # ------------------------------------------------------------------
     if file.size == 0:
         raise ValueError("File cannot be empty.")
 
     if file.size and file.size > MAX_FILE_SIZE_BYTES:
         raise ValueError(f"File size must be less than {MAX_FILE_SIZE_MB}MB.")
-
-    # ------------------------------------------------------------------
-    # 2. Filename safety checks
-    # ------------------------------------------------------------------
     _validate_filename(file.filename)
 
-    # ------------------------------------------------------------------
-    # 3 & 4. MIME + magic number validation
-    # ------------------------------------------------------------------
     file_mime: str | None = None
 
     if MAGIC_AVAILABLE:
@@ -89,9 +63,6 @@ def validate_standard_file(file: UploadFile) -> bool:
     else:
         _validate_extension_fallback(file.filename)
 
-    # ------------------------------------------------------------------
-    # 5. PDF structure check — only if we confirmed it's a PDF above
-    # ------------------------------------------------------------------
     if file_mime == "application/pdf" or (
         file_mime is None and file.filename.lower().endswith(".pdf")
     ):
@@ -101,32 +72,19 @@ def validate_standard_file(file: UploadFile) -> bool:
 
 
 def _validate_filename(filename: str) -> None:
-    """
-    Guards against path traversal, illegal characters, oversized names,
-    and suspicious executable-like patterns.
-    """
     if len(filename) > MAX_FILENAME_LENGTH:
         raise ValueError(f"File name is too long. Maximum {MAX_FILENAME_LENGTH} characters allowed.")
 
-    # Path traversal and shell-injection characters
     illegal_chars = {"..", "/", "\\", "<", ">", ":", '"', "|", "?", "*"}
     if any(char in filename for char in illegal_chars):
         raise ValueError("Invalid file name. Please use a safe file name.")
 
-    # Suspicious patterns — checked against the lowercased full filename
     name_lower = filename.lower()
     if any(pattern in name_lower for pattern in _SUSPICIOUS_FILENAME_PATTERNS):
         raise ValueError("File name contains suspicious patterns. Please use a descriptive name.")
 
 
 def _validate_mime_with_magic(file: UploadFile) -> str:
-    """
-    Reads the first 8 bytes to determine MIME type via python-magic and
-    validates the magic number header. Resets the file pointer after each read.
-
-    Returns the detected MIME type string on success.
-    Raises ValueError if the type is not allowed or headers don't match.
-    """
     try:
         content = file.file.read(1024)
         file_mime = magic.from_buffer(content, mime=True)
@@ -154,21 +112,12 @@ def _validate_mime_with_magic(file: UploadFile) -> str:
 
 
 def _validate_extension_fallback(filename: str) -> None:
-    """
-    Extension-only check used when python-magic is unavailable.
-    Raises ValueError if the extension is not in _ALLOWED_EXTENSIONS.
-    """
     ext = os.path.splitext(filename.lower())[1]
     if ext not in _ALLOWED_EXTENSIONS:
         raise ValueError("File must be a PDF, DOC, or DOCX document.")
 
 
 def _validate_pdf_structure(file: UploadFile) -> None:
-    """
-    Reads the first 1024 bytes to confirm basic PDF structure.
-    A valid PDF must begin with the %PDF magic bytes.
-    Resets the file pointer after the check.
-    """
     try:
         header = file.file.read(1024)
         file.file.seek(0)
@@ -179,11 +128,6 @@ def _validate_pdf_structure(file: UploadFile) -> None:
     except Exception as exc:
         logger.warning("_validate_pdf_structure: could not read PDF header: %s", exc)
         raise ValueError("Unable to validate PDF content.")
-
-
-# ---------------------------------------------------------------------------
-# Standard name validation
-# ---------------------------------------------------------------------------
 
 def validate_standard_name(name: str) -> str:
     if not name or not name.strip():

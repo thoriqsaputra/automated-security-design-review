@@ -8,7 +8,6 @@ from sdr.apps.workspace.document_processing import get_document_content, get_loc
 
 from .config import ExtractionConfig
 from .document_reader import StandardDocumentReader
-from .llm_client import ExtractionLLMClient
 from .page_detection import ASVSPageRangeDetectionService
 from .services import (
     DiagramRequirementExtractionService,
@@ -16,21 +15,14 @@ from .services import (
     StructuredRequirementExtractionService,
 )
 
-
 def _build_config() -> ExtractionConfig:
     return ExtractionConfig.from_settings()
-
 
 def _build_document_reader() -> StandardDocumentReader:
     return StandardDocumentReader(
         get_local_file_path=get_local_file_path,
         get_document_content=get_document_content,
     )
-
-
-def _build_llm_client() -> ExtractionLLMClient:
-    return ExtractionLLMClient(chat_completion=chat_completion)
-
 
 def detect_asvs_page_ranges(
     source_doc: StandardSourceDocument,
@@ -40,13 +32,12 @@ def detect_asvs_page_ranges(
     )
     return service.detect(source_doc).to_dict()
 
-
-def extract_structured_requirements(source_doc_text: str, source_name: str = "") -> Dict[str, List[Any]]:
+def extract_structured_requirements(source_doc_text: str) -> Dict[str, List[Any]]:
     service = StructuredRequirementExtractionService(
-        llm_client=_build_llm_client(),
+        chat_completion_fn=chat_completion,
         config=_build_config(),
     )
-    return service.extract(source_doc_text, source_name=source_name)
+    return service.extract(source_doc_text)
 
 
 def extract_requirements_from_document(
@@ -58,10 +49,9 @@ def extract_requirements_from_document(
     service = RequirementDocumentExtractionService(
         document_reader=_build_document_reader(),
         structured_extractor=StructuredRequirementExtractionService(
-            llm_client=_build_llm_client(),
+            chat_completion_fn=chat_completion,
             config=_build_config(),
         ),
-        requirement_level_detector=None,
         config=_build_config(),
     )
     return service.extract(
@@ -71,15 +61,13 @@ def extract_requirements_from_document(
         progress_callback=progress_callback,
     )
 
-
-
 def extract_diagram_requirements(
     parameters: list,
     category_id: int,
     ingestion_job_id: int,
 ) -> list:
     service = DiagramRequirementExtractionService(
-        llm_client=_build_llm_client(),
+        chat_completion_fn=chat_completion,
         config=_build_config(),
     )
     return service.extract(

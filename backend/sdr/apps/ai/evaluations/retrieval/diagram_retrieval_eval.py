@@ -1,23 +1,21 @@
 """
-Diagram requirement retrieval eval: gatekeeper vs hybrid (BM25+dense+reranker)
-vs naive fallback vs random baseline.
+Diagram requirement retrieval eval: production default vs explicit gatekeeper
+vs explicit hybrid vs naive fallback vs random baseline.
 
-`DiagramRequirementSelector.select_for_diagram` normally chains three strategies
-in production (gatekeeper -> hybrid -> naive; see the class docstring), so a
-single default call mostly just measures whichever strategy happens to win
-first (the vision "gatekeeper" reasoning, when the diagram has an image — NOT
-"vector search" despite this eval's original framing). To measure each
-strategy on its own footing, this eval calls `select_for_diagram` with
-`force_strategy` pinned to each of "gatekeeper", "hybrid", and "naive":
+`DiagramRequirementSelector.select_for_diagram` now uses a recall-oriented
+hybrid default path in production (hybrid -> naive fallback). To measure both
+production behavior and the isolated retrieval arms, this eval records:
 
+  default    — production behavior (`force_strategy=None`)
   gatekeeper — VisionAgent reasons directly over the diagram image
-               (batched, confidence-thresholded; see `_gatekeeper_search`).
+               (batched, confidence-thresholded; see `_gatekeeper_search`)
   hybrid     — BM25 + dense cosine (CategoryDiagramRequirementEmbedding) fused
-               via Reciprocal Rank Fusion, cross-encoder reranked
-               (ms-marco-MiniLM-L-6-v2), adaptive margin cutoff
-               (see `_hybrid_search`). No image access at all.
-  naive      — `list_diagram_requirements()[:top_k]`, ordinal order, no ranking.
-  random     — random sample from the same pool (a "no signal" floor).
+               via Reciprocal Rank Fusion; no image access
+  naive      — `list_diagram_requirements()[:top_k]`, ordinal order, no ranking
+  random     — random sample from the same pool (a "no signal" floor)
+
+This file does not rerank hybrid results with a cross-encoder; the selector's
+own measured behavior showed that reranking hurt this short-text diagram task.
 
 Ground truth is a human-labeled `diagram_ground_truth_design_<id>.json` file (see
 `evaluations/data/build_diagram_ground_truth_template.py`), where each diagram
@@ -175,7 +173,7 @@ def main():
     workflow_repository = SqlAlchemyReviewWorkflowRepository()
     selector = DiagramRequirementSelector(config=config, workflow_repository=workflow_repository)
 
-    gatekeeper_rows, hybrid_rows, naive_rows, random_rows = [], [], [], []
+    default_rows, gatekeeper_rows, hybrid_rows, naive_rows, random_rows = [], [], [], [], []
     per_diagram_results = []
     skipped = 0
 
@@ -193,6 +191,12 @@ def main():
             skipped += 1
             continue
 
+        default_ranked = selector.select_for_diagram(
+            diagram=diagram,
+            tsd_document=tsd_doc,
+            category=category,
+            ingestion_job=ingestion_job,
+        )
         gatekeeper_ranked = selector.select_for_diagram(
             diagram=diagram,
             tsd_document=tsd_doc,
@@ -225,10 +229,12 @@ def main():
         rng = random.Random(args.sample_seed)
         random_ranked = rng.sample(full_pool, min(args.top_k, len(full_pool)))
 
+        default_metrics = _diagram_metrics(expected_ids, default_ranked)
         gatekeeper_metrics = _diagram_metrics(expected_ids, gatekeeper_ranked)
         hybrid_metrics = _diagram_metrics(expected_ids, hybrid_ranked)
         naive_metrics = _diagram_metrics(expected_ids, naive_ranked)
         random_metrics = _diagram_metrics(expected_ids, random_ranked)
+        default_rows.append(default_metrics)
         gatekeeper_rows.append(gatekeeper_metrics)
         hybrid_rows.append(hybrid_metrics)
         naive_rows.append(naive_metrics)
@@ -237,6 +243,7 @@ def main():
         per_diagram_results.append({
             "diagram_id": diagram_id,
             "expected_ids": sorted(expected_ids),
+            "production_default": default_metrics,
             "gatekeeper": gatekeeper_metrics,
             "hybrid": hybrid_metrics,
             "naive_fallback": naive_metrics,
@@ -245,6 +252,7 @@ def main():
 
         logger.info(
             f"  diagram_id={diagram_id} expected={len(expected_ids)} "
+            f"default(P={default_metrics['precision']:.2f} R={default_metrics['recall']:.2f}) "
             f"gatekeeper(P={gatekeeper_metrics['precision']:.2f} R={gatekeeper_metrics['recall']:.2f}) "
             f"hybrid(P={hybrid_metrics['precision']:.2f} R={hybrid_metrics['recall']:.2f}) "
             f"naive(P={naive_metrics['precision']:.2f} R={naive_metrics['recall']:.2f}) "
@@ -255,6 +263,7 @@ def main():
         logger.error("No diagrams with labeled-relevant requirements found. Check the ground truth file.")
         return
 
+    default_summary = _aggregate(default_rows)
     gatekeeper_summary = _aggregate(gatekeeper_rows)
     hybrid_summary = _aggregate(hybrid_rows)
     naive_summary = _aggregate(naive_rows)
@@ -277,6 +286,7 @@ def main():
         "sample_seed": args.sample_seed,
         "diagrams_evaluated": len(per_diagram_results),
         "diagrams_skipped": skipped,
+        "production_default": default_summary,
         "gatekeeper": gatekeeper_summary,
         "hybrid": hybrid_summary,
         "naive_fallback": naive_summary,
@@ -293,6 +303,10 @@ def main():
 
     logger.info("\n=== Diagram Retrieval Eval Results ===")
     logger.info(f"  Diagrams evaluated: {len(per_diagram_results)} (skipped: {skipped})")
+    logger.info(
+        f"  Default:    P={default_summary['precision']:.3f} R={default_summary['recall']:.3f} "
+        f"HitRate={default_summary['hit_rate']:.3f} MRR={default_summary['mrr']:.3f}"
+    )
     logger.info(
         f"  Gatekeeper: P={gatekeeper_summary['precision']:.3f} R={gatekeeper_summary['recall']:.3f} "
         f"HitRate={gatekeeper_summary['hit_rate']:.3f} MRR={gatekeeper_summary['mrr']:.3f}"

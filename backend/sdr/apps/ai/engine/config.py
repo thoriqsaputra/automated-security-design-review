@@ -8,7 +8,6 @@ from sdr.core.config import settings
 @dataclass(frozen=True)
 class AnalysisPipelineConfig:
     batch_debate_max_concurrency: int = 3
-    batch_debate_ungrounded_not_met_policy: str = "preserve_not_met"
     debate_context_supplemental_block_limit: int = 12
     debate_warn_context_chunk_threshold: int = 40
     vision_enabled: bool = True
@@ -25,9 +24,6 @@ class AnalysisPipelineConfig:
     def from_settings(cls) -> "AnalysisPipelineConfig":
         return cls(
             batch_debate_max_concurrency=max(1, int(getattr(settings, "AI_BATCH_DEBATE_MAX_CONCURRENCY", 3))),
-            batch_debate_ungrounded_not_met_policy=str(
-                getattr(settings, "AI_BATCH_DEBATE_UNGROUNDED_NOT_MET_POLICY", "preserve_not_met") or ""
-            ).strip().lower(),
             debate_context_supplemental_block_limit=max(
                 0,
                 int(getattr(settings, "AI_DEBATE_CONTEXT_SUPPLEMENTAL_BLOCK_LIMIT", 12)),

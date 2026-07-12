@@ -30,7 +30,6 @@ class CategoryParameterParent(Base, StandardsBigIntBase):
     )
 
     def __str__(self):
-        # Fallback if relationship isn't loaded
         cat_name = getattr(self.category, "name", "Category") if self.category else "Category"
         return f"{cat_name}: {self.title}"
 

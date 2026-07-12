@@ -39,7 +39,7 @@ def test_three_or_more_sources_hit_the_boost_cap():
     candidates = [
         _candidate("bm25_hit", "bm25", 0.5),
         _candidate("dense_hit", "dense", 0.5),
-        _candidate("graph_hit", "graph", 0.5),
+        _candidate("keyword_hit", "keyword", 0.5),
         _candidate("raptor_hit", "raptor", 0.5),
     ]
     deduped = dedupe_candidates(candidates)

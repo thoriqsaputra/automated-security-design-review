@@ -29,7 +29,6 @@ def test_build_critic_prompt_includes_block_ids_guardrail_when_supplied():
     prompt = build_critic_prompt(
         parameter_text="Require TLS for all traffic",
         parameter_section="Transport Security",
-        contract={},
         context_chunks=["some context"],
         hunter_verdict="met",
         hunter_citation_ids=["p1_b1"],
@@ -46,7 +45,6 @@ def test_build_critic_prompt_omits_block_ids_guardrail_when_not_supplied():
     prompt = build_critic_prompt(
         parameter_text="Require TLS for all traffic",
         parameter_section="Transport Security",
-        contract={},
         context_chunks=["some context"],
         hunter_verdict="met",
         hunter_citation_ids=["p1_b1"],
@@ -152,7 +150,6 @@ def test_run_invalidates_hallucinated_citation_via_available_block_ids(monkeypat
     result = agent.run(
         parameter_text="Require TLS for all traffic",
         parameter_section="Transport Security",
-        contract={},
         context_chunks=["some unrelated text"],
         hunter_result=hunter_result,
         cited_blocks=[],
@@ -188,7 +185,6 @@ def test_run_keeps_real_citation_via_available_block_ids(monkeypatch):
     result = agent.run(
         parameter_text="Require TLS for all traffic",
         parameter_section="Transport Security",
-        contract={},
         context_chunks=["unrelated raw text that does not literally contain the id"],
         hunter_result=hunter_result,
         cited_blocks=[],
@@ -199,62 +195,3 @@ def test_run_keeps_real_citation_via_available_block_ids(monkeypatch):
     assert result.valid_citations[0].block_id == "p1_b1"
     assert "p1_b1" not in result.invalid_citation_ids
 
-
-def test_run_batch_applies_available_block_ids_per_result(monkeypatch):
-    agent = CriticAgent()
-    hunter_results = {
-        "1": _hunter_result(),
-        "2": _hunter_result(),
-    }
-
-    def fake_call_llm(user_prompt, **_kwargs):
-        return _ai_response(
-            {
-                "results": [
-                    {
-                        "child_id": "1",
-                        "decision": "uphold",
-                        "outcome": "UPHOLD",
-                        "revised_verdict": "met",
-                        "revised_confidence": 0.8,
-                        "reasoning": "Verified.",
-                        "logic_summary": "Verified.",
-                        "valid_citations": [
-                            {"block_id": "p1_b1", "page_number": 1, "quoted_text": "uses TLS"}
-                        ],
-                        "invalid_citation_ids": [],
-                    },
-                    {
-                        "child_id": "2",
-                        "decision": "uphold",
-                        "outcome": "UPHOLD",
-                        "revised_verdict": "met",
-                        "revised_confidence": 0.8,
-                        "reasoning": "Hallucinated.",
-                        "logic_summary": "Hallucinated.",
-                        "valid_citations": [
-                            {"block_id": "fake_id", "page_number": 1, "quoted_text": "fabricated"}
-                        ],
-                        "invalid_citation_ids": [],
-                    },
-                ]
-            }
-        )
-
-    monkeypatch.setattr(agent, "_call_llm", fake_call_llm)
-
-    results = agent.run_batch(
-        child_inputs=[
-            {"id": "1", "requirement": "Req 1", "contract": {}},
-            {"id": "2", "requirement": "Req 2", "contract": {}},
-        ],
-        parameter_section="Transport Security",
-        context_chunks=["unrelated text"],
-        hunter_results=hunter_results,
-        available_block_ids=["p1_b1"],
-    )
-
-    assert len(results["1"].valid_citations) == 1
-    assert results["1"].valid_citations[0].block_id == "p1_b1"
-    assert results["2"].valid_citations == []
-    assert "fake_id" in results["2"].invalid_citation_ids

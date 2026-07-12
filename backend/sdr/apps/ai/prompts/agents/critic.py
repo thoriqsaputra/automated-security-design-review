@@ -232,6 +232,43 @@ Do not demand both when the requirement itself allows either path.
 - One invalid citation does not automatically defeat a met verdict. If the \
 remaining valid citations still cover the full core claim, keep the verdict \
 supported and mark only the bad citation invalid.
+- SUBSTANCE OVER LITERAL TERMINOLOGY for policy/standard-reference requirements: \
+when a requirement asks for "an explicit policy" or "follows a standard such as \
+X", do not demand the standard's literal name or a document artifact be cited. \
+If the cited evidence describes concrete practices that a competent \
+implementation of that policy/standard would actually contain (e.g. HSM-backed \
+key storage plus automated key rotation, for a "cryptographic key management \
+policy... follows a standard such as NIST SP 800-57" requirement), treat that as \
+satisfying the claim. Do not OVERTURN a "met" verdict solely because the named \
+standard/document isn't cited verbatim — the practice is the evidence, not the \
+label. WRONG: "no explicit policy document or standard reference is cited -> \
+overturn to not_met." RIGHT: HSM lifecycle management + automated rotation IS \
+the policy in effect; UPHOLD.
+- DO NOT PENALIZE LEGITIMATE PER-ROLE MECHANISM VARIANCE for "consistent \
+strength across pathways" requirements, unless the requirement explicitly \
+mandates a single uniform mechanism. A requirement testing that "all \
+authentication pathways implement consistent security control strength" is \
+about whether MFA (or the relevant control class) is mandatory everywhere, not \
+about every role using the identical specific factor. Different factor types \
+for different roles (e.g. FIDO2/WebAuthn for elevated/admin roles, OTP for \
+standard users) is normal risk-based tiering, not inconsistency — UPHOLD when \
+the control class itself (MFA) is present for every pathway named in the \
+requirement, even if the specific factor differs by role. Only OVERTURN this \
+shape of requirement when a named pathway has NO second factor at all, or when \
+the requirement's own text specifically demands one uniform mechanism (not just \
+"consistent strength").
+- SMS/EMAIL ARE NOT CRYPTOGRAPHIC AUTHENTICATORS OR OTP DEVICES: SMS- and \
+email-delivered one-time codes are, per this same review's own weak-authenticator \
+rules, the "weak authenticator" category — they are valid evidence for \
+requirements about weak-authenticator restriction (used only as a secondary/ \
+step-up factor) but they do NOT satisfy requirements asking specifically for \
+"OTP devices," "cryptographic authenticators," "lookup codes," TOTP apps, or \
+hardware tokens. A citation showing "MFA via SMS/email OOB codes" is not valid \
+evidence for a replay-resistance-via-cryptographic-authenticator requirement — \
+if that is the only second factor described, the verdict is "not_met", not \
+"met". Cross-check your own reasoning for internal consistency: if you would \
+call SMS/email a weak authenticator in one requirement, do not simultaneously \
+accept it as a cryptographic authenticator in another.
 
 EVIDENCE QUALITY CHECK:
 - Reject "met" claims supported only by section headings, requirement titles, \
@@ -254,7 +291,6 @@ OUTPUT: Strict JSON only. No prose outside the JSON object.
 def build_critic_prompt(
     parameter_text: str,
     parameter_section: str,
-    contract: dict,
     context_chunks: List[str],
     hunter_verdict: str,
     hunter_citation_ids: List[str],
@@ -295,7 +331,6 @@ Evidence you said was missed:
 
 Section: {parameter_section}
 Requirement: {parameter_text}
-Contract: {contract or {}}
 
 ## ORIGINAL TSD CONTEXT
 {chunks_text}
@@ -386,7 +421,7 @@ application, no separate federated identity provider/relying party split.
    WRONG: "No CSP/RP concept in the TSD -> na." RIGHT: the application's own session/auth \
 service plays both the CSP and RP role for itself; if it doesn't document surfacing the last \
 auth event to itself, treat the governed capability (auth-event awareness) as present and \
-unaddressed — "not_met", not "na" — unless the TSD's own contract/scope explicitly rules out \
+unaddressed — "not_met", not "na" — unless the TSD's own scope explicitly rules out \
 any session-based re-authentication concept at all.
 7. Requirement: "Regulated/sensitive personal data has documented retention and access controls." \
 TSD: mentions user profile data, location, or messages but never uses the words "regulated" or \

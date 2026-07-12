@@ -371,23 +371,21 @@ def test_diagram_requirement_selector_retrieves_per_diagram_and_respects_cap(mon
 
     class _Repo:
         def __init__(self):
-            self.search_calls = []
+            self.similarity_calls = []
 
-        def search_diagram_requirements(
-            self,
-            *,
-            category_id,
-            ingestion_job_id,
-            effective_asvs_level,
-            query_embedding,
-            top_k,
-        ):
-            self.search_calls.append((tuple(query_embedding), top_k))
+        def list_diagram_requirements_with_similarity(self, *, category_id, ingestion_job_id, query_embedding):
+            self.similarity_calls.append((tuple(query_embedding), category_id, ingestion_job_id))
             if query_embedding == [1.0]:
-                return [_requirement(stable_key="D-auth-1"), _requirement(stable_key="D-auth-2")][:top_k]
-            return [_requirement(stable_key="D-net-1"), _requirement(stable_key="D-net-2")][:top_k]
+                return [
+                    (_requirement(id=1, stable_key="D-auth-1"), 0.01),
+                    (_requirement(id=2, stable_key="D-auth-2"), 0.02),
+                ]
+            return [
+                (_requirement(id=3, stable_key="D-net-1"), 0.01),
+                (_requirement(id=4, stable_key="D-net-2"), 0.02),
+            ]
 
-        def list_diagram_requirements(self, *, category_id, ingestion_job_id, effective_asvs_level):
+        def list_diagram_requirements(self, *, category_id, ingestion_job_id):
             return [_requirement(stable_key="D-fallback-1"), _requirement(stable_key="D-fallback-2")]
 
     selector = DiagramRequirementSelector(
@@ -421,14 +419,12 @@ def test_diagram_requirement_selector_retrieves_per_diagram_and_respects_cap(mon
         tsd_document=tsd_document,
         category=category,
         ingestion_job=ingestion_job,
-        effective_asvs_level=2,
     )
     network_requirements = selector.select_for_diagram(
         diagram=network_diagram,
         tsd_document=tsd_document,
         category=category,
         ingestion_job=ingestion_job,
-        effective_asvs_level=2,
     )
 
     assert [item.stable_key for item in auth_requirements] == ["D-auth-1"]
@@ -439,10 +435,10 @@ def test_diagram_requirement_selector_falls_back_when_embedding_or_query_is_miss
     from sdr.apps.ai.engine.debate.diagram_requirement_selector import DiagramRequirementSelector
 
     class _Repo:
-        def search_diagram_requirements(self, **kwargs):
+        def list_diagram_requirements_with_similarity(self, **kwargs):
             raise AssertionError("vector search should not run in fallback case")
 
-        def list_diagram_requirements(self, *, category_id, ingestion_job_id, effective_asvs_level):
+        def list_diagram_requirements(self, *, category_id, ingestion_job_id):
             return [_requirement(stable_key="D-fallback-1"), _requirement(stable_key="D-fallback-2")]
 
     selector = DiagramRequirementSelector(
@@ -460,10 +456,79 @@ def test_diagram_requirement_selector_falls_back_when_embedding_or_query_is_miss
         tsd_document=SimpleNamespace(pages=[]),
         category=SimpleNamespace(id=1),
         ingestion_job=SimpleNamespace(id=2),
-        effective_asvs_level=2,
     )
 
     assert [item.stable_key for item in requirements] == ["D-fallback-1"]
+
+
+def test_diagram_requirement_selector_default_path_does_not_invoke_gatekeeper(monkeypatch):
+    from sdr.apps.ai.engine.debate.diagram_requirement_selector import DiagramRequirementSelector
+
+    class _Repo:
+        def list_diagram_requirements_with_similarity(self, *, category_id, ingestion_job_id, query_embedding):
+            return [(_requirement(id=1, stable_key="D-hybrid-1"), 0.01)]
+
+        def list_diagram_requirements(self, *, category_id, ingestion_job_id):
+            return [_requirement(stable_key="D-fallback-1")]
+
+    selector = DiagramRequirementSelector(
+        config=SimpleNamespace(vision_diagram_requirements_max_items=3),
+        workflow_repository=_Repo(),
+    )
+
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.debate.diagram_requirement_selector.get_embedding",
+        lambda **kwargs: [1.0],
+    )
+    monkeypatch.setattr(
+        selector._gatekeeper,
+        "run_multimodal",
+        lambda **kwargs: (_ for _ in ()).throw(AssertionError("gatekeeper should not run by default")),
+    )
+
+    requirements = selector.select_for_diagram(
+        diagram=SimpleNamespace(
+            diagram_id="d-hybrid",
+            caption="Authentication flow",
+            surrounding_text="Gateway and MFA",
+            page_number=1,
+            image_b64="ZmFrZQ==",
+            image_format="png",
+        ),
+        tsd_document=SimpleNamespace(pages=[]),
+        category=SimpleNamespace(id=1),
+        ingestion_job=SimpleNamespace(id=2),
+    )
+
+    assert [item.stable_key for item in requirements] == ["D-hybrid-1"]
+
+
+def test_diagram_requirement_selector_builds_recall_oriented_query_text():
+    from sdr.apps.ai.engine.debate.diagram_requirement_selector import DiagramRequirementSelector
+
+    selector = DiagramRequirementSelector(
+        config=SimpleNamespace(vision_diagram_requirements_max_items=3),
+        workflow_repository=SimpleNamespace(),
+    )
+
+    query_text = selector._build_query_text(
+        diagram=SimpleNamespace(page_number=2),
+        tsd_document=SimpleNamespace(
+            pages=[
+                SimpleNamespace(all_text="Shared context on page one."),
+                SimpleNamespace(all_text="Shared context on page one. DMZ gateway routes traffic."),
+                SimpleNamespace(all_text="Audit logging and internal service details."),
+            ]
+        ),
+        caption="Authentication flow",
+        surrounding="Authentication flow",
+        ocr_text="DMZ gateway routes traffic",
+    )
+
+    assert "Authentication flow" in query_text
+    assert "Visible diagram elements: DMZ gateway routes traffic" in query_text
+    assert "Nearby page context:" in query_text
+    assert query_text.count("Authentication flow") == 1
 
 
 class _ScalarResult:

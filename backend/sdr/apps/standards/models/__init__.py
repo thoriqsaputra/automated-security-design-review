@@ -4,7 +4,7 @@ from .parameters import (
     CategoryParameterParent,
     CategoryParameterChild,
 )
-from .analysis import CategoryParameterEmbedding, CategoryDiagramRequirementEmbedding
+from .analysis import CategoryDiagramRequirementEmbedding
 from .diagram_requirement import CategoryDiagramRequirement
 
 __all__ = [
@@ -14,7 +14,6 @@ __all__ = [
     "StandardSourceDocument",
     "CategoryParameterParent",
     "CategoryParameterChild",
-    "CategoryParameterEmbedding",
     "CategoryDiagramRequirementEmbedding",
     "CategoryDiagramRequirement",
 ]

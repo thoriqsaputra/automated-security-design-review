@@ -35,7 +35,6 @@ class Review(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     design_id: Mapped[int] = mapped_column(ForeignKey("designs_design.id", ondelete="CASCADE"), index=True)
-    # Removing 'requested_by' and 'reviewer' as AUTH_USER_MODEL has been removed in the project.
     
     ingestion_job_id: Mapped[Optional[int]] = mapped_column(ForeignKey("standards_standingestionjob.id", ondelete="SET NULL"), nullable=True, index=True)
     category_id: Mapped[Optional[int]] = mapped_column(ForeignKey("standards_standardcategory.id", ondelete="SET NULL"), nullable=True, index=True)
@@ -57,14 +56,10 @@ class Review(Base):
     summary_json: Mapped[Dict[str, Any]] = mapped_column(JSONB, default=dict)
     retrieval_snapshot_json: Mapped[Optional[Dict[str, Any]]] = mapped_column(JSONB, nullable=True)
 
-    # Snapshot of the design's document at the time this review was created, so
-    # that reingesting a design with a different PDF doesn't shift the document
-    # (and misalign citation bboxes) underneath already-completed reviews.
     document_object_key: Mapped[Optional[str]] = mapped_column(String(1024), nullable=True)
     document_filename: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     document_sha256: Mapped[Optional[str]] = mapped_column(String(64), nullable=True)
 
-    # Relationships
     design = relationship("Design", backref=backref("reviews", cascade="all, delete-orphan", passive_deletes=True))
     category = relationship("StandardCategory")
     ingestion_job = relationship("StandardIngestionJob")
@@ -79,7 +74,6 @@ class Review(Base):
     )
 
     def __str__(self):
-        # We try to get design.name safely if joined
         design_name = getattr(self.design, "name", "Unknown Design") if self.design else "Unknown Design"
         return f"Review for {design_name} — {self.status}"
 

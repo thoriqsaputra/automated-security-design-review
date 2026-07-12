@@ -26,14 +26,11 @@ Output strict JSON only.
 def build_hunter_prompt(
     parameter_text: str,
     parameter_section: str,
-    contract: Optional[dict],
     context_chunks: List[str],
-    persona_focus: Optional[str] = None,
     killed_assumptions: Optional[List[dict]] = None,
     available_block_ids: Optional[List[str]] = None,
 ) -> str:
     chunks_text = "\n\n---\n\n".join(context_chunks)
-    persona_block = f"\nPersona focus: {persona_focus}" if persona_focus else ""
     killed_block = ""
     if killed_assumptions:
         lines = []
@@ -52,7 +49,6 @@ def build_hunter_prompt(
 
 Section: {parameter_section}
 Requirement: {parameter_text}
-Contract: {contract or {}}{persona_block}
 
 ## TSD CONTEXT
 {chunks_text}

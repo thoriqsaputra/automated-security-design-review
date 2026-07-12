@@ -13,7 +13,6 @@ from sdr.apps.ai.retrieval.core import (
     reciprocal_rank_fusion,
 )
 from sdr.apps.ai.retrieval.searchers.raptor import RAPTOR_LEVEL_HIGH, RAPTOR_LEVEL_LOW, RAPTOR_LEVEL_MID, RAPTORSearchResponse
-from sdr.apps.ai.retrieval.searchers.vector import VectorSearchResponse
 from sdr.apps.ai.tsd_processing.raptor import RAPTORTree
 from sdr.apps.standards.models import StandardCategory, StandardIngestionJob
 from sdr.core.config import settings
@@ -225,35 +224,6 @@ def _build_block_source_map_from_candidates(candidates: List[RetrievalCandidate]
 
 
 class RetrievalRouteExecutor:
-    def execute_vector_only(
-        self,
-        router,
-        *,
-        query_text: str,
-        category: StandardCategory,
-        ingestion_job: Optional[StandardIngestionJob],
-        query_embedding: List[float],
-    ) -> RetrievalResult:
-        vector_response = router._vector_searcher.search(
-            query_text=query_text,
-            category=category,
-            top_k=router.vector_top_k,
-            ingestion_job=ingestion_job,
-            precomputed_embedding=query_embedding or None,
-        )
-        context_chunks = router._build_chunks_from_vector(vector_response)
-        source_block_ids = router._collect_block_ids_from_vector(vector_response)
-        return RetrievalResult(
-            context_chunks=context_chunks[: router.max_context_chunks],
-            context_chunk_block_ids=[[] for _ in context_chunks[: router.max_context_chunks]],
-            source_block_ids=source_block_ids,
-            block_source_map={},
-            strategy_used=RetrievalStrategy.VECTOR_ONLY,
-            query_embedding=query_embedding,
-            vector_response=vector_response,
-            error=vector_response.error,
-        )
-
     def execute_raptor_low(self, router, *, query_text: str, raptor_tree: Optional[RAPTORTree], query_embedding: List[float]) -> RetrievalResult:
         if raptor_tree is None or raptor_tree.is_empty():
             return RetrievalResult(
@@ -412,7 +382,6 @@ class RetrievalRouteExecutor:
             block_source_map=block_source_map,
             strategy_used=RetrievalStrategy.HYBRID,
             query_embedding=query_embedding,
-            vector_response=None,
             raptor_response=raptor_response,
             evidence_metadata={
                 **evidence_metadata,

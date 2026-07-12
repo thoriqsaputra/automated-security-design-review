@@ -58,7 +58,6 @@ _KEYWORD_RISK_TERMS = {
     "upload",
 }
 
-
 @dataclass(frozen=True)
 class DeterministicSeverity:
     severity: Optional[str]

@@ -6,17 +6,12 @@ from typing import Any, Dict, List, Optional, Set
 from sdr.apps.ai.client import get_embedding
 from sdr.apps.ai.engine.classification.query_expansion import expand_retrieval_query_variants
 from sdr.apps.ai.retrieval.core import AdvancedRetrievalConfig, RetrievalCandidate, RetrievalResult, RetrievalStrategy
-from sdr.apps.ai.retrieval.postprocessing.chunk_builders import (
-    build_chunks_from_vector,
-    collect_block_ids_from_vector,
-)
 from sdr.apps.ai.retrieval.postprocessing.evidence_grader import EvidenceGrader
 from sdr.apps.ai.retrieval.postprocessing.reranker import SafeOptionalReranker
 from sdr.apps.ai.retrieval.routing.executors import RetrievalRouteExecutor
 from sdr.apps.ai.retrieval.routing.strategy_selector import RetrievalStrategySelector
 from sdr.apps.ai.retrieval.searchers.keyword import KeywordSearcher
 from sdr.apps.ai.retrieval.searchers.raptor import RAPTORSearchResponse, RAPTORSearcher
-from sdr.apps.ai.retrieval.searchers.vector import VectorSearchResponse, VectorSearcher
 from sdr.apps.ai.tsd_processing.raptor import RAPTORTree
 from sdr.apps.standards.models import CategoryParameterChild, StandardCategory, StandardIngestionJob
 from sdr.apps.standards.utils import build_parameter_analysis_text
@@ -55,11 +50,10 @@ class HybridRetrievalRouter:
         max_context_chunks: int = _MAX_CONTEXT_CHUNKS,
         advanced_config: Optional[AdvancedRetrievalConfig] = None,
     ) -> None:
-        self.vector_top_k = vector_top_k
+        self.vector_top_k = max(raptor_top_k, vector_top_k)
         self.raptor_top_k = raptor_top_k
         self.max_context_chunks = max_context_chunks
         self.advanced_config = advanced_config or AdvancedRetrievalConfig.from_settings()
-        self._vector_searcher = VectorSearcher()
         self._raptor_searcher = RAPTORSearcher()
         self._keyword_searcher = KeywordSearcher()
         self._reranker = SafeOptionalReranker(
@@ -95,13 +89,6 @@ class HybridRetrievalRouter:
         )
 
         try:
-            if strategy == RetrievalStrategy.VECTOR_ONLY:
-                return self._execute_vector_only(
-                    query_text=query_text,
-                    category=category,
-                    ingestion_job=ingestion_job,
-                    query_embedding=query_embedding,
-                )
             if strategy == RetrievalStrategy.RAPTOR_LOW:
                 return self._execute_raptor_low(query_text=query_text, raptor_tree=raptor_tree, query_embedding=query_embedding)
             if strategy == RetrievalStrategy.RAPTOR_HIGH:
@@ -142,9 +129,6 @@ class HybridRetrievalRouter:
             raptor_tree=raptor_tree,
         )
 
-    def _execute_vector_only(self, **kwargs) -> RetrievalResult:
-        return self._executor().execute_vector_only(self, **kwargs)
-
     def _execute_raptor_low(self, **kwargs) -> RetrievalResult:
         return self._executor().execute_raptor_low(self, **kwargs)
 
@@ -162,35 +146,6 @@ class HybridRetrievalRouter:
 
     def _apply_keyword_coverage_boost(self, candidates: List[RetrievalCandidate], keywords: List[str]) -> List[RetrievalCandidate]:
         return self._grader().apply_keyword_coverage_boost(candidates, keywords)
-
-    def _build_chunks_from_vector(self, vector_response: VectorSearchResponse) -> List[str]:
-        return build_chunks_from_vector(vector_response)
-
-    def _collect_block_ids_from_vector(self, vector_response: VectorSearchResponse) -> List[str]:
-        return collect_block_ids_from_vector(vector_response)
-
-    def _vector_results_to_candidates(self, vector_response: VectorSearchResponse) -> List[RetrievalCandidate]:
-        dense_candidates: List[RetrievalCandidate] = []
-        for idx, result in enumerate(vector_response.results):
-            text = result.child.requirement_text or ""
-            if not text:
-                continue
-            dense_candidates.append(
-                RetrievalCandidate(
-                    id=f"dense:{getattr(result.child, 'stable_key', idx)}",
-                    source_type="dense",
-                    text=text,
-                    score=float(result.cosine_similarity),
-                    block_ids=[],
-                    metadata={
-                        "sensitivity": "internal",
-                        "evidence_kind": "baseline_requirement",
-                        "non_tsd_evidence": True,
-                    },
-                    token_count=max(1, len(text) // 4),
-                )
-            )
-        return dense_candidates
 
     def _raptor_results_to_candidates(self, raptor_response: Optional[RAPTORSearchResponse]) -> List[RetrievalCandidate]:
         candidates: List[RetrievalCandidate] = []

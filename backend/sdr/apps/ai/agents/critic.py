@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable, Dict, List, Optional
+from typing import Callable, List, Optional
 
 from sdr.core.config import settings
 
 from sdr.apps.ai.prompts.agents import (
     CRITIC_SYSTEM_PROMPT,
     build_critic_prompt,
-    build_batch_critic_prompt,
 )
 from .base import (
     APPLICABILITY_ESTABLISHED,
@@ -40,7 +39,6 @@ class CriticAgent(BaseAgent):
         self,
         parameter_text: str,
         parameter_section: str,
-        contract: dict,
         context_chunks: List[str],
         hunter_result: HunterResult,
         cited_blocks: List[dict],
@@ -54,7 +52,6 @@ class CriticAgent(BaseAgent):
         return build_critic_prompt(
             parameter_text=parameter_text,
             parameter_section=parameter_section,
-            contract=contract,
             context_chunks=context_chunks,
             hunter_verdict=hunter_result.verdict,
             hunter_citation_ids=[c.block_id for c in hunter_result.citations],
@@ -74,7 +71,6 @@ class CriticAgent(BaseAgent):
         self,
         parameter_text: str,
         parameter_section: str,
-        contract: dict,
         context_chunks: List[str],
         hunter_result: HunterResult,
         cited_blocks: List[dict],
@@ -138,7 +134,7 @@ class CriticAgent(BaseAgent):
         #    Nothing to verify — Critic automatically upholds. This avoids
         #    an unnecessary LLM call for the most common compliant outcome.
         # ------------------------------------------------------------------
-        if self._can_auto_uphold_strong_not_met(hunter_result, contract):
+        if self._can_auto_uphold_strong_not_met(hunter_result):
             self.logger.info(
                 "CriticAgent.run: Hunter returned not_met with no citations "
                 "for parameter '%s...' — auto-upholding, skipping LLM call.",
@@ -179,7 +175,6 @@ class CriticAgent(BaseAgent):
         user_prompt = self._build_user_prompt(
             parameter_text=parameter_text,
             parameter_section=parameter_section,
-            contract=contract,
             context_chunks=context_chunks,
             hunter_result=hunter_result,
             cited_blocks=cited_blocks,
@@ -381,221 +376,6 @@ class CriticAgent(BaseAgent):
             error=None,
         )
 
-    def run_batch(
-        self,
-        child_inputs: List[dict],
-        parameter_section: str,
-        context_chunks: List[str],
-        hunter_results: Dict[str, HunterResult],
-        cited_blocks_by_child: Optional[Dict[str, List[dict]]] = None,
-        available_block_ids: Optional[List[str]] = None,
-    ) -> Dict[str, CriticResult]:
-        if not child_inputs:
-            return {}
-
-        auto_upheld_results: Dict[str, CriticResult] = {}
-        llm_child_inputs: List[dict] = []
-        llm_hunter_results: Dict[str, HunterResult] = {}
-        
-        for item in child_inputs:
-            child_id = str(item.get("id"))
-            if not child_id or child_id == "None":
-                continue
-            contract = item.get("contract")
-            hunter_result = hunter_results.get(child_id) or HunterResult()
-            
-            if self._can_auto_uphold_strong_not_met(hunter_result, contract):
-                self.logger.info(
-                    "CriticAgent.run_batch: Hunter returned not_met with no citations "
-                    "for child '%s' — auto-upholding, skipping LLM.",
-                    child_id,
-                )
-                auto_upheld_results[child_id] = CriticResult(
-                    outcome=OUTCOME_UPHOLD,
-                    revised_verdict=VERDICT_NOT_MET,
-                    revised_confidence=hunter_result.confidence,
-                    applicability_status=APPLICABILITY_ESTABLISHED,
-                    applicability_reason=(
-                        hunter_result.applicability_reason
-                        or "The requirement remains applicable; the issue is missing implementation evidence."
-                    ),
-                    missing_expected_evidence=list(hunter_result.missing_expected_evidence or []),
-                    reasoning=(
-                        "Critic auto-upheld: Hunter returned not_met with no "
-                        "citations or evidence. No LLM call required."
-                    ),
-                    logic_summary=(
-                        "Critic auto-upheld: Hunter returned not_met with no "
-                        "citations or evidence. No LLM call required."
-                    ),
-                    valid_citations=[],
-                    invalid_citation_ids=[],
-                    decision="uphold",
-                    weak_evidence=[],
-                    missed_evidence=[],
-                    objections=[],
-                    requires_rebuttal=False,
-                    raw_response=None,
-                    error=None,
-                )
-            else:
-                llm_child_inputs.append(item)
-                llm_hunter_results[child_id] = hunter_result
-
-        results: Dict[str, CriticResult] = auto_upheld_results.copy()
-
-        if not llm_child_inputs:
-            return results
-
-        response = self._call_llm_with_truncation_retry(
-            self._build_batch_user_prompt(
-                child_inputs=llm_child_inputs,
-                parameter_section=parameter_section,
-                context_chunks=context_chunks,
-                hunter_results=llm_hunter_results,
-                cited_blocks_by_child=cited_blocks_by_child or {},
-                available_block_ids=available_block_ids,
-            )
-        )
-        if response.error:
-            msg = f"LLM call failed: {response.error}"
-            self.logger.error("CriticAgent.run_batch: %s", msg)
-            for item in llm_child_inputs:
-                c_id = str(item.get("id"))
-                results[c_id] = self._critic_error(msg, raw=response.content)
-            return results
-
-        parsed = self._parse_json_response(response)
-        if parsed is None:
-            self.logger.error("CriticAgent.run_batch: failed to parse batch JSON.")
-            return results
-
-        allowed_ids = {str(item.get("id")) for item in llm_child_inputs if item.get("id") is not None}
-        for item in parsed.get("results", []):
-            if not isinstance(item, dict):
-                continue
-            child_id = str(item.get("child_id") or item.get("parameter_id") or "").strip()
-            if child_id not in allowed_ids or child_id in results:
-                continue
-            hunter_result = hunter_results.get(child_id) or HunterResult()
-            decision = self._validate_decision(item.get("decision"))
-            outcome = self._validate_outcome(item.get("outcome"))
-            if "outcome" not in item:
-                outcome = self._outcome_from_decision(decision)
-            revised_verdict = self._validate_verdict(
-                item.get("revised_verdict"),
-                fallback=hunter_result.verdict,
-            )
-            revised_confidence = self._clamp_confidence(
-                item.get("revised_confidence"),
-                default=hunter_result.confidence,
-            )
-            reasoning_fields = self._extract_reasoning_fields(
-                item,
-                reasoning_fallback="No reasoning provided by the Critic agent.",
-            )
-            valid_citations = self._extract_citations(
-                item.get("valid_citations", []),
-                field_name="valid_citations",
-            )
-            valid_citations, additionally_invalidated = self._cross_check_citations(
-                valid_citations=valid_citations,
-                available_block_ids=available_block_ids,
-            )
-            invalid_citation_ids = self._extract_invalid_citation_ids(
-                item.get("invalid_citation_ids", [])
-            )
-            invalid_citation_ids = list(set(invalid_citation_ids) | set(additionally_invalidated))
-            if outcome == OUTCOME_UPHOLD and revised_verdict != hunter_result.verdict:
-                outcome = OUTCOME_PARTIAL
-                decision = "challenge"
-            if decision == "uphold" and outcome in {OUTCOME_OVERTURN, OUTCOME_PARTIAL}:
-                decision = "reject" if outcome == OUTCOME_OVERTURN else "challenge"
-            applicability_status = self._extract_applicability_status(item, verdict=revised_verdict)
-            applicability_reason = self._extract_applicability_reason(
-                item,
-                default="No applicability reasoning provided by the Critic agent.",
-            )
-            missing_expected_evidence = self._extract_missing_expected_evidence(item)
-            if revised_verdict == VERDICT_NA:
-                applicability_status = APPLICABILITY_NOT_ESTABLISHED
-            elif revised_verdict in {VERDICT_MET, VERDICT_NOT_MET}:
-                applicability_status = APPLICABILITY_ESTABLISHED
-            if (
-                hunter_result.verdict == VERDICT_NOT_MET
-                and revised_verdict == VERDICT_NA
-                and applicability_status != APPLICABILITY_NOT_ESTABLISHED
-            ):
-                revised_verdict = VERDICT_NOT_MET
-                applicability_status = APPLICABILITY_ESTABLISHED
-                outcome = OUTCOME_PARTIAL if outcome == OUTCOME_OVERTURN else outcome
-                decision = "challenge" if decision == "reject" else decision
-            if revised_verdict == VERDICT_NOT_MET and not missing_expected_evidence:
-                fallback_missing = (
-                    self._extract_string_list(item, "weak_evidence")
-                    or self._extract_string_list(item, "missed_evidence")
-                    or self._extract_string_list(item, "objections")
-                )
-                missing_expected_evidence = list(fallback_missing[:5])
-                if not missing_expected_evidence and reasoning_fields["logic_summary"]:
-                    missing_expected_evidence = [reasoning_fields["logic_summary"][:400]]
-            if revised_verdict != VERDICT_NOT_MET:
-                missing_expected_evidence = []
-            results[child_id] = CriticResult(
-                outcome=outcome,
-                revised_verdict=revised_verdict,
-                revised_confidence=revised_confidence,
-                applicability_status=applicability_status,
-                applicability_reason=applicability_reason,
-                missing_expected_evidence=missing_expected_evidence,
-                reasoning=reasoning_fields["reasoning"],
-                assumptions=reasoning_fields["assumptions"],
-                logic_summary=reasoning_fields["logic_summary"],
-                cot_trace=reasoning_fields["cot_trace"],
-                valid_citations=valid_citations,
-                invalid_citation_ids=invalid_citation_ids,
-                decision=decision,
-                weak_evidence=self._extract_string_list(item, "weak_evidence"),
-                missed_evidence=self._extract_string_list(item, "missed_evidence"),
-                objections=self._extract_string_list(item, "objections"),
-                requires_rebuttal=self._extract_bool(item.get("requires_rebuttal"), default=False),
-                raw_response=response.content,
-                error=None,
-            )
-        return results
-
-    def _build_batch_user_prompt(
-        self,
-        *,
-        child_inputs: List[dict],
-        parameter_section: str,
-        context_chunks: List[str],
-        hunter_results: Dict[str, HunterResult],
-        cited_blocks_by_child: Dict[str, List[dict]],
-        available_block_ids: Optional[List[str]] = None,
-    ) -> str:
-        hunter_payload = {}
-        for child_id, result in hunter_results.items():
-            hunter_payload[str(child_id)] = {
-                "verdict": result.verdict,
-                "confidence": result.confidence,
-                "reasoning": result.logic_summary or result.reasoning,
-                "checked_context": result.checked_context,
-                "evidence_quotes": list(result.evidence_quotes),
-                "evidence_assessment": result.evidence_assessment,
-                "assumptions": list(result.assumptions),
-                "cot_trace": result.cot_trace,
-                "citation_ids": [citation.block_id for citation in result.citations],
-                "cited_blocks": cited_blocks_by_child.get(str(child_id), []),
-            }
-        return build_batch_critic_prompt(
-            child_inputs=child_inputs,
-            parameter_section=parameter_section,
-            context_chunks=context_chunks,
-            hunter_payload=hunter_payload,
-            available_block_ids=available_block_ids,
-        )
-
     # ------------------------------------------------------------------
     # Critic-specific private helpers
     # ------------------------------------------------------------------
@@ -647,15 +427,10 @@ class CriticAgent(BaseAgent):
                 return False
         return default
 
-    def _can_auto_uphold_strong_not_met(self, hunter_result: HunterResult, contract: Optional[dict] = None) -> bool:
+    def _can_auto_uphold_strong_not_met(self, hunter_result: HunterResult) -> bool:
         if not bool(getattr(settings, "AI_DEBATE_CRITIC_AUTO_UPHOLD_STRONG_NOT_MET", False)):
             return False
         if hunter_result.verdict != VERDICT_NOT_MET:
-            return False
-        # Only auto-uphold when the contract confirms the requirement is in scope.
-        # If the contract says it's not applicable, the Critic should let the
-        # Mediator handle the na verdict instead of rubber-stamping not_met.
-        if contract and not contract.get("in_scope", True):
             return False
         if hunter_result.citations or hunter_result.evidence_found:
             return False

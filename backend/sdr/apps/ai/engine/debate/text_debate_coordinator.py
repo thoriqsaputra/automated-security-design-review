@@ -121,15 +121,6 @@ class TextDebateCoordinator:
                     debate_output = future.result()
                     if debate_output is None:
                         continue
-                    debate_output = self.retry_if_needed(
-                        category=category,
-                        ingestion_job=ingestion_job,
-                        parameter=parameter,
-                        indexes=indexes,
-                        tsd_document=tsd_document,
-                        debate_output=debate_output,
-                        killed_assumptions=list(killed_assumptions_memory),
-                    )
                     killed_assumptions_memory.extend(self.extract_killed_assumptions_from_output(debate_output, parameter))
                     debate_output.analysis_trace["killed_assumptions"] = list(killed_assumptions_memory)
                     self.record_debate_progress(
@@ -306,14 +297,7 @@ class TextDebateCoordinator:
         tsd_document,
         killed_assumptions: List[Dict[str, Any]],
     ) -> Tuple[DebateInput, Any]:
-        parameter_text = build_parameter_analysis_text(parameter).strip()
-        parameter_section = parameter.parent.title if parameter.parent else "General"
-        contract = self.debate_input_factory.build_contract(
-            parameter_text=parameter_text,
-            parameter_section=parameter_section,
-            parent_description=(parameter.parent.description if parameter.parent else "") or "",
-        )
-        retrieval_query_details = self.debate_input_factory.build_retrieval_query_details(parameter, contract)
+        retrieval_query_details = self.debate_input_factory.build_retrieval_query_details(parameter)
         retrieval_result = self.retrieval.retrieve_for_parameter(
             parameter=parameter,
             category=category,
@@ -331,7 +315,6 @@ class TextDebateCoordinator:
                 retrieval_result=retrieval_result,
                 tsd_document=tsd_document,
                 killed_assumptions=killed_assumptions,
-                contract=contract,
                 retrieval_query_details=retrieval_query_details,
             ),
             retrieval_result,
@@ -347,7 +330,6 @@ class TextDebateCoordinator:
         retrieval_result,
         tsd_document,
         killed_assumptions: List[Dict[str, Any]],
-        contract: Optional[dict] = None,
         retrieval_query_details: Optional[dict] = None,
     ) -> DebateInput:
         debate_input = self.debate_input_factory.build_debate_input(
@@ -356,7 +338,6 @@ class TextDebateCoordinator:
             retrieval_result=retrieval_result,
             tsd_document=tsd_document,
             killed_assumptions=killed_assumptions,
-            contract=contract,
             retrieval_query_details=retrieval_query_details,
         )
         debate_input.retrieval_refresh_callback = self._build_retrieval_refresh_callback(
@@ -366,7 +347,6 @@ class TextDebateCoordinator:
             indexes=indexes,
             tsd_document=tsd_document,
             killed_assumptions=killed_assumptions,
-            contract=contract or debate_input.contract,
             retrieval_query_details=retrieval_query_details or debate_input.retrieval_query_details,
         )
         return debate_input
@@ -379,7 +359,6 @@ class TextDebateCoordinator:
         retrieval_result,
         tsd_document,
         killed_assumptions: List[Dict[str, Any]],
-        contract: Optional[dict] = None,
         retrieval_query_details: Optional[dict] = None,
     ) -> DebateInput:
         return self.debate_input_factory.build_debate_input(
@@ -388,7 +367,6 @@ class TextDebateCoordinator:
             retrieval_result=retrieval_result,
             tsd_document=tsd_document,
             killed_assumptions=killed_assumptions,
-            contract=contract,
             retrieval_query_details=retrieval_query_details,
         )
 
@@ -401,7 +379,6 @@ class TextDebateCoordinator:
         indexes,
         tsd_document,
         killed_assumptions: List[Dict[str, Any]],
-        contract: Dict[str, Any],
         retrieval_query_details: Dict[str, Any],
     ):
         if indexes is None:
@@ -441,7 +418,6 @@ class TextDebateCoordinator:
                 retrieval_result=refreshed_result,
                 tsd_document=tsd_document,
                 killed_assumptions=killed_assumptions,
-                contract=contract,
                 retrieval_query_details=updated_query_details,
             )
             refreshed_input.retrieval_refresh_callback = None
@@ -483,19 +459,11 @@ class TextDebateCoordinator:
         debate_output: DebateOutput,
         summary: AnalysisSummary,
     ):
-        gated_output = self.apply_not_met_evidence_gate(
-            category=category,
-            ingestion_job=ingestion_job,
-            parameter=parameter,
-            indexes=indexes,
-            tsd_document=tsd_document,
-            debate_output=debate_output,
-        )
         persistence_input = PersistenceInput(
             parameter=parameter,
             category=category,
             ingestion_job=ingestion_job,
-            debate_output=gated_output,
+            debate_output=debate_output,
         )
         finding = self.persistence.persist_finding(review, persistence_input, summary)
         if finding is not None:
@@ -503,8 +471,8 @@ class TextDebateCoordinator:
                 review.id,
                 debate_id=self.build_live_debate_id(parameter),
                 finding_id=getattr(finding, "id", None),
-                last_snippet=getattr(gated_output.mediator_result, "logic_summary", None)
-                or getattr(gated_output.mediator_result, "reasoning", None)
+                last_snippet=getattr(debate_output.mediator_result, "logic_summary", None)
+                or getattr(debate_output.mediator_result, "reasoning", None)
                 or "",
             )
         else:
@@ -515,222 +483,6 @@ class TextDebateCoordinator:
                 error_message="Failed to persist debate result.",
             )
         return finding
-
-    def ungrounded_not_met_policy(self) -> str:
-        raw = self.config.batch_debate_ungrounded_not_met_policy
-        if raw in {"downgrade_na", "selective_fallback", "always_fallback", "preserve_not_met"}:
-            return raw
-        return "preserve_not_met"
-
-    def apply_not_met_evidence_gate(
-        self,
-        *,
-        category,
-        ingestion_job,
-        parameter,
-        indexes,
-        tsd_document,
-        debate_output: DebateOutput,
-    ) -> DebateOutput:
-        debate_output.analysis_trace = dict(getattr(debate_output, "analysis_trace", {}) or {})
-        mediator = debate_output.mediator_result
-        verdict = getattr(mediator, "final_verdict", None)
-        if verdict != "not_met":
-            debate_output.analysis_trace["evidence_gate_attempted"] = False
-            return debate_output
-        if self.has_grounded_citations(debate_output):
-            debate_output.analysis_trace["evidence_gate_attempted"] = False
-            return debate_output
-        evidence_quality = self.extract_retrieval_evidence_quality(debate_output.analysis_trace)
-        implementation_count = int(evidence_quality.get("implementation_evidence_count") or 0)
-        applicability_signal = bool(evidence_quality.get("applicability_signal"))
-        verdict_policy = debate_output.analysis_trace.get("verdict_policy") or {}
-        structured_applicability_present = bool(verdict_policy.get("structured_applicability_present"))
-        applicability_status = str(verdict_policy.get("applicability_status") or "").strip().lower()
-        applicability_established = bool(verdict_policy.get("applicability_established", True))
-        if structured_applicability_present:
-            applicability_established = applicability_status == "established"
-        debate_output.analysis_trace["structured_applicability_present"] = structured_applicability_present
-        debate_output.analysis_trace["applicability_status"] = applicability_status or None
-        if evidence_quality and implementation_count == 0 and not applicability_signal:
-            if structured_applicability_present and applicability_established:
-                reason = self.build_missing_evidence_reasoning(parameter, evidence_quality, applicability_established=True)
-                mediator.reasoning = reason
-                mediator.logic_summary = reason
-                debate_output.analysis_trace["evidence_gate_attempted"] = True
-                debate_output.analysis_trace["evidence_gate_outcome"] = "structured_applicability_preserved_not_met"
-                debate_output.analysis_trace["downgraded_due_to_missing_citations"] = False
-                debate_output.analysis_trace["downgrade_reason"] = None
-                return debate_output
-            reason = self.build_missing_evidence_reasoning(parameter, evidence_quality, applicability_established=False)
-            mediator.final_verdict = "na"
-            mediator.raw_final_verdict = "na"
-            mediator.applicability_status = "not_established"
-            mediator.severity = None
-            mediator.recommendation = None
-            mediator.reasoning = reason
-            mediator.logic_summary = reason
-            debate_output.analysis_trace["evidence_gate_attempted"] = True
-            debate_output.analysis_trace["evidence_gate_outcome"] = "downgraded_to_na_no_applicability_signal"
-            debate_output.analysis_trace["downgraded_due_to_missing_citations"] = True
-            debate_output.analysis_trace["downgrade_reason"] = "not_met_without_applicability_or_implementation_evidence"
-            return debate_output
-        if evidence_quality and implementation_count == 0:
-            reason = self.build_missing_evidence_reasoning(parameter, evidence_quality, applicability_established=True)
-            mediator.reasoning = reason
-            mediator.logic_summary = reason
-            debate_output.analysis_trace["evidence_gate_outcome"] = "missing_implementation_evidence_preserved_not_met"
-        if self.ungrounded_not_met_policy() == "preserve_not_met":
-            debate_output.analysis_trace["evidence_gate_attempted"] = bool(debate_output.analysis_trace.get("evidence_gate_outcome"))
-            debate_output.analysis_trace.setdefault("evidence_gate_outcome", "skipped_preserve_not_met_policy")
-            return debate_output
-        debate_output.analysis_trace["evidence_gate_attempted"] = True
-        debate_output.analysis_trace["evidence_gate_retry_context_available"] = False
-        debate_output.analysis_trace["evidence_gate_retry_skipped"] = "disabled_no_new_evidence_source"
-        downgrade_policy = self.ungrounded_not_met_policy()
-        if downgrade_policy == "selective_fallback" and applicability_established:
-            debate_output.analysis_trace["evidence_gate_outcome"] = "retry_disabled_preserved_not_met"
-            debate_output.analysis_trace["downgraded_due_to_missing_citations"] = False
-            debate_output.analysis_trace["downgrade_reason"] = None
-            return debate_output
-        if downgrade_policy == "selective_fallback" and not applicability_established:
-            debate_output.mediator_result.final_verdict = "na"
-            debate_output.mediator_result.raw_final_verdict = "na"
-            debate_output.mediator_result.applicability_status = "not_established"
-            debate_output.mediator_result.severity = None
-            debate_output.mediator_result.recommendation = None
-            debate_output.mediator_result.reasoning = (
-                (debate_output.mediator_result.reasoning or "").strip()
-                + "\n\nInsufficient grounded evidence found, and applicability was not established."
-            ).strip()
-            debate_output.mediator_result.logic_summary = debate_output.mediator_result.reasoning
-            debate_output.analysis_trace["evidence_gate_outcome"] = "downgraded_to_na_applicability_not_established_without_retry"
-            debate_output.analysis_trace["downgraded_due_to_missing_citations"] = True
-            debate_output.analysis_trace["downgrade_reason"] = "not_met_without_grounded_citations_or_applicability_without_retry"
-            return debate_output
-        if downgrade_policy != "downgrade_na":
-            debate_output.analysis_trace["evidence_gate_outcome"] = "retry_disabled_preserved_not_met"
-            debate_output.analysis_trace["downgraded_due_to_missing_citations"] = False
-            debate_output.analysis_trace["downgrade_reason"] = None
-            return debate_output
-        debate_output.mediator_result.final_verdict = "na"
-        debate_output.mediator_result.raw_final_verdict = "na"
-        debate_output.mediator_result.applicability_status = "not_established"
-        debate_output.mediator_result.severity = None
-        debate_output.mediator_result.recommendation = None
-        debate_output.mediator_result.reasoning = (
-            (debate_output.mediator_result.reasoning or "").strip()
-            + "\n\nInsufficient grounded evidence found to support a 'not_met' determination."
-        ).strip()
-        debate_output.mediator_result.logic_summary = debate_output.mediator_result.reasoning
-        debate_output.analysis_trace["evidence_gate_outcome"] = "downgraded_to_na_missing_citations_without_retry"
-        debate_output.analysis_trace["downgraded_due_to_missing_citations"] = True
-        debate_output.analysis_trace["downgrade_reason"] = "not_met_without_grounded_citations_without_retry"
-        return debate_output
-
-    def extract_retrieval_evidence_quality(self, analysis_trace: dict) -> Dict[str, Any]:
-        details = (analysis_trace or {}).get("retrieval_query_details") or {}
-        retrieval_metadata = details.get("retrieval_evidence_metadata") or {}
-        return dict(retrieval_metadata.get("evidence_quality") or {})
-
-    def build_missing_evidence_reasoning(
-        self,
-        parameter,
-        evidence_quality: Dict[str, Any],
-        *,
-        applicability_established: bool,
-    ) -> str:
-        requirement = build_parameter_analysis_text(parameter).strip().splitlines()
-        requirement_title = requirement[0] if requirement else "the requirement"
-        if len(requirement_title) > 160:
-            requirement_title = f"{requirement_title[:157]}..."
-        terms = ", ".join(evidence_quality.get("applicability_terms") or []) or "no direct scope terms"
-        counts = evidence_quality.get("counts") or {}
-        weak_parts = [f"{kind}={count}" for kind, count in sorted(counts.items()) if count]
-        retrieved_summary = ", ".join(weak_parts) or "no usable retrieved chunks"
-        if not applicability_established:
-            return (
-                f"The retrieved TSD context does not establish that '{requirement_title}' applies to this design. "
-                f"The strongest retrieval signals were {terms}, and the returned material was {retrieved_summary}; "
-                "there was no citation-grade implementation evidence showing the control is in scope. "
-                "A security reviewer would mark this not assessable instead of treating absence of evidence as a control failure."
-            )
-        return (
-            f"The requirement appears applicable based on retrieved TSD signals ({terms}), but no citation-grade "
-            f"implementation evidence was found for '{requirement_title}'. The returned material was {retrieved_summary}; "
-            "a security reviewer would expect explicit design evidence such as the configured control, validation behavior, "
-            "enforcement point, or responsible component."
-        )
-
-    def is_concurrency_domain(self, details: Dict[str, Any]) -> bool:
-        return (details.get("primary_domain") or details.get("domain_signal")) in {
-            "business_logic_concurrency",
-            "transaction_integrity",
-        }
-
-    def is_restatement_or_weak_not_met(self, output: DebateOutput) -> bool:
-        if getattr(output.hunter_result, "verdict", None) != "not_met":
-            return False
-        reasoning_parts = [
-            getattr(output.hunter_result, "reasoning", "") or "",
-            getattr(output.critic_result, "reasoning", "") or "",
-            getattr(output.mediator_result, "reasoning", "") or "",
-        ]
-        text = " ".join(reasoning_parts).lower()
-        weak_markers = ["restatement", "generic", "no explicit evidence", "requirement text", "policy statement", "aspirational"]
-        return any(marker in text for marker in weak_markers) or not getattr(output.critic_result, "valid_citations", [])
-
-    def retry_if_needed(
-        self,
-        *,
-        category,
-        ingestion_job,
-        parameter,
-        indexes,
-        tsd_document,
-        debate_output: DebateOutput,
-        killed_assumptions: List[Dict[str, Any]],
-    ) -> DebateOutput:
-        details = debate_output.analysis_trace.get("retrieval_query_details", {}) or {}
-        if not self.is_concurrency_domain(details):
-            return debate_output
-        if not self.is_restatement_or_weak_not_met(debate_output):
-            return debate_output
-        if details.get("retry_queries"):
-            return debate_output
-        retry_details = dict(self.debate_input_factory.build_retrieval_query_details(parameter, debate_output.analysis_trace.get("contract") or {}))
-        retry_details["retry_queries"] = [{
-            "attempt": 1,
-            "reason": "targeted_concurrency_retry_after_weak_not_met",
-            "primary_domain": retry_details.get("primary_domain"),
-            "keywords": retry_details.get("generated_domain_keywords", []),
-        }]
-        retrieval_result = self.retrieval.retrieve_for_parameter(
-            parameter=parameter,
-            category=category,
-            ingestion_job=ingestion_job,
-            indexes=indexes,
-            tsd_document=tsd_document,
-            query_details=retry_details,
-        )
-        retry_input = self.build_debate_input_for_parameter(
-            parameter=parameter,
-            category=category,
-            retrieval_result=retrieval_result,
-            tsd_document=tsd_document,
-            killed_assumptions=killed_assumptions,
-            contract=debate_output.analysis_trace.get("contract") or {},
-            retrieval_query_details=retry_details,
-        )
-        retry_output = self.debate.run_debate(
-            debate_input=retry_input,
-            retrieval_result=retrieval_result,
-            tsd_document=tsd_document,
-            cancel_check=lambda: self.run_state.is_cancelled(review),
-        )
-        retry_output.analysis_trace = dict(getattr(retry_output, "analysis_trace", {}) or {})
-        retry_output.analysis_trace["retrieval_query_details"] = retry_details
-        return retry_output
 
     def extract_killed_assumptions_from_output(self, debate_output, parameter) -> list:
         killed = []

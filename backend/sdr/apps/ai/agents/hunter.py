@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 import logging
-from typing import Callable, Dict, List, Optional
+from typing import Callable, List, Optional
 
 from sdr.apps.ai.prompts.agents import (
     HUNTER_SYSTEM_PROMPT,
     build_hunter_prompt,
-    build_batch_hunter_prompt,
 )
 from .base import (
     APPLICABILITY_ESTABLISHED,
@@ -32,9 +31,7 @@ class HunterAgent(BaseAgent):
         self,
         parameter_text: str,
         parameter_section: str,
-        contract: Optional[dict],
         context_chunks: List[str],
-        persona_focus: Optional[str] = None,
         killed_assumptions: Optional[List[dict]] = None,
         available_block_ids: Optional[List[str]] = None,
     ) -> str:
@@ -45,9 +42,7 @@ class HunterAgent(BaseAgent):
         return build_hunter_prompt(
             parameter_text=parameter_text,
             parameter_section=parameter_section,
-            contract=contract,
             context_chunks=context_chunks,
-            persona_focus=persona_focus,
             killed_assumptions=killed_assumptions,
             available_block_ids=available_block_ids,
         )
@@ -56,9 +51,7 @@ class HunterAgent(BaseAgent):
         self,
         parameter_text: str,
         parameter_section: str,
-        contract: Optional[dict],
         context_chunks: List[str],
-        persona_focus: Optional[str] = None,
         killed_assumptions: Optional[List[dict]] = None,
         available_block_ids: Optional[List[str]] = None,
         stream_handler: Optional[Callable[[str], None]] = None,
@@ -112,9 +105,7 @@ class HunterAgent(BaseAgent):
         user_prompt = self._build_user_prompt(
             parameter_text=parameter_text,
             parameter_section=parameter_section,
-            contract=contract,
             context_chunks=context_chunks,
-            persona_focus=persona_focus,
             killed_assumptions=killed_assumptions,
             available_block_ids=available_block_ids,
         )
@@ -254,167 +245,6 @@ class HunterAgent(BaseAgent):
             evidence_assessment=evidence_assessment,
             raw_response=response.content,
             error=None,
-        )
-
-    def run_batch(
-        self,
-        child_inputs: List[dict],
-        parameter_section: str,
-        context_chunks: List[str],
-        killed_assumptions: Optional[List[dict]] = None,
-        available_block_ids: Optional[List[str]] = None,
-    ) -> Dict[str, HunterResult]:
-        """
-        Executes one Hunter call for multiple child parameters.
-
-        Returns a dict keyed by child parameter id. Missing or malformed child
-        entries are intentionally omitted so the pipeline validator can rerun
-        those children through the single-child path.
-        """
-        if not child_inputs:
-            return {}
-        if not context_chunks:
-            return {
-                str(item.get("id")): HunterResult(
-                    verdict=VERDICT_NOT_MET,
-                    confidence=0.3,
-                    applicability_status=APPLICABILITY_NOT_ESTABLISHED,
-                    applicability_reason=(
-                        "No relevant parent context was retrieved, so applicability "
-                        "could not be established from the TSD evidence."
-                    ),
-                    missing_expected_evidence=[],
-                    reasoning="No relevant parent context was retrieved from the TSD.",
-                    logic_summary="No relevant parent context was retrieved from the TSD.",
-                    evidence_found=False,
-                    citations=[],
-                    checked_context="No context chunks were retrieved.",
-                    evidence_quotes=[],
-                    evidence_assessment="No evidence could be assessed because retrieval returned no context.",
-                )
-                for item in child_inputs
-                if item.get("id") is not None
-            }
-
-        response = self._call_llm_with_truncation_retry(
-            self._build_batch_user_prompt(
-                child_inputs=child_inputs,
-                parameter_section=parameter_section,
-                context_chunks=context_chunks,
-                killed_assumptions=killed_assumptions,
-                available_block_ids=available_block_ids,
-            )
-        )
-        if response.error:
-            msg = f"LLM call failed: {response.error}"
-            self.logger.error("HunterAgent.run_batch: %s", msg)
-            return {
-                str(item.get("id")): self._hunter_error(msg, raw=response.content)
-                for item in child_inputs
-                if item.get("id") is not None
-            }
-
-        parsed = self._parse_json_response(response)
-        if parsed is None:
-            self.logger.error("HunterAgent.run_batch: failed to parse batch JSON.")
-            return {}
-
-        allowed_ids = {str(item.get("id")) for item in child_inputs if item.get("id") is not None}
-        results: Dict[str, HunterResult] = {}
-        for item in parsed.get("results", []):
-            if not isinstance(item, dict):
-                continue
-            child_id = str(item.get("child_id") or item.get("parameter_id") or "").strip()
-            if child_id not in allowed_ids or child_id in results:
-                continue
-
-            verdict = self._validate_verdict(item.get("verdict"), fallback=VERDICT_NOT_MET)
-            confidence = self._clamp_confidence(item.get("confidence"), default=0.5)
-            reasoning_fields = self._extract_reasoning_fields(
-                item,
-                reasoning_fallback="No reasoning provided by the Hunter agent.",
-            )
-            citations = self._extract_citations(item.get("citations", []), field_name="citations")
-            evidence_found = self._extract_evidence_found(item, verdict)
-            checked_context = self._extract_text_field(
-                item,
-                "checked_context",
-                default=self._fallback_checked_context(context_chunks),
-                max_chars=2500,
-            )
-            evidence_quotes = self._extract_string_list(
-                item,
-                "evidence_quotes",
-                max_items=10,
-                max_chars=500,
-            )
-            evidence_assessment = self._extract_text_field(
-                item,
-                "evidence_assessment",
-                default=reasoning_fields["logic_summary"],
-                max_chars=2500,
-            )
-            verdict, confidence, evidence_found, reasoning_fields, evidence_assessment = (
-                self._enforce_grounding(
-                    verdict=verdict,
-                    confidence=confidence,
-                    evidence_found=evidence_found,
-                    citations=citations,
-                    checked_context=checked_context,
-                    reasoning_fields=reasoning_fields,
-                    evidence_assessment=evidence_assessment,
-                    context_chunks=context_chunks,
-                )
-            )
-            applicability_status = self._extract_applicability_status(item, verdict=verdict)
-            applicability_reason = self._extract_applicability_reason(
-                item,
-                default="No applicability reasoning provided by the Hunter agent.",
-            )
-            missing_expected_evidence = self._extract_missing_expected_evidence(item)
-            if verdict == VERDICT_NA:
-                applicability_status = APPLICABILITY_NOT_ESTABLISHED
-            elif verdict in {VERDICT_MET, VERDICT_NOT_MET}:
-                applicability_status = APPLICABILITY_ESTABLISHED
-            if verdict == VERDICT_NOT_MET and not missing_expected_evidence:
-                missing_expected_evidence = [evidence_assessment[:400]] if evidence_assessment else []
-            if verdict != VERDICT_NOT_MET:
-                missing_expected_evidence = []
-            results[child_id] = HunterResult(
-                verdict=verdict,
-                confidence=confidence,
-                applicability_status=applicability_status,
-                applicability_reason=applicability_reason,
-                missing_expected_evidence=missing_expected_evidence,
-                reasoning=reasoning_fields["reasoning"],
-                assumptions=reasoning_fields["assumptions"],
-                logic_summary=reasoning_fields["logic_summary"],
-                cot_trace=reasoning_fields["cot_trace"],
-                evidence_found=evidence_found,
-                citations=citations,
-                checked_context=checked_context,
-                evidence_quotes=evidence_quotes,
-                evidence_assessment=evidence_assessment,
-                raw_response=response.content,
-                error=None,
-            )
-        return results
-
-    def _build_batch_user_prompt(
-        self,
-        *,
-        child_inputs: List[dict],
-        parameter_section: str,
-        context_chunks: List[str],
-        killed_assumptions: Optional[List[dict]],
-        available_block_ids: Optional[List[str]] = None,
-    ) -> str:
-        return build_batch_hunter_prompt(
-            child_inputs=child_inputs,
-            parameter_section=parameter_section,
-            context_chunks=context_chunks,
-            killed_assumptions=killed_assumptions,
-            available_block_ids=available_block_ids,
         )
 
     def _extract_evidence_found(

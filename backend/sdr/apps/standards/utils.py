@@ -26,10 +26,6 @@ def build_parameter_analysis_text(parameter_or_text, details: Optional[str] = No
         heading = getattr(parameter_or_text, "requirement_text", "") or ""
     return heading.strip()
 
-
-
-
-
 def build_diagram_requirement_analysis_text(diagram_requirement, source_parameter=None) -> str:
     parts = [
         getattr(diagram_requirement, "parent_section", "") or "",

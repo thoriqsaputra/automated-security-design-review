@@ -258,8 +258,8 @@ These require a prepared TSD design and a full evaluation dataset. They are more
 
 The repository currently contains these retrieval eval scripts:
 
-- `retrieval/ablation_eval.py` — 4-way ablation: `vector_only`, `raptor_low`,
-  `raptor_only`, `hybrid`
+- `retrieval/ablation_eval.py` — 3-way ablation: `raptor_low`, `raptor_high`,
+  `hybrid`
 - `retrieval/lost_in_middle_eval.py` — balanced front/middle/back evaluation
   for middle-zone recovery
 - `retrieval/diagram_retrieval_eval.py` — diagram requirement retrieval:
@@ -268,7 +268,7 @@ The repository currently contains these retrieval eval scripts:
 The previously documented `retrieval/cross_boundary_eval.py` is not present in
 this repository and should not be referenced as a runnable evaluation.
 
-### Ablation: vector-only vs RAPTOR vs hybrid
+### Ablation: RAPTOR vs hybrid
 
 ```bash
 docker exec automated-security-design-review-backend-1 \
@@ -387,9 +387,9 @@ This one labeled file feeds all diagram evals below.
 
 ### Step 2a — Diagram requirement retrieval eval
 
-Compares the production vector-search selector (`DiagramRequirementSelector`, cosine
-search over `CategoryDiagramRequirementEmbedding`) against the naive ordinal fallback
-production uses when embedding/search fails.
+Compares the production hybrid-first selector (`DiagramRequirementSelector`, BM25 +
+cosine fusion over `CategoryDiagramRequirementEmbedding`) against explicit gatekeeper,
+explicit hybrid, naive ordinal fallback, and a random baseline.
 
 ```bash
 docker exec automated-security-design-review-backend-1 \

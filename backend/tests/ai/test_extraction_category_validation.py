@@ -2,7 +2,6 @@ import json
 from types import SimpleNamespace
 
 from sdr.apps.ai.engine.extraction.config import ExtractionConfig
-from sdr.apps.ai.engine.extraction.llm_client import ExtractionLLMClient
 from sdr.apps.ai.engine.extraction.services import (
     RequirementCategoryValidationService,
     StructuredRequirementExtractionService,
@@ -27,19 +26,17 @@ def _config() -> ExtractionConfig:
 
 
 def test_category_validator_replaces_every_category_in_a_complete_batch():
-    client = ExtractionLLMClient(
-        chat_completion=lambda **_: _response(
-            json.dumps(
-                {
-                    "items": [
-                        {"index": 0, "requirement_category": "infrastructure"},
-                        {"index": 1, "requirement_category": "process"},
-                    ]
-                }
-            )
+    chat_completion_fn = lambda **_: _response(
+        json.dumps(
+            {
+                "items": [
+                    {"index": 0, "requirement_category": "infrastructure"},
+                    {"index": 1, "requirement_category": "process"},
+                ]
+            }
         )
     )
-    validator = RequirementCategoryValidationService(llm_client=client, config=_config())
+    validator = RequirementCategoryValidationService(chat_completion_fn=chat_completion_fn, config=_config())
     requirements = {
         "V1": [
             {"requirement": "1.6.2 Use a key vault", "requirement_category": "design"},
@@ -56,12 +53,10 @@ def test_category_validator_replaces_every_category_in_a_complete_batch():
 
 
 def test_category_validator_preserves_extracted_categories_for_partial_response():
-    client = ExtractionLLMClient(
-        chat_completion=lambda **_: _response(
-            json.dumps({"items": [{"index": 0, "requirement_category": "code"}]})
-        )
+    chat_completion_fn = lambda **_: _response(
+        json.dumps({"items": [{"index": 0, "requirement_category": "code"}]})
     )
-    validator = RequirementCategoryValidationService(llm_client=client, config=_config())
+    validator = RequirementCategoryValidationService(chat_completion_fn=chat_completion_fn, config=_config())
     requirements = {
         "V1": [
             {"requirement": "1.1.1 Maintain an SBOM", "requirement_category": "process"},
@@ -107,7 +102,7 @@ def test_structured_extraction_uses_validator_category_as_final_label():
         return next(responses)
 
     service = StructuredRequirementExtractionService(
-        llm_client=ExtractionLLMClient(chat_completion=chat_completion),
+        chat_completion_fn=chat_completion,
         config=_config(),
     )
 
@@ -121,21 +116,19 @@ def test_structured_extraction_uses_validator_category_as_final_label():
 
 
 def test_category_validator_applies_local_overrides_after_llm_validation():
-    client = ExtractionLLMClient(
-        chat_completion=lambda **_: _response(
-            json.dumps(
-                {
-                    "items": [
-                        {"index": 0, "requirement_category": "design"},
-                        {"index": 1, "requirement_category": "code"},
-                        {"index": 2, "requirement_category": "infrastructure"},
-                        {"index": 3, "requirement_category": "code"},
-                    ]
-                }
-            )
+    chat_completion_fn = lambda **_: _response(
+        json.dumps(
+            {
+                "items": [
+                    {"index": 0, "requirement_category": "design"},
+                    {"index": 1, "requirement_category": "code"},
+                    {"index": 2, "requirement_category": "infrastructure"},
+                    {"index": 3, "requirement_category": "code"},
+                ]
+            }
         )
     )
-    validator = RequirementCategoryValidationService(llm_client=client, config=_config())
+    validator = RequirementCategoryValidationService(chat_completion_fn=chat_completion_fn, config=_config())
     requirements = {
         "V": [
             {
@@ -168,10 +161,8 @@ def test_category_validator_applies_local_overrides_after_llm_validation():
 
 
 def test_category_validator_applies_local_overrides_when_llm_output_is_unusable():
-    client = ExtractionLLMClient(
-        chat_completion=lambda **_: _response('{"items":[{"index":0,"requirement_category":"code"}]}')
-    )
-    validator = RequirementCategoryValidationService(llm_client=client, config=_config())
+    chat_completion_fn = lambda **_: _response('{"items":[{"index":0,"requirement_category":"code"}]}')
+    validator = RequirementCategoryValidationService(chat_completion_fn=chat_completion_fn, config=_config())
     requirements = {
         "V": [
             {
@@ -194,20 +185,18 @@ def test_category_validator_applies_local_overrides_when_llm_output_is_unusable(
 
 
 def test_category_validator_normalizes_unicode_dashes_and_ocr_variants_for_overrides():
-    client = ExtractionLLMClient(
-        chat_completion=lambda **_: _response(
-            json.dumps(
-                {
-                    "items": [
-                        {"index": 0, "requirement_category": "code"},
-                        {"index": 1, "requirement_category": "code"},
-                        {"index": 2, "requirement_category": "code"},
-                    ]
-                }
-            )
+    chat_completion_fn = lambda **_: _response(
+        json.dumps(
+            {
+                "items": [
+                    {"index": 0, "requirement_category": "code"},
+                    {"index": 1, "requirement_category": "code"},
+                    {"index": 2, "requirement_category": "code"},
+                ]
+            }
         )
     )
-    validator = RequirementCategoryValidationService(llm_client=client, config=_config())
+    validator = RequirementCategoryValidationService(chat_completion_fn=chat_completion_fn, config=_config())
     requirements = {
         "V": [
             {

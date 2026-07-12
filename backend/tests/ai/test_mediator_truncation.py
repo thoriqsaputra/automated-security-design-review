@@ -33,7 +33,6 @@ def test_mediator_returns_degraded_result_when_llm_response_is_truncated(monkeyp
     result = agent.run(
         parameter_text="Require MFA for admin access",
         parameter_section="Authentication",
-        contract={"domain": "iam_access_control"},
         hunter_result=hunter_result,
         critic_result=critic_result,
         debate_history=[],

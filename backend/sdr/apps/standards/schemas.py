@@ -26,8 +26,6 @@ class IngestionSummarySchema(BaseModel):
     migrated: int = Field(default=0)
     skipped: int = Field(default=0)
     errors: int = Field(default=0)
-    embeddings_created: int = Field(default=0)
-    embeddings_failed: int = Field(default=0)
     diagram_requirement_embeddings_created: int = Field(default=0)
     diagram_requirement_embeddings_failed: int = Field(default=0)
     mode: str = Field(default="manual")

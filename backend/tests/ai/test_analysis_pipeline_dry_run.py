@@ -66,7 +66,7 @@ class _FakeRetrievalService:
         self.parameter_queries = []
 
     def build_indexes(self, tsd_document):
-        return SimpleNamespace(raptor_tree=None, tsd_graph=None)
+        return SimpleNamespace(raptor_tree=None)
 
     def retrieve_for_parameter(self, **kwargs):
         self.parameter_queries.append(kwargs["query_details"])
@@ -121,7 +121,6 @@ class _FakeDebateService:
             retrieval_result=retrieval_result,
             analysis_trace={
                 "retrieved_chunk_ids": ["p1_b1"],
-                "contract": debate_input.contract,
                 "retrieval_query_details": debate_input.retrieval_query_details,
             },
         )
@@ -368,7 +367,6 @@ def test_pipeline_dry_run_executes_without_real_llm_or_db(monkeypatch, settings_
             parameter=kwargs["parameter"],
             parameter_text=kwargs["parameter"].requirement_text,
             parameter_section=kwargs["parameter"].parent.title,
-            contract=kwargs.get("contract") or {},
             retrieval_query_details=kwargs.get("retrieval_query_details") or {},
             context_chunks=[],
             context_chunk_map={},

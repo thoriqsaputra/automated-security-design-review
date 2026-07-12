@@ -14,12 +14,9 @@ def _router() -> HybridRetrievalRouter:
     router = HybridRetrievalRouter.__new__(HybridRetrievalRouter)
     router.vector_top_k = 8
     router.raptor_top_k = 5
-    router.graph_top_k = 6
     router.max_context_chunks = 12
     router.advanced_config = AdvancedRetrievalConfig()
-    router._vector_searcher = SimpleNamespace()
     router._raptor_searcher = SimpleNamespace()
-    router._graph_searcher = SimpleNamespace()
     router._keyword_searcher = SimpleNamespace()
     router._reranker = SimpleNamespace(rerank=lambda query, candidates, top_k: list(candidates))
     return router

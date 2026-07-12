@@ -47,9 +47,7 @@ class DebateInput(BaseModel):
     parameter: DebatableParameter
     parameter_text: str
     parameter_section: str
-    contract: Dict[str, Any] = Field(default_factory=dict)
     killed_assumptions: List[Dict[str, Any]] = Field(default_factory=list)
-    hunter_plan: Dict[str, Any] = Field(default_factory=dict)
     retrieval_query_details: Dict[str, Any] = Field(default_factory=dict)
     context_chunks: List[str]
     original_context_chunks: List[str] = Field(default_factory=list)

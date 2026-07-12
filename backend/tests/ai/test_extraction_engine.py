@@ -5,7 +5,6 @@ from unittest.mock import patch
 
 from sdr.apps.ai.engine.extraction import (
     ExtractionConfig,
-    ExtractionLLMClient,
     RequirementDocumentExtractionService,
     StandardDocumentReader,
     StructuredRequirementExtractionService,
@@ -33,14 +32,12 @@ def test_structured_requirement_extraction_service_parses_details():
         }
         """,
     )
-    llm_client = ExtractionLLMClient(chat_completion=lambda **_: response)
-    service = StructuredRequirementExtractionService(llm_client=llm_client)
+    service = StructuredRequirementExtractionService(chat_completion_fn=lambda **_: response)
 
     result = service.extract("5.4.1 Generic Web Service Security")
 
     item = result["5.4 API and Web Service"][0]
     assert item["requirement"] == "5.4.1 Generic Web Service Security"
-    assert item["details"] == "All APIs must document interfaces and validate input/output."
     assert item["verbatim_quote"] == "a. semua API mendefinisikan ..."
     assert item["context_marker"] == "Section 5.4.1"
 
@@ -59,13 +56,13 @@ def test_requirement_document_extraction_service_uses_injected_reader():
         def __init__(self) -> None:
             self.calls = []
 
-        def extract(self, text: str, *, source_name: str = ""):
-            self.calls.append((text, source_name))
+        def extract(self, text: str):
+            self.calls.append(text)
             return {
                 "5.4 API and Web Service": [
                     {
                         "requirement": "5.4.1 Generic Web Service Security",
-                        "details": "All APIs must validate input.",
+                        "verbatim_quote": "All APIs must validate input.",
                     }
                 ]
             }
@@ -80,7 +77,7 @@ def test_requirement_document_extraction_service_uses_injected_reader():
     result = service.extract(source_doc)
 
     assert structured_extractor.calls
-    assert result["5.4 API and Web Service"][0]["details"] == "All APIs must validate input."
+    assert result["5.4 API and Web Service"][0]["verbatim_quote"] == "All APIs must validate input."
 
 
 def test_requirement_document_extraction_service_uses_configured_chunk_sizing():
@@ -94,7 +91,7 @@ def test_requirement_document_extraction_service_uses_configured_chunk_sizing():
     )
 
     class StubStructuredExtractor:
-        def extract(self, text: str, *, source_name: str = ""):
+        def extract(self, text: str):
             return {}
 
     service = RequirementDocumentExtractionService(

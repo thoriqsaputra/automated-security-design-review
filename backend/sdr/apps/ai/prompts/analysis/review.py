@@ -137,56 +137,6 @@ Rules:
 
 
 # ---------------------------------------------------------------------------
-# Contract Synthesis
-# ---------------------------------------------------------------------------
-
-CONTRACT_SYNTHESIS_SYSTEM_PROMPT = (
-    "Generate a strict JSON contract with keys: given, when, then, not_sufficient, "
-    "in_scope, specific_enough, domain, confidence, synth_mode."
-)
-
-
-def build_contract_synthesis_prompt(
-    parameter_section: str,
-    parent_description: str,
-    child_context: str,
-    parameter_text: str,
-    domain: str,
-) -> str:
-    return f"""\
-Section: {parameter_section}
-Parent description: {parent_description}
-Child context: {child_context}
-Requirement: {parameter_text}
-Domain hint: {domain}
-
-Rules for in_scope and specific_enough (these gate whether the requirement gets
-evaluated at all — setting either to false skips evaluation entirely and marks the
-requirement "na", so default to true unless you have a concrete reason not to):
-- in_scope: default true. Set false ONLY when this requirement's own text names a
-  specific technology, platform, or component that the section/parent context
-  affirmatively rules out for this design (e.g. a requirement about mobile app
-  binary protections when the parent/section is explicitly scoped to a
-  server-only backend with no mobile client). A requirement being general,
-  baseline, or not yet discussed anywhere in the TSD is NOT a reason to set this
-  false — that is a normal "evaluate it and it may come back not_met" case, not
-  an out-of-scope case.
-- specific_enough: default true for any requirement with a concrete, checkable
-  claim (nearly every real requirement qualifies). Set false only for placeholder
-  or truncated text that has no checkable claim at all (e.g. a heading fragment
-  with no verb, or a single ambiguous word).
-
-Return JSON only."""
-
-
-def build_contract_repair_prompt(content: str) -> str:
-    return f"""\
-The following JSON has syntax errors. Fix it and return ONLY valid JSON.
-
-{content}"""
-
-
-# ---------------------------------------------------------------------------
 # Public exports
 # ---------------------------------------------------------------------------
 
@@ -194,11 +144,8 @@ __all__ = [
     # System prompts
     "TSD_SCREENING_SYSTEM_PROMPT",
     "SEVERITY_JUSTIFICATION_SYSTEM_PROMPT",
-    "CONTRACT_SYNTHESIS_SYSTEM_PROMPT",
     # Prompt builders
     "build_tsd_screening_prompt",
     "build_severity_justification_prompt",
-    "build_contract_synthesis_prompt",
-    "build_contract_repair_prompt",
 ]
 

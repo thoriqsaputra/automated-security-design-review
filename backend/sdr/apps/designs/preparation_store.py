@@ -431,6 +431,10 @@ class DesignPreparationStore:
                         "raptor": progress_tracker.update_raptor,
                     },
                 )
+                if not indexes.raptor_tree or indexes.raptor_tree.is_empty():
+                    raise PreparationArtifactError(
+                        "RAPTOR index is required and could not be created for this document."
+                    )
                 snapshot = self.snapshot_builder.build_snapshot(indexes)
                 progress_tracker.mark_persisting()
                 artifact_keys = self._persist_artifacts(preparation, output, indexes, snapshot)

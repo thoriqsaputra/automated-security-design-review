@@ -287,13 +287,6 @@ class TSDAnalysisPipeline:
             self.text_debate.analyze_single_child_with_retrieval_result = original_analyze
             self.text_debate.persist_debate_output = original_persist
 
-    def _build_contract(self, parameter_text: str, parameter_section: str, parent_description: str = "") -> dict:
-        return self.debate_input_factory.build_contract(
-            parameter_text=parameter_text,
-            parameter_section=parameter_section,
-            parent_description=parent_description,
-        )
-
     def _build_context_chunk_map(
         self,
         context_chunks: list,

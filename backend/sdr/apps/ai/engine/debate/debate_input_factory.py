@@ -8,7 +8,6 @@ from sdr.core.config import settings
 
 from sdr.apps.standards.utils import build_parameter_analysis_text
 
-from sdr.apps.ai.engine.preparation.contract_synthesizer import ContractSynthesizer
 from sdr.apps.ai.engine.classification.domain_classification import DOMAIN_KEYWORDS, classify_requirement_domain
 from sdr.apps.ai.engine.dto import DebateInput
 logger = logging.getLogger(__name__)
@@ -31,68 +30,26 @@ def _extract_keywords(text: str) -> list:
 
 
 class DebateInputFactory:
-    def __init__(self, contract_synthesizer: Optional[ContractSynthesizer] = None) -> None:
-        self.contract_synthesizer = contract_synthesizer or ContractSynthesizer()
-
-    def build_contract(
-        self,
-        *,
-        parameter_text: str,
-        parameter_section: str,
-        parent_description: str = "",
-    ) -> dict:
-        return self.contract_synthesizer.synthesize(
-            parameter_text=parameter_text,
-            parameter_section=parameter_section,
-            parent_description=parent_description,
-        )
-
-    def build_retrieval_query_details(self, parameter, contract: Optional[dict] = None) -> dict:
-        def _to_text(value) -> str:
-            if value is None:
-                return ""
-            if isinstance(value, str):
-                return value.strip()
-            if isinstance(value, (list, tuple)):
-                parts = [str(item).strip() for item in value if str(item).strip()]
-                return " ".join(parts).strip()
-            return str(value).strip()
-
-        def _to_text_list(value) -> list:
-            if value is None:
-                return []
-            if isinstance(value, (list, tuple)):
-                return [str(item).strip() for item in value if str(item).strip()]
-            text = _to_text(value)
-            return [text] if text else []
-
+    def build_retrieval_query_details(self, parameter) -> dict:
         parent = getattr(parameter, "parent", None)
         parameter_text = build_parameter_analysis_text(parameter).strip()
-        contract_domain = _to_text((contract or {}).get("domain"))
-        if contract_domain:
-            classification = None
-            domain = contract_domain
-        else:
-            classification = classify_requirement_domain(
-                child_requirement=parameter_text,
-                parent_title=(getattr(parent, "title", "") or "").strip(),
-                parent_description=(getattr(parent, "description", "") or "").strip(),
-                extra_parts=[_to_text((contract or {}).get("then"))],
-            )
-            domain = classification.primary_domain or "general"
+        classification = classify_requirement_domain(
+            child_requirement=parameter_text,
+            parent_title=(getattr(parent, "title", "") or "").strip(),
+            parent_description=(getattr(parent, "description", "") or "").strip(),
+        )
+        domain = classification.primary_domain or "general"
         domain_keywords = list(DOMAIN_KEYWORDS.get(domain, DOMAIN_KEYWORDS["general"]))
         return {
             "parent_title": (getattr(parent, "title", "") or "").strip(),
             "parent_description": (getattr(parent, "description", "") or "").strip(),
             "child_requirement": parameter_text,
-            "contract_then": _to_text((contract or {}).get("then")),
-            "contract_not_sufficient": _to_text_list((contract or {}).get("not_sufficient")),
             "domain_keywords": domain_keywords,
             "domain_signal": domain,
-            "primary_domain": classification.primary_domain if classification else domain,
-            "secondary_domains": classification.secondary_domains if classification else [],
-            "domain_classification_reason": classification.reason if classification else "contract_domain",
-            "matched_domain_terms": classification.matched_terms if classification else [],
+            "primary_domain": classification.primary_domain,
+            "secondary_domains": classification.secondary_domains,
+            "domain_classification_reason": classification.reason,
+            "matched_domain_terms": classification.matched_terms,
             "generated_domain_keywords": domain_keywords,
             "retry_queries": [],
         }
@@ -105,19 +62,12 @@ class DebateInputFactory:
         retrieval_result,
         tsd_document,
         killed_assumptions: List[Dict[str, Any]],
-        contract: Optional[dict] = None,
         retrieval_query_details: Optional[dict] = None,
     ) -> DebateInput:
         parameter_text = build_parameter_analysis_text(parameter).strip()
         parameter_section = parameter.parent.title if parameter.parent else "General"
-        if contract is None:
-            contract = self.build_contract(
-                parameter_text=parameter_text,
-                parameter_section=parameter_section,
-                parent_description=(parameter.parent.description if parameter.parent else "") or "",
-            )
         if retrieval_query_details is None:
-            retrieval_query_details = self.build_retrieval_query_details(parameter, contract)
+            retrieval_query_details = self.build_retrieval_query_details(parameter)
         retrieval_metadata = dict(getattr(retrieval_result, "evidence_metadata", {}) or {})
         if retrieval_metadata:
             retrieval_query_details = {
@@ -159,8 +109,6 @@ class DebateInputFactory:
             parameter=parameter,
             parameter_text=parameter_text,
             parameter_section=parameter_section,
-            contract=contract,
-            hunter_plan={},
             retrieval_query_details=retrieval_query_details,
             killed_assumptions=list(killed_assumptions),
             context_chunks=debate_context_chunks,

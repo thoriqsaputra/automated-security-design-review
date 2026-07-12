@@ -25,21 +25,16 @@ class RetrievalStrategySelector:
         raptor_tree: Optional[RAPTORTree],
     ) -> RetrievalStrategy:
         has_raptor = raptor_tree is not None and not raptor_tree.is_empty()
+        if not has_raptor:
+            raise ValueError("RAPTORTree is required for retrieval.")
 
         if query_type == QueryType.FACT_BASED:
-            if has_raptor:
-                return RetrievalStrategy.HYBRID
-            return RetrievalStrategy.VECTOR_ONLY
+            return RetrievalStrategy.HYBRID
 
-        # Multi-hop, reasoning, and global architectural queries all benefit
-        # from RAPTOR's hierarchical summaries — route to RAPTOR_HIGH when
-        # available, otherwise fall back to HYBRID or VECTOR_ONLY.
         if query_type in (QueryType.MULTI_HOP_SECURITY, QueryType.REASONING_BASED, QueryType.GLOBAL_ARCHITECTURAL):
-            if has_raptor:
-                return RetrievalStrategy.RAPTOR_HIGH
-            return RetrievalStrategy.VECTOR_ONLY
+            return RetrievalStrategy.RAPTOR_HIGH
 
-        return RetrievalStrategy.VECTOR_ONLY
+        return RetrievalStrategy.HYBRID
 
     def classify_query_type(
         self,
@@ -73,9 +68,6 @@ class RetrievalStrategySelector:
             return QueryType.MULTI_HOP_SECURITY
         if any(_marker_matches(marker, text) for marker in reasoning_markers):
             return QueryType.REASONING_BASED
-        # Default: well-specified, single-topic requirement text — the common
-        # case for ASVS-style requirements — is exactly what HYBRID handles
-        # best, so it's the fallback rather than the RAPTOR-only path.
         return QueryType.FACT_BASED
 
 
