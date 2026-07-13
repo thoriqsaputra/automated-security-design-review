@@ -132,7 +132,21 @@ def main():
         default=60,
         help="RRF k constant, only used when --hybrid-fusion=rrf (default: 60, the conventional value).",
     )
+    parser.add_argument(
+        "--arm",
+        choices=("all", "raptor_low", "raptor_high", "hybrid"),
+        default="all",
+        help="Which arm(s) to evaluate this run (default: all three, the original behavior). "
+             "raptor_low/raptor_high never vary with --hybrid-rerank/--hybrid-fusion, so once you have one "
+             "baseline run for each of those two arms, re-running them alongside every hybrid config variant "
+             "is redundant — use --arm hybrid for the remaining hybrid-config runs, and --arm raptor_low / "
+             "--arm raptor_high once each to get a clean 6-runs-of-30-questions matrix instead of "
+             "4-runs-of-90-questions-with-raptor-duplicates.",
+    )
     args = parser.parse_args()
+    run_raptor_low = args.arm in ("all", "raptor_low")
+    run_raptor_high = args.arm in ("all", "raptor_high")
+    run_hybrid = args.arm in ("all", "hybrid")
 
     if os.path.isabs(args.dataset):
         dataset_path = args.dataset
@@ -205,14 +219,14 @@ def main():
         # so they can safely share one baseline router.
         raptor_baseline_router = HybridRetrievalRouter(
             advanced_config=AdvancedRetrievalConfig(enable_cross_encoder_rerank=False)
-        )
+        ) if (run_raptor_low or run_raptor_high) else None
         hybrid_router = HybridRetrievalRouter(
             advanced_config=AdvancedRetrievalConfig(
                 enable_cross_encoder_rerank=(args.hybrid_rerank == "on"),
                 fusion_method=args.hybrid_fusion,
                 rrf_k=args.rrf_k,
             )
-        )
+        ) if run_hybrid else None
 
         raptor_low_results, raptor_high_results, hybrid_results = [], [], []
         buckets = {"front": [], "middle": [], "back": [], "unknown": []}
@@ -225,35 +239,54 @@ def main():
             logger.info(f"[{i + 1}/{len(dataset)}] ({bucket}) {item['question'][:70]}")
 
             try:
-                rl = runner_mod.evaluate_question(
-                    item, raptor_baseline_router, _Indexes(), db=db, retrieval_overrides=raptor_low_overrides
-                )
-                rh = runner_mod.evaluate_question(
-                    item, raptor_baseline_router, _Indexes(), db=db, retrieval_overrides=raptor_high_overrides
-                )
-                h = runner_mod.evaluate_question(
-                    item, hybrid_router, _Indexes(), db=db, retrieval_overrides=hybrid_overrides
-                )
+                rl = None
+                rh = None
+                h = None
+                if run_raptor_low:
+                    rl = runner_mod.evaluate_question(
+                        item, raptor_baseline_router, _Indexes(), db=db, retrieval_overrides=raptor_low_overrides
+                    )
+                if run_raptor_high:
+                    rh = runner_mod.evaluate_question(
+                        item, raptor_baseline_router, _Indexes(), db=db, retrieval_overrides=raptor_high_overrides
+                    )
+                if run_hybrid:
+                    h = runner_mod.evaluate_question(
+                        item, hybrid_router, _Indexes(), db=db, retrieval_overrides=hybrid_overrides
+                    )
             except Exception as e:
                 logger.error(f"Failed to evaluate question '{item['question']}': {e}")
                 continue
 
-            raptor_low_results.append(rl)
-            raptor_high_results.append(rh)
-            hybrid_results.append(h)
+            if run_raptor_low:
+                raptor_low_results.append(rl)
+            if run_raptor_high:
+                raptor_high_results.append(rh)
+            if run_hybrid:
+                hybrid_results.append(h)
             buckets[bucket].append((rl, rh, h))
 
         summary = {
-            "total_questions": len(hybrid_results),
+            "arm": args.arm,
+            "total_questions": len(dataset),
             "hybrid_config": {
                 "rerank": args.hybrid_rerank,
                 "fusion_method": args.hybrid_fusion,
                 "rrf_k": args.rrf_k,
             },
-            "raptor_low": _aggregate(raptor_low_results),
-            "raptor_high": _aggregate(raptor_high_results),
-            "hybrid": _aggregate(hybrid_results),
-            "by_position_bucket": {
+        }
+        if run_raptor_low:
+            summary["raptor_low"] = _aggregate(raptor_low_results)
+            summary["raptor_low_results"] = raptor_low_results
+        if run_raptor_high:
+            summary["raptor_high"] = _aggregate(raptor_high_results)
+            summary["raptor_high_results"] = raptor_high_results
+        if run_hybrid:
+            summary["hybrid"] = _aggregate(hybrid_results)
+            summary["hybrid_results"] = hybrid_results
+
+        if args.arm == "all":
+            summary["by_position_bucket"] = {
                 bucket: {
                     "raptor_low": _aggregate([rl for rl, rh, h in pairs]),
                     "raptor_high": _aggregate([rh for rl, rh, h in pairs]),
@@ -261,46 +294,45 @@ def main():
                 }
                 for bucket, pairs in buckets.items()
                 if pairs
-            },
-            "raptor_low_results": raptor_low_results,
-            "raptor_high_results": raptor_high_results,
-            "hybrid_results": hybrid_results,
-        }
-
-        metrics = (
-            "context_precision",
-            "retrieved_coverage",
-            "context_recall",
-            "faithfulness",
-            "faithfulness_deterministic",
-        )
-        summary["delta_hybrid_minus_raptor_low"] = {
-            m: round(summary["hybrid"][m] - summary["raptor_low"][m], 4) for m in metrics
-        }
-        summary["delta_hybrid_minus_raptor_high"] = {
-            m: round(summary["hybrid"][m] - summary["raptor_high"][m], 4) for m in metrics
-        }
-        summary["delta_raptor_high_minus_raptor_low"] = {
-            m: round(summary["raptor_high"][m] - summary["raptor_low"][m], 4) for m in metrics
-        }
+            }
+            metrics = (
+                "context_precision",
+                "retrieved_coverage",
+                "context_recall",
+                "faithfulness",
+                "faithfulness_deterministic",
+            )
+            summary["delta_hybrid_minus_raptor_low"] = {
+                m: round(summary["hybrid"][m] - summary["raptor_low"][m], 4) for m in metrics
+            }
+            summary["delta_hybrid_minus_raptor_high"] = {
+                m: round(summary["hybrid"][m] - summary["raptor_high"][m], 4) for m in metrics
+            }
+            summary["delta_raptor_high_minus_raptor_low"] = {
+                m: round(summary["raptor_high"][m] - summary["raptor_low"][m], 4) for m in metrics
+            }
 
     output_path = results_path(args.output, subdir="retrieval")
     with open(output_path, "w") as f:
         json.dump(summary, f, indent=2)
 
     logger.info("Ablation complete.")
-    logger.info(f"RAPTOR-low:   {summary['raptor_low']}")
-    logger.info(f"RAPTOR-high:  {summary['raptor_high']}")
-    logger.info(f"Hybrid:       {summary['hybrid']}")
-    logger.info(f"Delta Hybrid - RAPTOR-low:       {summary['delta_hybrid_minus_raptor_low']}")
-    logger.info(f"Delta Hybrid - RAPTOR-high:      {summary['delta_hybrid_minus_raptor_high']}")
-    logger.info(f"Delta RAPTOR-high - RAPTOR-low:  {summary['delta_raptor_high_minus_raptor_low']}")
-    for bucket, vals in summary["by_position_bucket"].items():
-        logger.info(
-            f"  [{bucket}] raptor_low={vals['raptor_low']['context_recall']:.3f} "
-            f"raptor_high={vals['raptor_high']['context_recall']:.3f} "
-            f"hybrid={vals['hybrid']['context_recall']:.3f}"
-        )
+    if run_raptor_low:
+        logger.info(f"RAPTOR-low:   {summary['raptor_low']}")
+    if run_raptor_high:
+        logger.info(f"RAPTOR-high:  {summary['raptor_high']}")
+    if run_hybrid:
+        logger.info(f"Hybrid:       {summary['hybrid']}")
+    if args.arm == "all":
+        logger.info(f"Delta Hybrid - RAPTOR-low:       {summary['delta_hybrid_minus_raptor_low']}")
+        logger.info(f"Delta Hybrid - RAPTOR-high:      {summary['delta_hybrid_minus_raptor_high']}")
+        logger.info(f"Delta RAPTOR-high - RAPTOR-low:  {summary['delta_raptor_high_minus_raptor_low']}")
+        for bucket, vals in summary["by_position_bucket"].items():
+            logger.info(
+                f"  [{bucket}] raptor_low={vals['raptor_low']['context_recall']:.3f} "
+                f"raptor_high={vals['raptor_high']['context_recall']:.3f} "
+                f"hybrid={vals['hybrid']['context_recall']:.3f}"
+            )
     logger.info(f"Results saved to {output_path}")
 
 

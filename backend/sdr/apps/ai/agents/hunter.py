@@ -35,10 +35,6 @@ class HunterAgent(BaseAgent):
         killed_assumptions: Optional[List[dict]] = None,
         available_block_ids: Optional[List[str]] = None,
     ) -> str:
-        """
-        Delegates to build_hunter_prompt() from agent_prompts.py.
-        Kept thin — all prompt logic lives in the prompts layer.
-        """
         return build_hunter_prompt(
             parameter_text=parameter_text,
             parameter_section=parameter_section,

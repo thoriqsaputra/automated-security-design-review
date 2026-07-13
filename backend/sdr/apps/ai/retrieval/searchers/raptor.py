@@ -181,6 +181,93 @@ class RAPTORSearcher:
             threshold_relaxed=threshold_relaxed,
         )
 
+    def search_flat_topk(
+        self,
+        query_text: str,
+        tree: RAPTORTree,
+        level: int = RAPTOR_LEVEL_LOW,
+        top_k: Optional[int] = None,
+        precomputed_embedding: Optional[List[float]] = None,
+    ) -> RAPTORSearchResponse:
+        """Naive top-k cosine search: always returns the k highest-scoring
+        nodes at a single level, with no min_cosine_similarity gate and no
+        near-miss/relaxation fallback. Unlike search(), which filters to
+        "relevant" (score >= threshold) results first and only relaxes when
+        that set comes up short, this method never filters on score at all —
+        it is the "vanilla top-k retrieval" baseline against which the
+        threshold-aware search() and the RAPTOR hierarchy are compared in
+        lost-in-the-middle evaluation, isolating position-bias effects from
+        this codebase's own threshold-relaxation machinery.
+        """
+        error = self._validate_query(query_text, tree, "search_flat_topk", level)
+        if error is not None:
+            return error
+
+        resolved_top_k = self._resolve_top_k(top_k)
+        level, level_nodes = self._resolve_level_nodes(tree, level)
+        if not level_nodes:
+            return self._error_response(
+                f"No nodes found at any level in tree '{tree.document_name}'.",
+                query_text=query_text,
+                level=level,
+            )
+
+        embeddable_nodes = self._get_embeddable_nodes(
+            level_nodes,
+            query_text=query_text,
+            level=level,
+            tree=tree,
+        )
+        if not embeddable_nodes:
+            return self._error_response(
+                (
+                    f"No nodes with embeddings found at level {level} in "
+                    f"tree '{tree.document_name}' — embeddings may have failed "
+                    f"during tree construction."
+                ),
+                query_text=query_text,
+                level=level,
+            )
+
+        query_vector = self._resolve_query_embedding(
+            query_text,
+            precomputed_embedding,
+            method_name="search_flat_topk",
+            level=level,
+        )
+        if not query_vector:
+            return self._error_response(
+                f"Failed to generate embedding for query '{query_text[:60]}...'.",
+                query_text=query_text,
+                level=level,
+                log_level="error",
+            )
+
+        scored_results = self._score_nodes(query_vector=query_vector, nodes=embeddable_nodes)
+        scored_results.sort(key=lambda result: result.cosine_similarity, reverse=True)
+        top_results = scored_results[:resolved_top_k]
+
+        self.logger.info(
+            "RAPTORSearcher.search_flat_topk: level=%d returned top-%d/%d "
+            "node(s) by raw cosine rank (no threshold) for query '%s...' "
+            "in tree '%s'.",
+            level,
+            len(top_results),
+            len(embeddable_nodes),
+            query_text[:60],
+            tree.document_name,
+        )
+
+        return RAPTORSearchResponse(
+            results=top_results,
+            query_embedding=query_vector,
+            total_found=len(top_results),
+            query_text=query_text,
+            level_searched=level,
+            error=None,
+            threshold_relaxed=False,
+        )
+
     def search_multi_level(
         self,
         query_text: str,

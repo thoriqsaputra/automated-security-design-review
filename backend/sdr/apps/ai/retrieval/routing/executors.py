@@ -252,6 +252,34 @@ class RetrievalRouteExecutor:
             error=raptor_response.error,
         )
 
+    def execute_flat_topk(self, router, *, query_text: str, raptor_tree: Optional[RAPTORTree], query_embedding: List[float]) -> RetrievalResult:
+        if raptor_tree is None or raptor_tree.is_empty():
+            return RetrievalResult(
+                strategy_used=RetrievalStrategy.FLAT_TOPK,
+                query_embedding=query_embedding,
+                error="RAPTORTree is not available.",
+            )
+        raptor_response = router._raptor_searcher.search_flat_topk(
+            query_text=query_text,
+            tree=raptor_tree,
+            level=RAPTOR_LEVEL_LOW,
+            top_k=router.raptor_top_k,
+            precomputed_embedding=query_embedding or None,
+        )
+        return RetrievalResult(
+            context_chunks=raptor_response.get_context_chunks()[: router.max_context_chunks],
+            context_chunk_block_ids=raptor_response.get_context_chunk_block_ids()[: router.max_context_chunks],
+            source_block_ids=raptor_response.all_source_block_ids,
+            block_source_map=_build_uniform_block_source_map(
+                raptor_response.all_source_block_ids,
+                "raptor",
+            ),
+            strategy_used=RetrievalStrategy.FLAT_TOPK,
+            query_embedding=query_embedding,
+            raptor_response=raptor_response,
+            error=raptor_response.error,
+        )
+
     def execute_raptor_high(self, router, *, query_text: str, raptor_tree: Optional[RAPTORTree], query_embedding: List[float]) -> RetrievalResult:
         if raptor_tree is None or raptor_tree.is_empty():
             return RetrievalResult(

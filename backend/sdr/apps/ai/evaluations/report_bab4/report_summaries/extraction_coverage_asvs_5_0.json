@@ -1,0 +1,38 @@
+[
+  {
+    "job_label": "job_59",
+    "gold_set": "OWASP ASVS 5.0",
+    "gold_id_count": 345,
+    "extracted_id_count": 345,
+    "matched_count": 345,
+    "missed_count": 0,
+    "extra_count": 0,
+    "extraction_recall": 1.0,
+    "extraction_precision": 1.0,
+    "f1_score": 1.0
+  },
+  {
+    "job_label": "job_60",
+    "gold_set": "OWASP ASVS 5.0",
+    "gold_id_count": 345,
+    "extracted_id_count": 345,
+    "matched_count": 345,
+    "missed_count": 0,
+    "extra_count": 0,
+    "extraction_recall": 1.0,
+    "extraction_precision": 1.0,
+    "f1_score": 1.0
+  },
+  {
+    "job_label": "job_61",
+    "gold_set": "OWASP ASVS 5.0",
+    "gold_id_count": 345,
+    "extracted_id_count": 345,
+    "matched_count": 345,
+    "missed_count": 0,
+    "extra_count": 0,
+    "extraction_recall": 1.0,
+    "extraction_precision": 1.0,
+    "f1_score": 1.0
+  }
+]

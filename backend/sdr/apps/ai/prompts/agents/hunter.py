@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from typing import Dict, List, Optional
 
 from .common import (
@@ -94,65 +93,4 @@ Reasoning -> assumptions: ["Only retrieved context may be used."]; logic_summary
 	- confidence → Your certainty in the verdict (1.0 = certain, 0.0 = guessing).
 {killed_block}{block_ids_block}
 {_ASSUMPTIONS_FIRST_RULES}
-"""
-
-
-def build_batch_hunter_prompt(
-    child_inputs: List[dict],
-    parameter_section: str,
-    context_chunks: List[str],
-    killed_assumptions: Optional[List[dict]],
-    available_block_ids: Optional[List[str]] = None,
-) -> str:
-    chunks_text = "\n\n---\n\n".join(context_chunks)
-    killed_text = json.dumps(killed_assumptions or [], indent=2)
-    children_text = json.dumps(child_inputs, indent=2)
-    block_ids_block = _build_block_ids_block(available_block_ids)
-    return f"""\
-## PARENT SECURITY SECTION
-Section: {parameter_section}
-
-## CHILD PARAMETERS
-{children_text}
-
-## SHARED TSD CONTEXT
-{chunks_text}
-
-## INVALIDATED ASSUMPTIONS TO AVOID
-{killed_text}
-{block_ids_block}
-
-Analyse each child parameter independently. Do not merge child requirements.
-Return strict JSON with exactly one result object per child id:
-
-{{
-  "results": [
-    {{
-      "child_id": "<id from CHILD PARAMETERS>",
-      "assumptions": ["<assumption>", "..."],
-      "logic_summary": "<concise evidence-only reasoning>",
-      "verdict": "met" | "not_met" | "na",
-      "confidence": <float 0.0-1.0>,
-      "applicability_status": "established" | "not_established",
-      "applicability_reason": "<what prerequisite/capability makes this requirement applicable or not>",
-      "reasoning": "<one paragraph explaining this child's verdict>",
-      "checked_context": "<what context you checked and why it was sufficient or insufficient>",
-      "evidence_quotes": ["<short verbatim snippets from context, empty if none>"],
-      "evidence_assessment": "<why evidence satisfies or fails this child>",
-      "missing_expected_evidence": ["<specific missing control evidence>", "..."],
-      "evidence_found": <true | false>,
-      "citations": [
-        {{"block_id": "<CONTEXT_CHUNK id>", "page_number": <CONTEXT_CHUNK page_number or null>, "quoted_text": "<verbatim quote>", "bbox": {{"x0": <bbox_x0 or null>, "y0": <bbox_y0 or null>, "x1": <bbox_x1 or null>, "y1": <bbox_y1 or null>}}}}
-      ]
-    }}
-  ]
-}}
-
-Rules:
-- Use child_id exactly as supplied.
-- Default to "met" whenever the context mentions something on-topic for that child — this is a quick triage pass across many requirements, not a detailed audit of each one.
-- A "met" verdict must include at least one valid citation and evidence quote.
-- A "not_met" verdict where evidence_found=true must include citations to the block_ids examined and found insufficient. If no relevant block_id exists, set evidence_found=false.
-- Use applicability_status="established" for "met" and "not_met". Only use "not_established" when the control's prerequisite/capability is absent from the design scope itself.
-- You MUST copy the id, page_number, and bbox coordinates EXACTLY from the CONTEXT_CHUNK XML attributes into the JSON, and the CONTEXT_CHUNK must have citable="true". Do not invent or guess them. If missing, use null.
 """

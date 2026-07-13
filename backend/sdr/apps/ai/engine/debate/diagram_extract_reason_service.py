@@ -318,6 +318,11 @@ class DiagramExtractReasonService:
             agent_completed_handler=agent_completed_handler,
         )
 
+    # Alias so DiagramAnalysisCoordinator can drive either service through
+    # the same call site (`run_diagram_debate_voted`) without needing to know
+    # which implementation it was wired with.
+    run_diagram_debate_voted = run_diagram_extract_reason_voted
+
     # ------------------------------------------------------------------
     # Stage 1: extraction + merge
     # ------------------------------------------------------------------

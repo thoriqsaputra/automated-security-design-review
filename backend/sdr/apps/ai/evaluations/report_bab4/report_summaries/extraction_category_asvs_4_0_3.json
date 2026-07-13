@@ -1,0 +1,41 @@
+[
+  {
+    "job_label": "job_53",
+    "ground_truth_items": 52,
+    "matched_in_db": 52,
+    "match_rate": 1.0,
+    "accuracy": 0.9423,
+    "macro_precision": 0.9186,
+    "macro_recall": 0.9318,
+    "macro_f1": 0.9138,
+    "design_recall": 1.0,
+    "high_impact_error_count": 0,
+    "quality_gate": false
+  },
+  {
+    "job_label": "job_56",
+    "ground_truth_items": 52,
+    "matched_in_db": 52,
+    "match_rate": 1.0,
+    "accuracy": 0.9231,
+    "macro_precision": 0.8831,
+    "macro_recall": 0.9337,
+    "macro_f1": 0.902,
+    "design_recall": 1.0,
+    "high_impact_error_count": 0,
+    "quality_gate": false
+  },
+  {
+    "job_label": "job_58",
+    "ground_truth_items": 52,
+    "matched_in_db": 52,
+    "match_rate": 1.0,
+    "accuracy": 1.0,
+    "macro_precision": 1.0,
+    "macro_recall": 1.0,
+    "macro_f1": 1.0,
+    "design_recall": 1.0,
+    "high_impact_error_count": 0,
+    "quality_gate": true
+  }
+]

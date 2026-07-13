@@ -13,6 +13,9 @@ class RetrievalStrategy(Enum):
     RAPTOR_LOW = "raptor_low"
     RAPTOR_HIGH = "raptor_high"
     HYBRID = "hybrid"
+    # Eval-only baseline (via force_strategy) — vanilla top-k cosine search
+    # over leaf nodes, no threshold gate, no hierarchy, no BM25/expansion.
+    FLAT_TOPK = "flat_topk"
 
 
 class QueryType(Enum):

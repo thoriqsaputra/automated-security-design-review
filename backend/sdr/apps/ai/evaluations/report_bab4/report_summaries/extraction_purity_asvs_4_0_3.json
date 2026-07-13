@@ -1,0 +1,26 @@
+[
+  {
+    "job_label": "job_53",
+    "total_rows": 278,
+    "control_id_purity": 1.0,
+    "duplicate_rate": 0.0,
+    "empty_rate": 0.0,
+    "unique_control_ids": 278
+  },
+  {
+    "job_label": "job_56",
+    "total_rows": 278,
+    "control_id_purity": 1.0,
+    "duplicate_rate": 0.0,
+    "empty_rate": 0.0,
+    "unique_control_ids": 278
+  },
+  {
+    "job_label": "job_58",
+    "total_rows": 278,
+    "control_id_purity": 1.0,
+    "duplicate_rate": 0.0,
+    "empty_rate": 0.0,
+    "unique_control_ids": 278
+  }
+]

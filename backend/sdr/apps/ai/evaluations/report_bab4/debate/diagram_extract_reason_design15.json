@@ -1,0 +1,1863 @@
+{
+  "design_id": 15,
+  "review_id": 105,
+  "ground_truth_path": "/app/sdr/apps/ai/evaluations/data/diagram_ground_truth_design_15.json",
+  "baseline_result_path": "/app/sdr/apps/ai/evaluations/results/debate/diagram_debate_ablation_design15_v10.json",
+  "ground_truth_items": 50,
+  "matched_pairs": 50,
+  "extract_reason": {
+    "tp": 11,
+    "fp": 1,
+    "fn": 1,
+    "tn": 37,
+    "precision": 0.9167,
+    "recall": 0.9167,
+    "f1": 0.9167,
+    "fpr": 0.0263
+  },
+  "hunter_only_baseline": {
+    "tp": 7,
+    "fp": 3,
+    "fn": 5,
+    "tn": 35,
+    "precision": 0.7,
+    "recall": 0.5833,
+    "f1": 0.6364,
+    "fpr": 0.0789
+  },
+  "debate_final_baseline": {
+    "tp": 6,
+    "fp": 3,
+    "fn": 6,
+    "tn": 35,
+    "precision": 0.6667,
+    "recall": 0.5,
+    "f1": 0.5714,
+    "fpr": 0.0789
+  },
+  "delta_fpr_extract_reason_vs_hunter_baseline": 0.0526,
+  "delta_fpr_extract_reason_vs_debate_baseline": 0.0526,
+  "extract_reason_success": true,
+  "per_item_results": [
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The structured extraction explicitly lists 'trust_boundaries' as an empty array. No trust boundaries are defined or documented in the diagram extraction, failing the verification requirement for clearly defined trust boundaries.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f1",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f7",
+        "f8",
+        "f9",
+        "f10",
+        "f11",
+        "f12",
+        "f13",
+        "f14",
+        "f15",
+        "f16",
+        "f17",
+        "f18",
+        "f19",
+        "f20",
+        "f21",
+        "f22"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "All confirmed data flows (f1-f22) have empty 'security_annotations' arrays and no protocol labels indicating authentication mechanisms (e.g., 'authenticated API call', 'mTLS'). There is no evidence of authentication on communications between components.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "No components are labeled as 'Access Control Gateway' or similar trusted enforcement points. The extraction contains no components mediating access to sensitive data stores with explicit security control labels.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-f795ad19b9018b705f38ee07-53-000017",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c2",
+        "c3"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "While components c2 (Presentation Layer) and c3 (Application Layer) exist, neither is explicitly labeled as 'Input Validation' or 'Service Layer' in a context that enforces input validation on trusted sources. No flows enter a process specifically labeled for input validation.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-composite-6224cdc4224b15cc055e4d98-53-000023",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "No dedicated logging component or service is identified in the extraction. There are no data flows indicating secure transmission to an external or remote logging system.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f1",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f7",
+        "f8",
+        "f9",
+        "f10",
+        "f11",
+        "f12",
+        "f13",
+        "f14",
+        "f15",
+        "f16",
+        "f17",
+        "f18",
+        "f19",
+        "f20",
+        "f21",
+        "f22"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "All confirmed flows (f1-f22) have 'protocol: null' and empty 'security_annotations'. There are no annotations like HTTPS, TLS, or VPN indicating encryption or authenticity verification between components.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The extraction shows no trust boundaries and no explicit security controls (e.g., firewalls, API gateways, security groups) separating components with differing trust levels.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-f9150a032d65c4d7d13987af-53-000038",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "No deployment boundaries, container orchestration platforms, or network segmentation indicators are present in the extraction to suggest application isolation.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-composite-ef72f311ee57ad5d1f39d412",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c5"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The only external service component (c5) is labeled 'Google Maps API'. There is no data flow or component labeled 'Breached Password API' or similar indicating an external breached password check.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-0b309de7950edbfb5e56d372",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "No components such as 'Rate Limiter', 'CAPTCHA Service', or 'WAF' are depicted in the extraction. There is no evidence of anti-automation controls.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-composite-ad70cace67ce58c0b04f96e",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c3",
+        "c5"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "No dedicated secret management component (e.g., Vault, Secrets Manager) is present in the extraction. Component c3 (Application Layer) and c5 (External Service) are present, but no secure secret handling component connects to them.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-4aa8734f54de242cbb68b789",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f9"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Flow f9 explicitly states 'Create authenticated session and redirect' from Application Layer to Presentation Layer, indicating session generation upon authentication.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f5",
+        "f6",
+        "f9",
+        "f10"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The extraction shows authentication flows (f5-f10) but contains no flows labeled 'logout', 'invalidate session', or re-authentication.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c2",
+        "c3",
+        "f6",
+        "f18"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "No trust boundaries are defined in the extraction. No explicit access control logic is depicted in the flows (e.g., authorization checks) within components c2 or c3.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-composite-6bcdb4ad3f3fa4ee0d6cf733-53-000005",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f5",
+        "f6",
+        "f18"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Flows handling sensitive operations (f5, f6, f18) lack explicit security annotations (e.g., CSRF tokens, authorization tokens) in the extraction.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f1",
+        "f5",
+        "f17"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "No 'Validation' or 'Sanitization' process or component is depicted in the extraction following data ingress flows (e.g., f1, f5, f17).",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-composite-3dc6f67a223cf26e26edfebf",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c4"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Component c4 (Data Layer) is labeled 'MySQL DBMS' but lacks an annotation indicating encryption at rest.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c3",
+        "c5"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "No component labeled 'Key Vault', 'Secrets Manager', or similar exists in the extraction.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f1",
+        "f5",
+        "f13"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Flows from external actors (c1, c5) to internal components (c2, c3) (e.g., f1, f5, f13) have 'protocol: null' and lack security annotations, failing the secure protocol requirement for external ingress/egress.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c2",
+        "c3"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "No components labeled as WAF, API Gateway, or rate-limiting services are present in the extraction.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f1",
+        "f5",
+        "f6",
+        "f13",
+        "f18"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "All confirmed data flows (e.g., f1, f5, f6, f13, f18) show 'protocol': null and 'security_annotations': [], indicating no TLS or HTTPS annotations are present for sensitive data in transit between external entities and the system.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-composite-c2bc34e911d53b529699c749-53-000016",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f3",
+        "f4",
+        "f10",
+        "f16",
+        "f22"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Response flows (e.g., f3, f4, f10, f16, f22) have empty 'security_annotations', showing no evidence of required security headers such as CSP, HSTS, or X-Frame-Options.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p14_d0",
+      "requirement_id": "job53-D-composite-c4bb57eb009543d5ad0c32ef-53-000023",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f1",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f11",
+        "f12",
+        "f17",
+        "f18"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "No flows contain annotations for 'Access-Control-Allow-Origin' or proxy authentication headers. Web request/response flows (f1-f6, f11-f12, f17-f18) lack CORS configuration evidence.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 27,
+        "total_element_count": 36,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p28_d0",
+      "requirement_id": "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "tb1",
+        "tb2",
+        "tb3",
+        "tb4",
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "f9",
+        "f10"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The extraction lists 4 trust boundaries (tb1-tb4), 5 components (c1-c5), and multiple data flows (f1-f14) with descriptive labels, satisfying the requirement for documented trust boundaries, components, and flows.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 17,
+        "total_element_count": 23,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 0,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p28_d0",
+      "requirement_id": "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "tb4",
+        "f9",
+        "f10",
+        "f11",
+        "f14"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The diagram defines the high-level architecture with components (c1-c5), connections (f1-f14), and external services (c4, c5 in tb4). Protocols are indicated on key connections (f9, f10, f11, f14).",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 17,
+        "total_element_count": 23,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 0,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p28_d0",
+      "requirement_id": "job53-D-composite-3dc6f67a223cf26e26edfebf",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c3"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Component c3 (MySQL Database) explicitly includes the note 'AES-256 encryption at rest', satisfying the requirement for sensitive data stores to be labeled as encrypted at rest.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 17,
+        "total_element_count": 23,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 0,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p28_d0",
+      "requirement_id": "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f5",
+        "f12",
+        "f13"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Confirmed flows f5, f12, and f13 cross trust boundaries (e.g., tb2 to tb4, tb3 to tb2, tb2 to external) but lack secure protocol labels (protocol is null, security_annotations is empty), violating the requirement that all flows across boundaries must be labeled with secure protocols.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 17,
+        "total_element_count": 23,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 0,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p28_d0",
+      "requirement_id": "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+      "true_label": "met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": false,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f5",
+        "f12"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Confirmed flows f5 ('Map matrices') and f12 ('Relational result sets') cross boundaries and likely carry sensitive data but lack TLS annotations (protocol is null, security_annotations is empty), failing the requirement for strong encryption in transit.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 17,
+        "total_element_count": 23,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 0,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": "unconfirmed_extraction",
+      "cited_element_ids": [
+        "f1",
+        "f2",
+        "f3"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The diagram extraction shows flows (e.g., f1, f2, f3) between components, but all flows have empty 'security_annotations' arrays and no protocol labels indicating authentication mechanisms like 'authenticated API call' or 'mTLS'.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c3"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Component c3 is labeled 'Web Application Firewall and Load Balancer', but there is no component explicitly labeled 'Access Control Gateway' or similar mediating access to sensitive data stores within the trust boundaries.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-f795ad19b9018b705f38ee07-53-000017",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c4",
+        "c5"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Components c4 and c5 are labeled 'PHP Web Server Node', but there is no trusted process explicitly labeled 'Input Validation' or 'Service Layer' where input validation is enforced before data flows to other components.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-composite-6224cdc4224b15cc055e4d98-53-000023",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c1",
+        "c2",
+        "c3"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The component list (c1-c10) does not include a dedicated logging component or service, and no data flows indicate secure transmission to a remote logging system.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": "unconfirmed_extraction",
+      "cited_element_ids": [
+        "f1",
+        "f2",
+        "f3"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Flows between components (e.g., f1, f2, f3) have 'protocol: null' and empty 'security_annotations', indicating no evidence of encryption (HTTPS, TLS) or authenticity verification.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "tb1",
+        "tb2",
+        "c3"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Trust boundaries tb1 ('Public Subnet / DMZ') and tb2 ('Isolated Private Subnet') separate components with differing trust levels, and c3 ('Web Application Firewall and Load Balancer') acts as an explicit security control between zones.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-f9150a032d65c4d7d13987af-53-000038",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "tb1",
+        "tb2"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Trust boundaries tb1 and tb2 represent network segmentation ('Public Subnet / DMZ' vs 'Isolated Private Subnet'), indicating network-level isolation between applications or services.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-composite-ef72f311ee57ad5d1f39d412",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c8",
+        "c9"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "External actors c8 ('Google Maps API') and c9 ('SMS and Email Dispatch Gateways') are present, but there is no data flow to an external entity labeled 'Breached Password API'.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-0b309de7950edbfb5e56d372",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c3"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Component c3 is labeled 'Web Application Firewall and Load Balancer', which satisfies the requirement to look for a 'WAF' component placed before the web server nodes (c4, c5).",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-85169068a4a72321d8b315e6",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c4",
+        "c5"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Components c4 and c5 are 'PHP Web Server Node', but there is no 'Credential Service Provider' component, and no data flows between application and CSP labeled with 'mTLS' or 'Mutual TLS'.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-composite-0914062a97936d78c1a65e74",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": "unconfirmed_extraction",
+      "cited_element_ids": [
+        "f2",
+        "f6",
+        "f9",
+        "f10"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Flows carrying sensitive data (e.g., to Secrets Vault c7, External APIs c8/c9, and across trust boundaries) are not labeled with encryption protocols. For example, flow f6 (c4->c7) and f9 (c4->c8) have protocol: null and no security annotations.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-composite-293a1c8ed0c3bb4df31cc936",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": "unconfirmed_extraction",
+      "cited_element_ids": [
+        "f10",
+        "f12"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Flows to SMS/Email Dispatch Gateways (c9), which are used for out-of-band authentication, are not labeled with secure protocols. Flows f10 and f12 have protocol: null.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-composite-ad70cace67ce58c0b04f96e",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c7",
+        "f6",
+        "f8"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "A dedicated 'Enterprise Secrets Vault' (c7) exists and is connected to application servers (c4, c5) via flows f6, f8, indicating secrets are externalized from source code.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+      "true_label": "not_met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": false,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c3",
+        "tb1"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Access control enforcement is implied by the 'Web Application Firewall and Load Balancer' (c3) component, which is located within the trusted 'Public Subnet / DMZ' (tb1).",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": "unconfirmed_extraction",
+      "cited_element_ids": [
+        "f2",
+        "f3"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "No component explicitly labeled 'Validation' or 'Sanitization' is depicted immediately following data ingress. Flows f2 and f3 enter the DMZ without a dedicated validation process component.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-composite-3dc6f67a223cf26e26edfebf",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c6",
+        "c10"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Data stores c6 (MySQL Primary Database) and c10 (MySQL Failover Replica) do not have annotations indicating encryption at rest in the extraction notes or labels.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c7"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "A dedicated component labeled 'Enterprise Secrets Vault' (c7) is present, satisfying the requirement for a secrets management solution.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": "unconfirmed_extraction",
+      "cited_element_ids": [
+        "f2",
+        "f5",
+        "f9",
+        "f10"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Data flows crossing trust boundaries (e.g., f2 Internet->DMZ, f5 DMZ->Private, f9 DMZ->External) are not labeled with secure protocols like TLS or HTTPS (protocol: null).",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c3"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "A 'Web Application Firewall and Load Balancer' (c3) is deployed, which provides anti-automation and business logic controls.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c4",
+        "c5",
+        "f5",
+        "f6",
+        "f9",
+        "f10"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Application servers (c4, c5) are shown connecting only to specific defined resources (c6, c7, c8, c9) via flows f5, f6, f9, f10, indicating limited and explicit connections.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": "unconfirmed_extraction",
+      "cited_element_ids": [
+        "f1",
+        "f2",
+        "f9",
+        "f10"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The requirement mandates TLS/HTTPS annotations for sensitive data in transit. The extraction shows flows crossing trust boundaries (e.g., f1: c1->c2, f2: c2->c3, f9: c4->c8, f10: c4->c9) but all flow objects explicitly list 'protocol': null and 'security_annotations': []. There is no evidence of TLS or HTTPS protection on these data flows.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "requirement_id": "job53-D-composite-700fbe6b2db199ae12159350-53-000008",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c8",
+        "c9",
+        "f9",
+        "f10"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The requirement requires SRI or trusted source annotations for external integrations. The extraction identifies external actors c8 (Google Maps API) and c9 (SMS/Email Gateways) and flows to them (f9, f10), but none of these components or flows contain annotations indicating Subresource Integrity (SRI) or trusted repository sourcing.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 13,
+        "total_element_count": 52,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    }
+  ]
+}

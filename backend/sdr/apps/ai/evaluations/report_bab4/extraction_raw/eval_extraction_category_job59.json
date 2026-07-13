@@ -1,0 +1,1143 @@
+{
+  "job_label": "job_59",
+  "ground_truth_path": "/app/sdr/apps/ai/evaluations/data/extraction_ground_truth_v5.json",
+  "ground_truth_sha256": "3f124e9cbfd7abe91ec925d9c78cff96aaaf31a4adc804e78984052b785bbe4b",
+  "ground_truth_items": 100,
+  "matched_in_db": 100,
+  "not_found_in_db_count": 0,
+  "match_rate": 1.0,
+  "correct_predictions": 93,
+  "accuracy": 0.93,
+  "macro_precision": 0.9617,
+  "macro_recall": 0.8875,
+  "macro_f1": 0.9191,
+  "high_impact_error_count": 4,
+  "duplicate_control_match_count": 0,
+  "quality_targets": {
+    "min_accuracy": 0.95,
+    "min_design_recall": 0.95,
+    "min_match_rate": 0.99,
+    "no_duplicate_control_matches": true
+  },
+  "thresholds": {
+    "accuracy_gte_0.80": true,
+    "design_recall_gte_0.85": true,
+    "match_rate_gte_0.90": true
+  },
+  "confusion_matrix": {
+    "rows_are_true_label": true,
+    "columns_are_predicted_label": true,
+    "categories": [
+      "design",
+      "code",
+      "infrastructure",
+      "process"
+    ],
+    "matrix": {
+      "design": {
+        "design": 27,
+        "code": 3,
+        "infrastructure": 0,
+        "process": 0
+      },
+      "code": {
+        "design": 0,
+        "code": 45,
+        "infrastructure": 0,
+        "process": 0
+      },
+      "infrastructure": {
+        "design": 0,
+        "code": 3,
+        "infrastructure": 17,
+        "process": 0
+      },
+      "process": {
+        "design": 1,
+        "code": 0,
+        "infrastructure": 0,
+        "process": 4
+      }
+    }
+  },
+  "per_category_metrics": {
+    "design": {
+      "precision": 0.9643,
+      "recall": 0.9,
+      "f1": 0.931,
+      "tp": 27,
+      "fp": 1,
+      "fn": 3
+    },
+    "code": {
+      "precision": 0.8824,
+      "recall": 1.0,
+      "f1": 0.9375,
+      "tp": 45,
+      "fp": 6,
+      "fn": 0
+    },
+    "infrastructure": {
+      "precision": 1.0,
+      "recall": 0.85,
+      "f1": 0.9189,
+      "tp": 17,
+      "fp": 0,
+      "fn": 3
+    },
+    "process": {
+      "precision": 1.0,
+      "recall": 0.8,
+      "f1": 0.8889,
+      "tp": 4,
+      "fp": 0,
+      "fn": 1
+    }
+  },
+  "high_impact_errors": [
+    {
+      "control_id": "11.1.4",
+      "requirement_text": "11.1.4 Verify that a cryptographic inventory is maintained. This must include a documented plan that outlines the migrat",
+      "true_category": "process",
+      "predicted_category": "design",
+      "is_correct": false,
+      "is_high_impact_error": true,
+      "rationale": "Maintaining an ongoing inventory and migration plan is a continuous organizational process, not a static software property.",
+      "explanation": ""
+    },
+    {
+      "control_id": "7.2.1",
+      "requirement_text": "V7.2 - 7.2.1 Verify that the application performs all session token verifcation using a trusted, backend service.",
+      "true_category": "design",
+      "predicted_category": "code",
+      "is_correct": false,
+      "is_high_impact_error": true,
+      "rationale": "Architectural placement of session verification (backend vs frontend) is a design choice.",
+      "explanation": ""
+    },
+    {
+      "control_id": "7.4.3",
+      "requirement_text": "V7.4 - 7.4.3 Verify that the application gives the option to terminate all other active sessions afer a successful chang",
+      "true_category": "design",
+      "predicted_category": "code",
+      "is_correct": false,
+      "is_high_impact_error": true,
+      "rationale": "Offering global session termination is a systemic feature/design capability.",
+      "explanation": ""
+    },
+    {
+      "control_id": "8.2.1",
+      "requirement_text": "8.2.1 Verify that the application ensures that function\u2011level access is restricted to consumers with explicit permission",
+      "true_category": "design",
+      "predicted_category": "code",
+      "is_correct": false,
+      "is_high_impact_error": true,
+      "rationale": "Function-level access control requires a defined RBAC/ABAC model in the architecture.",
+      "explanation": ""
+    }
+  ],
+  "not_found_in_db": [],
+  "duplicate_control_matches": [],
+  "per_item_results": [
+    {
+      "control_id": "11.1.3",
+      "requirement_text": "11.1.3 Verify that cryptographic discovery mechanisms are employed to identify all instances of cryptography in the syst",
+      "true_category": "process",
+      "predicted_category": "process",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Employing discovery mechanisms across the enterprise is an organizational process.",
+      "explanation": ""
+    },
+    {
+      "control_id": "11.1.4",
+      "requirement_text": "11.1.4 Verify that a cryptographic inventory is maintained. This must include a documented plan that outlines the migrat",
+      "true_category": "process",
+      "predicted_category": "design",
+      "is_correct": false,
+      "is_high_impact_error": true,
+      "rationale": "Maintaining an ongoing inventory and migration plan is a continuous organizational process, not a static software property.",
+      "explanation": ""
+    },
+    {
+      "control_id": "15.1.2",
+      "requirement_text": "15.1.2 Verify that an inventory catalog, such as sofware bill of materials (SBOM), is maintained of all third\u2011party libr",
+      "true_category": "process",
+      "predicted_category": "process",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Continuous SBOM maintenance falls under organizational supply chain procedures.",
+      "explanation": ""
+    },
+    {
+      "control_id": "15.2.1",
+      "requirement_text": "V15.2 - 15.2.1 Verify that the application only contains components which have not breached the documented update and re",
+      "true_category": "process",
+      "predicted_category": "process",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Remediation SLAs and component lifecycle management are governance and organizational processes.",
+      "explanation": ""
+    },
+    {
+      "control_id": "3.2.1",
+      "requirement_text": "V3.2 - 3.2.1 Verify that security controls are in place to prevent browsers from rendering content or functionality in H",
+      "true_category": "infrastructure",
+      "predicted_category": "code",
+      "is_correct": false,
+      "is_high_impact_error": false,
+      "rationale": "HTTP response headers like Content-Disposition are typically server or API gateway configuration details.",
+      "explanation": ""
+    },
+    {
+      "control_id": "3.4.1",
+      "requirement_text": "V3.4 - 3.4.1 Verify that a Strict\u2011Transport\u2011Security header feld is included on all responses to enforce an HTTP Strict ",
+      "true_category": "infrastructure",
+      "predicted_category": "infrastructure",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "HSTS is a server configuration detail, not verifiable strictly from a TSD.",
+      "explanation": ""
+    },
+    {
+      "control_id": "3.4.2",
+      "requirement_text": "V3.4 - 3.4.2 Verify that the Cross\u2011Origin Resource Sharing (CORS) Access\u2011Control\u2011Allow\u2011Origin header feld is a fxed valu",
+      "true_category": "infrastructure",
+      "predicted_category": "infrastructure",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "CORS headers are web server or gateway configurations.",
+      "explanation": ""
+    },
+    {
+      "control_id": "3.4.3",
+      "requirement_text": "V3.4 - 3.4.3 Verify that HTTP responses include a Content\u2011Security\u2011Policy response header feld which defnes directives t",
+      "true_category": "infrastructure",
+      "predicted_category": "infrastructure",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "CSP HTTP headers require inspecting live server configurations.",
+      "explanation": ""
+    },
+    {
+      "control_id": "3.4.5",
+      "requirement_text": "V3.4 - 3.4.5 Verify that the application sets a referrer policy to prevent leakage of technically sensitive data to thir",
+      "true_category": "infrastructure",
+      "predicted_category": "infrastructure",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Referrer-Policy is an infrastructure-level HTTP header configuration.",
+      "explanation": ""
+    },
+    {
+      "control_id": "3.4.6",
+      "requirement_text": "V3.4 - 3.4.6 Verify that the web application uses the frame\u2011ancestors directive of the Content\u2011Security\u2011Policy header fe",
+      "true_category": "infrastructure",
+      "predicted_category": "infrastructure",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Specific CSP directives are tested against live server responses.",
+      "explanation": ""
+    },
+    {
+      "control_id": "3.4.7",
+      "requirement_text": "V3.4 - 3.4.7 Verify that the Content\u2011Security\u2011Policy header feld specifes a location to report violations.",
+      "true_category": "infrastructure",
+      "predicted_category": "infrastructure",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "CSP reporting endpoint configuration is managed at the server/infrastructure level.",
+      "explanation": ""
+    },
+    {
+      "control_id": "3.4.8",
+      "requirement_text": "V3.4 - 3.4.8 Verify that all HTTP responses that initiate a document rendering (such as responses with Content\u2011Type text",
+      "true_category": "infrastructure",
+      "predicted_category": "infrastructure",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "COOP is an HTTP response header verified through server config or dynamic testing.",
+      "explanation": ""
+    },
+    {
+      "control_id": "4.1.1",
+      "requirement_text": "4.1.1 Verify that every HTTP response with a message body contains a Content\u2011Type header feld that matches the actual co",
+      "true_category": "infrastructure",
+      "predicted_category": "code",
+      "is_correct": false,
+      "is_high_impact_error": false,
+      "rationale": "Content-Type mappings are handled by web server configurations.",
+      "explanation": ""
+    },
+    {
+      "control_id": "4.1.2",
+      "requirement_text": "4.1.2 Verify that only user\u2011facing endpoints (intended for manual web\u2011browser access) automatically redirect from HTTP t",
+      "true_category": "infrastructure",
+      "predicted_category": "infrastructure",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "HTTP to HTTPS redirects are managed at the load balancer or web server.",
+      "explanation": ""
+    },
+    {
+      "control_id": "4.1.4",
+      "requirement_text": "4.1.4 Verify that only HTTP methods that are explicitly supported by the application or its API (including OPTIONS durin",
+      "true_category": "infrastructure",
+      "predicted_category": "code",
+      "is_correct": false,
+      "is_high_impact_error": false,
+      "rationale": "Blocking unused HTTP verbs is a standard web server or WAF configuration.",
+      "explanation": ""
+    },
+    {
+      "control_id": "6.3.2",
+      "requirement_text": "V6.3 - 6.3.2 Verify that default user accounts (e.g.,\u201croot\u201d,\u201cadmin\u201d, or\u201csa\u201d) are not present in the application or are d",
+      "true_category": "infrastructure",
+      "predicted_category": "infrastructure",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Verifying the absence of default OS or database accounts requires a live operational audit.",
+      "explanation": ""
+    },
+    {
+      "control_id": "12.1.1",
+      "requirement_text": "12.1.1 Verify that only the latest recommended versions of the TLS protocol are enabled, such as TLS 1.2 and TLS 1.3. Th",
+      "true_category": "infrastructure",
+      "predicted_category": "infrastructure",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "TLS protocol version configurations are entirely infrastructure-dependent.",
+      "explanation": ""
+    },
+    {
+      "control_id": "12.1.4",
+      "requirement_text": "12.1.4 Verify that proper certifcation revocation, such as Online Certifcate Status Protocol (OCSP) Stapling, is enabled",
+      "true_category": "infrastructure",
+      "predicted_category": "infrastructure",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "OCSP stapling is a web server or reverse proxy TLS configuration.",
+      "explanation": ""
+    },
+    {
+      "control_id": "12.3.1",
+      "requirement_text": "12.3.1 Verify that an encrypted protocol such as TLS is used for all inbound and outbound connections to and from the ap",
+      "true_category": "infrastructure",
+      "predicted_category": "infrastructure",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Enforcing TLS across network boundaries is a deployment/infrastructure policy.",
+      "explanation": ""
+    },
+    {
+      "control_id": "13.3.1",
+      "requirement_text": "13.3.1 Verify that a secrets management solution, such as a key vault, is used to securely create, store, control access",
+      "true_category": "infrastructure",
+      "predicted_category": "infrastructure",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Integration of a key vault is an infrastructure deployment configuration.",
+      "explanation": ""
+    },
+    {
+      "control_id": "13.4.1",
+      "requirement_text": "13.4.1 Verify that the application is deployed either without any source control metadata, including the .git or .svn fo",
+      "true_category": "infrastructure",
+      "predicted_category": "infrastructure",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Restricting access to deployment artifacts relies on CI/CD rules and web server config.",
+      "explanation": ""
+    },
+    {
+      "control_id": "13.4.2",
+      "requirement_text": "13.4.2 Verify that debug modes are disabled for all components in production environments to prevent exposure of debuggi",
+      "true_category": "infrastructure",
+      "predicted_category": "infrastructure",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Disabling debug modes is an environment-specific deployment configuration.",
+      "explanation": ""
+    },
+    {
+      "control_id": "13.4.6",
+      "requirement_text": "13.4.6 Verify that the application does not expose detailed version information of backend components.",
+      "true_category": "infrastructure",
+      "predicted_category": "infrastructure",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Suppressing server banner versions (like Server or X-Powered-By) is a server hardening task.",
+      "explanation": ""
+    },
+    {
+      "control_id": "14.2.2",
+      "requirement_text": "14.2.2 Verify that the application prevents sensitive data from being cached in server components, such as load balancer",
+      "true_category": "infrastructure",
+      "predicted_category": "infrastructure",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Cache configuration at the load balancer or proxy layer is an infrastructure concern.",
+      "explanation": ""
+    },
+    {
+      "control_id": "2.1.1",
+      "requirement_text": "V2.1 - 2.1.1 Verify that the application\u2019s documentation defnes input validation rules for how to check the validity of ",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Defining validation schemas is a core design specification found in a TSD.",
+      "explanation": ""
+    },
+    {
+      "control_id": "2.1.2",
+      "requirement_text": "V2.1 - 2.1.2 Verify that the application\u2019s documentation defnes how to validate the logical and contextual consistency o",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Business logic rules and combined data checks are defined during architectural design.",
+      "explanation": ""
+    },
+    {
+      "control_id": "2.1.3",
+      "requirement_text": "V2.1 - 2.1.3 Verify that expectations for business logic limits and validations are documented, including both per\u2011user ",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Business capacity limits must be documented in a specification document.",
+      "explanation": ""
+    },
+    {
+      "control_id": "2.2.2",
+      "requirement_text": "V2.2 - 2.2.2 Verify that the application is designed to enforce input validation at a trusted service layer. While clien",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "The choice of where validation occurs (trusted layer vs client-side) is an architectural decision.",
+      "explanation": ""
+    },
+    {
+      "control_id": "2.3.5",
+      "requirement_text": "V2.3 - 2.3.5 Verify that high\u2011value business logic fows require multi\u2011user approval to prevent unauthorized or accidenta",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Multi-user approval workflows are high-level design choices visible in a TSD.",
+      "explanation": ""
+    },
+    {
+      "control_id": "3.1.1",
+      "requirement_text": "V3.1 - 3.1.1 Verify that application documentation states the expected security features that browsers using the applica",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Documenting browser security expectations is a TSD-level policy requirement.",
+      "explanation": ""
+    },
+    {
+      "control_id": "5.1.1",
+      "requirement_text": "5.1.1 Verify that the documentation defnes the permitted fle types, expected fle extensions, and maximum size (including",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Specifying allowed file extensions and sizes is an explicit design policy.",
+      "explanation": ""
+    },
+    {
+      "control_id": "6.1.1",
+      "requirement_text": "6.1.1 Verify that application documentation defnes how controls such as rate limiting, anti\u2011automation, and adaptive res",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Documenting the anti-automation policy is a TSD responsibility.",
+      "explanation": ""
+    },
+    {
+      "control_id": "6.1.2",
+      "requirement_text": "6.1.2 Verify that a list of context\u2011specifc words is documented in order to prevent their use in passwords. The list cou",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "The banned password vocabulary list is a documented design policy.",
+      "explanation": ""
+    },
+    {
+      "control_id": "6.1.3",
+      "requirement_text": "6.1.3 Verify that, if the application includes multiple authentication pathways, these are all documented together with ",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Documenting auth pathways is a direct architectural design requirement.",
+      "explanation": ""
+    },
+    {
+      "control_id": "6.3.3",
+      "requirement_text": "V6.3 - 6.3.3 Verify that either a multi\u2011factor authentication mechanism or a combination of single\u2011factor authentication",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "The requirement to implement MFA is a high-level architectural mandate.",
+      "explanation": ""
+    },
+    {
+      "control_id": "6.4.3",
+      "requirement_text": "V6.4 - 6.4.3 Verify that a secure process for resetting a forgotten password is implemented, that does not bypass any en",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "The architecture of the recovery flow is designed and verified via a TSD.",
+      "explanation": ""
+    },
+    {
+      "control_id": "7.1.1",
+      "requirement_text": "7.1.1 Verify that the user\u2019s session inactivity timeout and absolute maximum session lifetime are documented, are approp",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Session timeout lengths are documented policies in a specification.",
+      "explanation": ""
+    },
+    {
+      "control_id": "7.1.2",
+      "requirement_text": "7.1.2 Verify that the documentation defnes how many concurrent (parallel) sessions are allowed for one account as well a",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Concurrent session limits are architectural policies defined in a TSD.",
+      "explanation": ""
+    },
+    {
+      "control_id": "7.1.3",
+      "requirement_text": "7.1.3 Verify that all systems that create and manage user sessions as part of a federated identity management ecosystem ",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Federated identity architecture and session lifetimes must be mapped out in a TSD.",
+      "explanation": ""
+    },
+    {
+      "control_id": "7.2.1",
+      "requirement_text": "V7.2 - 7.2.1 Verify that the application performs all session token verifcation using a trusted, backend service.",
+      "true_category": "design",
+      "predicted_category": "code",
+      "is_correct": false,
+      "is_high_impact_error": true,
+      "rationale": "Architectural placement of session verification (backend vs frontend) is a design choice.",
+      "explanation": ""
+    },
+    {
+      "control_id": "7.4.3",
+      "requirement_text": "V7.4 - 7.4.3 Verify that the application gives the option to terminate all other active sessions afer a successful chang",
+      "true_category": "design",
+      "predicted_category": "code",
+      "is_correct": false,
+      "is_high_impact_error": true,
+      "rationale": "Offering global session termination is a systemic feature/design capability.",
+      "explanation": ""
+    },
+    {
+      "control_id": "8.1.1",
+      "requirement_text": "8.1.1 Verify that authorization documentation defnes rules for restricting function\u2011level and data\u2011specifc access based ",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "The authorization model and its rules are explicitly TSD documents.",
+      "explanation": ""
+    },
+    {
+      "control_id": "8.1.3",
+      "requirement_text": "8.1.3 Verify that the application\u2019s documentation defnes the environmental and contextual attributes (including but not ",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Defining context-aware access attributes (time, IP) is an architectural policy.",
+      "explanation": ""
+    },
+    {
+      "control_id": "8.2.1",
+      "requirement_text": "8.2.1 Verify that the application ensures that function\u2011level access is restricted to consumers with explicit permission",
+      "true_category": "design",
+      "predicted_category": "code",
+      "is_correct": false,
+      "is_high_impact_error": true,
+      "rationale": "Function-level access control requires a defined RBAC/ABAC model in the architecture.",
+      "explanation": ""
+    },
+    {
+      "control_id": "10.1.1",
+      "requirement_text": "V10.1 - 10.1.1 Verify that tokens are only sent to components that strictly need them. For example, when using a backend",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Data flow architecture dictates where tokens are transmitted.",
+      "explanation": ""
+    },
+    {
+      "control_id": "10.4.9",
+      "requirement_text": "V10.4 - 10.4.9 Verify that refresh tokens and reference access tokens can be revoked by an authorized user using the aut",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Providing a token revocation UI is a high-level systemic feature design.",
+      "explanation": ""
+    },
+    {
+      "control_id": "13.1.2",
+      "requirement_text": "13.1.2 Verify that for each service the application uses, the documentation defnes the maximum number of concurrent conn",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Documenting connection pool limits is a TSD-level architectural requirement.",
+      "explanation": ""
+    },
+    {
+      "control_id": "14.1.1",
+      "requirement_text": "14.1.1 Verify that all sensitive data created and processed by the application has been identifed and classifed into pro",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Data classification and setting protection boundaries is a fundamental architectural requirement verifiable in a TSD.",
+      "explanation": ""
+    },
+    {
+      "control_id": "14.2.7",
+      "requirement_text": "14.2.7 Verify that sensitive information is subject to data retention classifcation, ensuring that outdated or unnecessa",
+      "true_category": "process",
+      "predicted_category": "process",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Retention classification and scheduled deletion are ongoing governance and lifecycle activities.",
+      "explanation": ""
+    },
+    {
+      "control_id": "15.1.3",
+      "requirement_text": "15.1.3 Verify that the application documentation identifes functionality which is time\u2011consuming or resource\u2011demanding. ",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Threat modeling and identifying resource limits is documented in the design/architecture.",
+      "explanation": ""
+    },
+    {
+      "control_id": "16.1.1",
+      "requirement_text": "16.1.1 Verify that an inventory exists documenting the logging performed at each layer of the application\u2019s technology s",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Designing the logging architecture and inventorying telemetry points is a TSD activity.",
+      "explanation": ""
+    },
+    {
+      "control_id": "1.1.1",
+      "requirement_text": "V1.1 - 1.1.1 Verify that input is decoded or unescaped into a canonical form only once, it is only decoded when encoded ",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Verifying the exact order of decoding vs sanitization operations requires source code inspection.",
+      "explanation": ""
+    },
+    {
+      "control_id": "1.1.2",
+      "requirement_text": "V1.1 - 1.1.2 Verify that the application performs output encoding and escaping either as a fnal step before being used b",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Checking if encoding happens as the absolute final step requires reading the code execution flow.",
+      "explanation": ""
+    },
+    {
+      "control_id": "1.2.1",
+      "requirement_text": "V1.2 - 1.2.1 Verify that output encoding for an HTTP response, HTML document, or XML document is relevant for the contex",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Context-aware encoding requires verifying specific function calls in the source code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "1.2.2",
+      "requirement_text": "V1.2 - 1.2.2 Verify that when dynamically building URLs, untrusted data is encoded according to its context (e.g., URL e",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Verifying URL concatenation and encoding logic requires source code review.",
+      "explanation": ""
+    },
+    {
+      "control_id": "1.2.4",
+      "requirement_text": "V1.2 - 1.2.4 Verify that data selection or database queries (e.g., SQL, HQL, NoSQL, Cypher) use parameterized queries, O",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "The exact implementation of parameterized queries requires inspecting the database integration layer in code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "1.2.5",
+      "requirement_text": "V1.2 - 1.2.5 Verify that the application protects against OS command injection and that operating system calls use param",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Validating how OS commands are constructed and executed is a code-level check.",
+      "explanation": ""
+    },
+    {
+      "control_id": "1.2.6",
+      "requirement_text": "V1.2 - 1.2.6 Verify that the application protects against LDAP injection vulnerabilities, or that specifc security contr",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "LDAP filter escaping is an implementation detail verified via code analysis.",
+      "explanation": ""
+    },
+    {
+      "control_id": "1.3.1",
+      "requirement_text": "V1.3 - 1.3.1 Verify that all untrusted HTML input from WYSIWYG editors or similar is sanitized using a well\u2011known and se",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Verifying the usage and invocation of specific sanitization libraries requires source code review.",
+      "explanation": ""
+    },
+    {
+      "control_id": "1.3.2",
+      "requirement_text": "V1.3 - 1.3.2 Verify that the application avoids the use of eval() or other dynamic code execution features such as Sprin",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Checking for unsafe eval() functions requires scanning the source code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "1.4.1",
+      "requirement_text": "V1.4 - 1.4.1 Verify that the application uses memory\u2011safe string, safer memory copy and pointer arithmetic to detect or ",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Pointer arithmetic and memory management are purely source-code implementation details.",
+      "explanation": ""
+    },
+    {
+      "control_id": "1.5.1",
+      "requirement_text": "V1.5 - 1.5.1 Verify that the application confgures XML parsers to use a restrictive confguration and that unsafe feature",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "XXE prevention requires verifying how the XML parser is initialized in the code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "1.5.2",
+      "requirement_text": "V1.5 - 1.5.2 Verify that deserialization of untrusted data enforces safe input handling, such as using an allowlist of o",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Deserialization allowlists are implemented and verified directly within the source code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "2.2.1",
+      "requirement_text": "V2.2 - 2.2.1 Verify that input is validated to enforce business or functional expectations for that input. This should e",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Input validation regex and bounds checking logic are verified in code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "2.3.1",
+      "requirement_text": "V2.3 - 2.3.1 Verify that the application will only process business logic fows for the same user in the expected sequent",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Verifying sequential state enforcement requires deep inspection of the logic handlers in code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "2.4.1",
+      "requirement_text": "V2.4 - 2.4.1 Verify that anti\u2011automation controls are in place to protect against excessive calls to application functio",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Anti-automation is treated here as a system-level control and policy choice, not a specific code-level counter implementation.",
+      "explanation": ""
+    },
+    {
+      "control_id": "3.2.2",
+      "requirement_text": "V3.2 - 3.2.2 Verify that content intended to be displayed as text, rather than rendered as HTML, is handled using safe r",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Safe DOM manipulation methods must be verified in the frontend JavaScript source code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "3.3.1",
+      "requirement_text": "V3.3 - 3.3.1 Verify that cookies have the\u2018Secure\u2019attribute set, and if the\u2019__Host\u2011\u2019prefx is not used for the cookie name",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Cookie attribute flags and name prefixes are set directly in the application code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "3.3.3",
+      "requirement_text": "V3.3 - 3.3.3 Verify that cookies have the\u2019__Host\u2011\u2019prefx for the cookie name unless they are explicitly designed to be sh",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Validating cookie prefix generation requires code review.",
+      "explanation": ""
+    },
+    {
+      "control_id": "3.5.1",
+      "requirement_text": "V3.5 - 3.5.1 Verify that, if the application does not rely on the CORS prefight mechanism to prevent disallowed cross\u2011or",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "CSRF anti-forgery token generation and validation logic is implemented in code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "3.5.5",
+      "requirement_text": "V3.5 - 3.5.5 Verify that messages received by the postMessage interface are discarded if the origin of the message is no",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Validating origins in cross-window messaging requires reviewing frontend JS listeners.",
+      "explanation": ""
+    },
+    {
+      "control_id": "4.2.5",
+      "requirement_text": "4.2.5 Verify that, if the application (backend or frontend) builds and sends requests, it uses validation, sanitization,",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "String length validation before sending external requests is a code-level defense.",
+      "explanation": ""
+    },
+    {
+      "control_id": "4.3.1",
+      "requirement_text": "4.3.1 Verify that a query allowlist, depth limiting, amount limiting, or query cost analysis is used to prevent GraphQL ",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "GraphQL depth limit configuration logic sits within the application source code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "5.3.2",
+      "requirement_text": "5.3.2 Verify that when the application creates fle paths for fle operations, instead of user\u2011submitted flenames, it uses",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Preventing path traversal requires analyzing file I/O concatenation in code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "5.4.1",
+      "requirement_text": "5.4.1 Verify that the application validates or ignores user\u2011submitted flenames, including in a JSON, JSONP, or URL param",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Filename sanitization functions are validated via source code analysis.",
+      "explanation": ""
+    },
+    {
+      "control_id": "6.3.1",
+      "requirement_text": "V6.3 - 6.3.1 Verify that controls to prevent attacks such as credential stufng and password brute force are implemented ",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "The requirement anchors the control to the application's documented security design rather than a specific implementation detail.",
+      "explanation": ""
+    },
+    {
+      "control_id": "6.4.1",
+      "requirement_text": "V6.4 - 6.4.1 Verify that system generated initial passwords or activation codes are securely randomly generated, follow ",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Randomness implementation and entropy checks are code-level verifications.",
+      "explanation": ""
+    },
+    {
+      "control_id": "6.5.1",
+      "requirement_text": "V6.5 - 6.5.1 Verify that lookup secrets, out\u2011of\u2011band authentication requests or codes, and time\u2011based one\u2011time passwords",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Verifying state invalidation for single-use secrets requires reading the application logic.",
+      "explanation": ""
+    },
+    {
+      "control_id": "6.5.2",
+      "requirement_text": "V6.5 - 6.5.2 Verify that, when being stored in the application\u2019s backend, lookup secrets with less than 112 bits of entr",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Verifying the salt size and hashing algorithm requires reviewing cryptographic functions in code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "7.2.3",
+      "requirement_text": "V7.2 - 7.2.3 Verify that if reference tokens are used to represent user sessions, they are unique and generated using a ",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Session token generation algorithms must be verified in the source code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "7.2.4",
+      "requirement_text": "V7.2 - 7.2.4 Verify that the application generates a new session token on user authentication, including re\u2011authenticati",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Session regeneration upon authentication is a specific logic flow tested in code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "7.3.1",
+      "requirement_text": "V7.3 - 7.3.1 Verify that there is an inactivity timeout such that re\u2011authentication is enforced according to risk analys",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "The timeout requirement is driven by risk analysis and documented security decisions, so it is categorized as design.",
+      "explanation": ""
+    },
+    {
+      "control_id": "7.4.1",
+      "requirement_text": "V7.4 - 7.4.1 Verify that when session termination is triggered (such as logout or expiration), the application disallows",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Ensuring backend invalidation upon logout is verified through code analysis.",
+      "explanation": ""
+    },
+    {
+      "control_id": "7.5.1",
+      "requirement_text": "V7.5 - 7.5.1 Verify that the application requires full re\u2011authentication before allowing modifcations to sensitive accou",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Protecting specific modification routes requires checking access control logic in code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "8.2.2",
+      "requirement_text": "8.2.2 Verify that the application ensures that data\u2011specifc access is restricted to consumers with explicit permissions ",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "IDOR protections require analyzing object ownership checks within the data access code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "8.2.3",
+      "requirement_text": "8.2.3 Verify that the application ensures that feld\u2011level access is restricted to consumers with explicit permissions to",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Field-level access (BOPLA) verification requires deep inspection of data mapping code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "8.4.1",
+      "requirement_text": "8.4.1 Verify that multi\u2011tenant applications use cross\u2011tenant controls to ensure consumer operations will never afect ten",
+      "true_category": "design",
+      "predicted_category": "design",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Cross-tenant isolation is treated as an architectural authorization model rather than a source-only implementation detail.",
+      "explanation": ""
+    },
+    {
+      "control_id": "9.1.1",
+      "requirement_text": "9.1.1 Verify that self\u2011contained tokens are validated using their digital signature or MAC to protect against tampering ",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "JWT signature validation functions must be inspected in source code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "9.1.2",
+      "requirement_text": "9.1.2 Verify that only algorithms on an allowlist can be used to create and verify self\u2011contained tokens, for a given co",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Validating JWT algorithms in the library initialization requires code review.",
+      "explanation": ""
+    },
+    {
+      "control_id": "9.2.1",
+      "requirement_text": "9.2.1 Verify that, if a validity time span is present in the token data, the token and its content are accepted only if ",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Verifying \u2018nbf\u2019 and \u2018exp\u2019 JWT claims requires checking the token validation code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "9.2.3",
+      "requirement_text": "9.2.3 Verify that the service only accepts tokens which are intended for use with that service (audience). For JWTs, thi",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Verifying audience claim enforcement requires source code analysis.",
+      "explanation": ""
+    },
+    {
+      "control_id": "10.1.2",
+      "requirement_text": "V10.1 - 10.1.2 Verify that the client only accepts values from the authorization server (such as the authorization code ",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Verifying PKCE or state parameter correlation logic requires code review.",
+      "explanation": ""
+    },
+    {
+      "control_id": "10.3.1",
+      "requirement_text": "V10.3 - 10.3.1 Verify that the resource server only accepts access tokens that are intended for use with that service (a",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "OAuth RS audience validation is implemented in the application code layer.",
+      "explanation": ""
+    },
+    {
+      "control_id": "10.3.2",
+      "requirement_text": "V10.3 - 10.3.2 Verify that the resource server enforces authorization decisions based on claims from the access token th",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Access control decisions mapped to claims must be reviewed in code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "10.4.1",
+      "requirement_text": "V10.4 - 10.4.1 Verify that the authorization server validates redirect URIs based on a client-specifc allowlist of pre-r",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Exact string comparison for redirect URIs is a code-level implementation detail.",
+      "explanation": ""
+    },
+    {
+      "control_id": "10.4.2",
+      "requirement_text": "V10.4 - 10.4.2 Verify that, if the authorization server returns the authorization code in the authorization response, it",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Authorization code invalidation and state tracking requires source code inspection.",
+      "explanation": ""
+    },
+    {
+      "control_id": "10.5.1",
+      "requirement_text": "V10.5 - 10.5.1 Verify that the client (as the relying party) mitigates ID Token replay attacks. For example, by ensuring",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "OIDC nonce validation requires reviewing the authentication logic in code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "11.3.1",
+      "requirement_text": "11.3.1 Verify that insecure block modes (e.g., ECB) and weak padding schemes (e.g., PKCS#1 v1.5) are not used.",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Ensuring bad ciphers/paddings are avoided requires checking cryptographic function arguments in code.",
+      "explanation": ""
+    },
+    {
+      "control_id": "14.2.1",
+      "requirement_text": "14.2.1 Verify that sensitive data is only sent to the server in the HTTP message body or header felds, and that the URL ",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Verifying how requests are constructed in the frontend requires source code review.",
+      "explanation": ""
+    },
+    {
+      "control_id": "16.4.1",
+      "requirement_text": "16.4.1 Verify that all logging components appropriately encode data to prevent log injection.",
+      "true_category": "code",
+      "predicted_category": "code",
+      "is_correct": true,
+      "is_high_impact_error": false,
+      "rationale": "Log sanitization logic is implemented natively in the code.",
+      "explanation": ""
+    }
+  ]
+}

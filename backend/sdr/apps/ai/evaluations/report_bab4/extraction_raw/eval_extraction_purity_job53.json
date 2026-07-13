@@ -1,0 +1,51 @@
+{
+  "job_label": "job_53",
+  "total_rows": 278,
+  "control_id_purity": 1.0,
+  "duplicate_rate": 0.0,
+  "empty_rate": 0.0,
+  "garbage_count": 0,
+  "duplicate_count": 0,
+  "unique_control_ids": 278,
+  "category_distribution": {
+    "code": {
+      "count": 157,
+      "pct": 56.5
+    },
+    "design": {
+      "count": 58,
+      "pct": 20.9
+    },
+    "infrastructure": {
+      "count": 46,
+      "pct": 16.5
+    },
+    "process": {
+      "count": 17,
+      "pct": 6.1
+    }
+  },
+  "chapter_coverage": {
+    "V1": 39,
+    "V10": 10,
+    "V11": 8,
+    "V12": 15,
+    "V13": 13,
+    "V14": 24,
+    "V2": 57,
+    "V3": 20,
+    "V4": 9,
+    "V5": 30,
+    "V6": 16,
+    "V7": 12,
+    "V8": 17,
+    "V9": 8
+  },
+  "garbage_samples": [],
+  "duplicate_ids": {},
+  "thresholds": {
+    "control_id_purity_gte_0.99": true,
+    "duplicate_rate_lte_0.01": true,
+    "empty_rate_lte_0.01": true
+  }
+}

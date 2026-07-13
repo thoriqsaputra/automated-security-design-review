@@ -20,10 +20,6 @@ _MARKDOWN_JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL)
 
 
 def _strip_markdown_json_fence(content: str) -> str:
-    """
-    Some models (e.g. Kimi/Moonshot via RouteLLM) ignore response_format
-    json_object and wrap their JSON in a markdown code fence anyway.
-    """
     match = _MARKDOWN_JSON_FENCE_RE.match(content.strip())
     return match.group(1) if match else content
 

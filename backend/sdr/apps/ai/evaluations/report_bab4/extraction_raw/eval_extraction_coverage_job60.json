@@ -1,0 +1,174 @@
+{
+  "job_label": "job_60",
+  "gold_set": "OWASP ASVS 5.0",
+  "gold_id_count": 345,
+  "extracted_id_count": 345,
+  "matched_count": 345,
+  "missed_count": 0,
+  "extra_count": 0,
+  "extraction_recall": 1.0,
+  "extraction_precision": 1.0,
+  "f1_score": 1.0,
+  "thresholds": {
+    "recall_gte_0.90": true,
+    "precision_gte_0.95": true,
+    "f1_gte_0.90": true
+  },
+  "by_chapter": {
+    "V1": {
+      "gold_count": 30,
+      "extracted_count": 30,
+      "matched": 30,
+      "recall": 1.0,
+      "precision": 1.0,
+      "missed": [],
+      "extra": []
+    },
+    "V10": {
+      "gold_count": 36,
+      "extracted_count": 36,
+      "matched": 36,
+      "recall": 1.0,
+      "precision": 1.0,
+      "missed": [],
+      "extra": []
+    },
+    "V11": {
+      "gold_count": 24,
+      "extracted_count": 24,
+      "matched": 24,
+      "recall": 1.0,
+      "precision": 1.0,
+      "missed": [],
+      "extra": []
+    },
+    "V12": {
+      "gold_count": 12,
+      "extracted_count": 12,
+      "matched": 12,
+      "recall": 1.0,
+      "precision": 1.0,
+      "missed": [],
+      "extra": []
+    },
+    "V13": {
+      "gold_count": 21,
+      "extracted_count": 21,
+      "matched": 21,
+      "recall": 1.0,
+      "precision": 1.0,
+      "missed": [],
+      "extra": []
+    },
+    "V14": {
+      "gold_count": 13,
+      "extracted_count": 13,
+      "matched": 13,
+      "recall": 1.0,
+      "precision": 1.0,
+      "missed": [],
+      "extra": []
+    },
+    "V15": {
+      "gold_count": 21,
+      "extracted_count": 21,
+      "matched": 21,
+      "recall": 1.0,
+      "precision": 1.0,
+      "missed": [],
+      "extra": []
+    },
+    "V16": {
+      "gold_count": 17,
+      "extracted_count": 17,
+      "matched": 17,
+      "recall": 1.0,
+      "precision": 1.0,
+      "missed": [],
+      "extra": []
+    },
+    "V17": {
+      "gold_count": 12,
+      "extracted_count": 12,
+      "matched": 12,
+      "recall": 1.0,
+      "precision": 1.0,
+      "missed": [],
+      "extra": []
+    },
+    "V2": {
+      "gold_count": 13,
+      "extracted_count": 13,
+      "matched": 13,
+      "recall": 1.0,
+      "precision": 1.0,
+      "missed": [],
+      "extra": []
+    },
+    "V3": {
+      "gold_count": 31,
+      "extracted_count": 31,
+      "matched": 31,
+      "recall": 1.0,
+      "precision": 1.0,
+      "missed": [],
+      "extra": []
+    },
+    "V4": {
+      "gold_count": 16,
+      "extracted_count": 16,
+      "matched": 16,
+      "recall": 1.0,
+      "precision": 1.0,
+      "missed": [],
+      "extra": []
+    },
+    "V5": {
+      "gold_count": 13,
+      "extracted_count": 13,
+      "matched": 13,
+      "recall": 1.0,
+      "precision": 1.0,
+      "missed": [],
+      "extra": []
+    },
+    "V6": {
+      "gold_count": 47,
+      "extracted_count": 47,
+      "matched": 47,
+      "recall": 1.0,
+      "precision": 1.0,
+      "missed": [],
+      "extra": []
+    },
+    "V7": {
+      "gold_count": 19,
+      "extracted_count": 19,
+      "matched": 19,
+      "recall": 1.0,
+      "precision": 1.0,
+      "missed": [],
+      "extra": []
+    },
+    "V8": {
+      "gold_count": 13,
+      "extracted_count": 13,
+      "matched": 13,
+      "recall": 1.0,
+      "precision": 1.0,
+      "missed": [],
+      "extra": []
+    },
+    "V9": {
+      "gold_count": 7,
+      "extracted_count": 7,
+      "matched": 7,
+      "recall": 1.0,
+      "precision": 1.0,
+      "missed": [],
+      "extra": []
+    }
+  },
+  "missed_ids": [],
+  "extra_ids": []
+}

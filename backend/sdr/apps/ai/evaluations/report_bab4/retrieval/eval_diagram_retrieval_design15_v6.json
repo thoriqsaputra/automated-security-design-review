@@ -1,0 +1,217 @@
+{
+  "design_id": 15,
+  "ground_truth_path": "/app/sdr/apps/ai/evaluations/data/diagram_ground_truth_design_15.json",
+  "top_k": 32,
+  "sample_seed": 42,
+  "diagrams_evaluated": 3,
+  "diagrams_skipped": 0,
+  "gatekeeper": {
+    "count": 3,
+    "precision": 0.6069,
+    "recall": 0.5941,
+    "hit_rate": 1.0,
+    "mrr": 0.7778
+  },
+  "hybrid": {
+    "count": 3,
+    "precision": 0.4881,
+    "recall": 0.8656,
+    "hit_rate": 1.0,
+    "mrr": 0.6111
+  },
+  "naive_fallback": {
+    "count": 3,
+    "precision": 0.4271,
+    "recall": 0.8148,
+    "hit_rate": 1.0,
+    "mrr": 0.7778
+  },
+  "random_baseline": {
+    "count": 3,
+    "precision": 0.3646,
+    "recall": 0.7258,
+    "hit_rate": 1.0,
+    "mrr": 0.6111
+  },
+  "delta_hybrid_minus_naive": {
+    "precision": 0.061,
+    "recall": 0.0508,
+    "hit_rate": 0.0,
+    "mrr": -0.1667
+  },
+  "delta_hybrid_minus_random": {
+    "precision": 0.1235,
+    "recall": 0.1398,
+    "hit_rate": 0.0,
+    "mrr": 0.0
+  },
+  "delta_hybrid_minus_gatekeeper": {
+    "precision": -0.1188,
+    "recall": 0.2715,
+    "hit_rate": 0.0,
+    "mrr": -0.1667
+  },
+  "per_diagram_results": [
+    {
+      "diagram_id": "p14_d0",
+      "expected_ids": [
+        "job53-D-0b309de7950edbfb5e56d372",
+        "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+        "job53-D-4aa8734f54de242cbb68b789",
+        "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+        "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
+        "job53-D-composite-3dc6f67a223cf26e26edfebf",
+        "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
+        "job53-D-composite-6224cdc4224b15cc055e4d98-53-000023",
+        "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+        "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
+        "job53-D-composite-6bcdb4ad3f3fa4ee0d6cf733-53-000005",
+        "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+        "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+        "job53-D-composite-ad70cace67ce58c0b04f96e",
+        "job53-D-composite-c2bc34e911d53b529699c749-53-000016",
+        "job53-D-composite-c4bb57eb009543d5ad0c32ef-53-000023",
+        "job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006",
+        "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
+        "job53-D-composite-ef72f311ee57ad5d1f39d412",
+        "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+        "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+        "job53-D-f795ad19b9018b705f38ee07-53-000017",
+        "job53-D-f9150a032d65c4d7d13987af-53-000038"
+      ],
+      "gatekeeper": {
+        "precision": 0.6923,
+        "recall": 0.3913,
+        "hit_rate": 1.0,
+        "mrr": 1.0,
+        "retrieved_count": 13,
+        "expected_count": 23
+      },
+      "hybrid": {
+        "precision": 0.7143,
+        "recall": 0.8696,
+        "hit_rate": 1.0,
+        "mrr": 0.3333,
+        "retrieved_count": 28,
+        "expected_count": 23
+      },
+      "naive_fallback": {
+        "precision": 0.5938,
+        "recall": 0.8261,
+        "hit_rate": 1.0,
+        "mrr": 1.0,
+        "retrieved_count": 32,
+        "expected_count": 23
+      },
+      "random_baseline": {
+        "precision": 0.5,
+        "recall": 0.6957,
+        "hit_rate": 1.0,
+        "mrr": 1.0,
+        "retrieved_count": 32,
+        "expected_count": 23
+      }
+    },
+    {
+      "diagram_id": "p28_d0",
+      "expected_ids": [
+        "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
+        "job53-D-composite-3dc6f67a223cf26e26edfebf",
+        "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+        "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
+        "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009"
+      ],
+      "gatekeeper": {
+        "precision": 0.3636,
+        "recall": 0.8,
+        "hit_rate": 1.0,
+        "mrr": 1.0,
+        "retrieved_count": 11,
+        "expected_count": 5
+      },
+      "hybrid": {
+        "precision": 0.1786,
+        "recall": 1.0,
+        "hit_rate": 1.0,
+        "mrr": 1.0,
+        "retrieved_count": 28,
+        "expected_count": 5
+      },
+      "naive_fallback": {
+        "precision": 0.125,
+        "recall": 0.8,
+        "hit_rate": 1.0,
+        "mrr": 1.0,
+        "retrieved_count": 32,
+        "expected_count": 5
+      },
+      "random_baseline": {
+        "precision": 0.125,
+        "recall": 0.8,
+        "hit_rate": 1.0,
+        "mrr": 0.3333,
+        "retrieved_count": 32,
+        "expected_count": 5
+      }
+    },
+    {
+      "diagram_id": "p37_d0",
+      "expected_ids": [
+        "job53-D-0b309de7950edbfb5e56d372",
+        "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+        "job53-D-85169068a4a72321d8b315e6",
+        "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+        "job53-D-composite-0914062a97936d78c1a65e74",
+        "job53-D-composite-293a1c8ed0c3bb4df31cc936",
+        "job53-D-composite-3dc6f67a223cf26e26edfebf",
+        "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
+        "job53-D-composite-6224cdc4224b15cc055e4d98-53-000023",
+        "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+        "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
+        "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
+        "job53-D-composite-700fbe6b2db199ae12159350-53-000008",
+        "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+        "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+        "job53-D-composite-ad70cace67ce58c0b04f96e",
+        "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
+        "job53-D-composite-ef72f311ee57ad5d1f39d412",
+        "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+        "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+        "job53-D-f795ad19b9018b705f38ee07-53-000017",
+        "job53-D-f9150a032d65c4d7d13987af-53-000038"
+      ],
+      "gatekeeper": {
+        "precision": 0.7647,
+        "recall": 0.5909,
+        "hit_rate": 1.0,
+        "mrr": 0.3333,
+        "retrieved_count": 17,
+        "expected_count": 22
+      },
+      "hybrid": {
+        "precision": 0.5714,
+        "recall": 0.7273,
+        "hit_rate": 1.0,
+        "mrr": 0.5,
+        "retrieved_count": 28,
+        "expected_count": 22
+      },
+      "naive_fallback": {
+        "precision": 0.5625,
+        "recall": 0.8182,
+        "hit_rate": 1.0,
+        "mrr": 0.3333,
+        "retrieved_count": 32,
+        "expected_count": 22
+      },
+      "random_baseline": {
+        "precision": 0.4688,
+        "recall": 0.6818,
+        "hit_rate": 1.0,
+        "mrr": 0.5,
+        "retrieved_count": 32,
+        "expected_count": 22
+      }
+    }
+  ]
+}

@@ -38,6 +38,12 @@ normally be empty unless an explicit security-zone marker is still visibly drawn
 - Record only text/annotations that are actually visible (e.g. "TLS", "HTTPS", a lock \
 icon, "auth required") in notes/security_annotations — do not add annotations that \
 are not drawn or labeled in the image.
+- When a component's visible name itself is security-relevant (for example WAF, API \
+Gateway, Identity Provider, Auth Service, Vault, KMS, HSM, Secrets Manager), preserve \
+that wording exactly in the component name/labels instead of abstracting it away.
+- When a flow visibly indicates protected transport or authentication (for example \
+HTTPS, TLS, mTLS, "authenticated API", lock icons, certificates), capture that in \
+protocol and/or security_annotations as literally as possible.
 - Classify the image scope:
   - "architecture_relevant" if the image depicts system structure, deployment, \
 network, trust boundaries, sequence/data flow, or security control scope.

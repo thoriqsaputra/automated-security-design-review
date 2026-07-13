@@ -68,9 +68,7 @@ class MediatorAgent(BaseAgent):
             critic_weak_evidence=critic_result.weak_evidence,
             critic_missed_evidence=critic_result.missed_evidence,
             hunter_assumptions=hunter_result.assumptions,
-            hunter_cot_trace=hunter_result.cot_trace,
             critic_assumptions=critic_result.assumptions,
-            critic_cot_trace=critic_result.cot_trace,
             debate_history=debate_history or [],
             original_context_chunks=original_context_chunks or [],
         )

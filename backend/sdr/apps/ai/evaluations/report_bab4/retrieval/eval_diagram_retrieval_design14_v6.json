@@ -1,0 +1,232 @@
+{
+  "design_id": 14,
+  "ground_truth_path": "/app/sdr/apps/ai/evaluations/data/diagram_ground_truth_design_14_llm_judged.json",
+  "top_k": 32,
+  "sample_seed": 42,
+  "diagrams_evaluated": 3,
+  "diagrams_skipped": 0,
+  "gatekeeper": {
+    "count": 3,
+    "precision": 0.8981,
+    "recall": 0.5989,
+    "hit_rate": 1.0,
+    "mrr": 1.0
+  },
+  "hybrid": {
+    "count": 3,
+    "precision": 0.6428,
+    "recall": 0.8297,
+    "hit_rate": 1.0,
+    "mrr": 1.0
+  },
+  "naive_fallback": {
+    "count": 3,
+    "precision": 0.5729,
+    "recall": 0.8455,
+    "hit_rate": 1.0,
+    "mrr": 0.7778
+  },
+  "random_baseline": {
+    "count": 3,
+    "precision": 0.4792,
+    "recall": 0.7096,
+    "hit_rate": 1.0,
+    "mrr": 0.5
+  },
+  "delta_hybrid_minus_naive": {
+    "precision": 0.0699,
+    "recall": -0.0158,
+    "hit_rate": 0.0,
+    "mrr": 0.2222
+  },
+  "delta_hybrid_minus_random": {
+    "precision": 0.1636,
+    "recall": 0.1201,
+    "hit_rate": 0.0,
+    "mrr": 0.5
+  },
+  "delta_hybrid_minus_gatekeeper": {
+    "precision": -0.2553,
+    "recall": 0.2308,
+    "hit_rate": 0.0,
+    "mrr": 0.0
+  },
+  "per_diagram_results": [
+    {
+      "diagram_id": "p16_d0",
+      "expected_ids": [
+        "job53-D-0b309de7950edbfb5e56d372",
+        "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+        "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+        "job53-D-composite-0914062a97936d78c1a65e74",
+        "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
+        "job53-D-composite-50463b4a59309f108755fa85-53-000015",
+        "job53-D-composite-65241fcf5f2d3be893aec59e-53-000018",
+        "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+        "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
+        "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+        "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+        "job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006",
+        "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
+        "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+        "job53-D-composite-fbb3a72ceae2857088a8d4c2-53-000004",
+        "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+        "job53-D-f795ad19b9018b705f38ee07-53-000017",
+        "job53-D-f9150a032d65c4d7d13987af-53-000038"
+      ],
+      "gatekeeper": {
+        "precision": 0.75,
+        "recall": 0.6667,
+        "hit_rate": 1.0,
+        "mrr": 1.0,
+        "retrieved_count": 16,
+        "expected_count": 18
+      },
+      "hybrid": {
+        "precision": 0.5357,
+        "recall": 0.8333,
+        "hit_rate": 1.0,
+        "mrr": 1.0,
+        "retrieved_count": 28,
+        "expected_count": 18
+      },
+      "naive_fallback": {
+        "precision": 0.4688,
+        "recall": 0.8333,
+        "hit_rate": 1.0,
+        "mrr": 0.3333,
+        "retrieved_count": 32,
+        "expected_count": 18
+      },
+      "random_baseline": {
+        "precision": 0.4062,
+        "recall": 0.7222,
+        "hit_rate": 1.0,
+        "mrr": 0.5,
+        "retrieved_count": 32,
+        "expected_count": 18
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "expected_ids": [
+        "job53-D-0b309de7950edbfb5e56d372",
+        "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+        "job53-D-85169068a4a72321d8b315e6",
+        "job53-D-b7e28781ff521b69f12383e6",
+        "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+        "job53-D-composite-0914062a97936d78c1a65e74",
+        "job53-D-composite-293a1c8ed0c3bb4df31cc936",
+        "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
+        "job53-D-composite-3dc6f67a223cf26e26edfebf",
+        "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
+        "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
+        "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+        "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
+        "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
+        "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+        "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
+        "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+        "job53-D-composite-ad70cace67ce58c0b04f96e",
+        "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
+        "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
+        "job53-D-composite-ef72f311ee57ad5d1f39d412",
+        "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+        "job53-D-composite-fbb3a72ceae2857088a8d4c2-53-000004",
+        "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+        "job53-D-f795ad19b9018b705f38ee07-53-000017",
+        "job53-D-f9150a032d65c4d7d13987af-53-000038"
+      ],
+      "gatekeeper": {
+        "precision": 0.9444,
+        "recall": 0.6538,
+        "hit_rate": 1.0,
+        "mrr": 1.0,
+        "retrieved_count": 18,
+        "expected_count": 26
+      },
+      "hybrid": {
+        "precision": 0.7857,
+        "recall": 0.8462,
+        "hit_rate": 1.0,
+        "mrr": 1.0,
+        "retrieved_count": 28,
+        "expected_count": 26
+      },
+      "naive_fallback": {
+        "precision": 0.6875,
+        "recall": 0.8462,
+        "hit_rate": 1.0,
+        "mrr": 1.0,
+        "retrieved_count": 32,
+        "expected_count": 26
+      },
+      "random_baseline": {
+        "precision": 0.5625,
+        "recall": 0.6923,
+        "hit_rate": 1.0,
+        "mrr": 0.5,
+        "retrieved_count": 32,
+        "expected_count": 26
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "expected_ids": [
+        "job53-D-0b309de7950edbfb5e56d372",
+        "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+        "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+        "job53-D-composite-0914062a97936d78c1a65e74",
+        "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
+        "job53-D-composite-3dc6f67a223cf26e26edfebf",
+        "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
+        "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
+        "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+        "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
+        "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
+        "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+        "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
+        "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+        "job53-D-composite-ad70cace67ce58c0b04f96e",
+        "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
+        "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
+        "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+        "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+        "job53-D-f795ad19b9018b705f38ee07-53-000017",
+        "job53-D-f9150a032d65c4d7d13987af-53-000038"
+      ],
+      "gatekeeper": {
+        "precision": 1.0,
+        "recall": 0.4762,
+        "hit_rate": 1.0,
+        "mrr": 1.0,
+        "retrieved_count": 10,
+        "expected_count": 21
+      },
+      "hybrid": {
+        "precision": 0.6071,
+        "recall": 0.8095,
+        "hit_rate": 1.0,
+        "mrr": 1.0,
+        "retrieved_count": 28,
+        "expected_count": 21
+      },
+      "naive_fallback": {
+        "precision": 0.5625,
+        "recall": 0.8571,
+        "hit_rate": 1.0,
+        "mrr": 1.0,
+        "retrieved_count": 32,
+        "expected_count": 21
+      },
+      "random_baseline": {
+        "precision": 0.4688,
+        "recall": 0.7143,
+        "hit_rate": 1.0,
+        "mrr": 0.5,
+        "retrieved_count": 32,
+        "expected_count": 21
+      }
+    }
+  ]
+}

@@ -93,6 +93,8 @@ class HybridRetrievalRouter:
                 return self._execute_raptor_low(query_text=query_text, raptor_tree=raptor_tree, query_embedding=query_embedding)
             if strategy == RetrievalStrategy.RAPTOR_HIGH:
                 return self._execute_raptor_high(query_text=query_text, raptor_tree=raptor_tree, query_embedding=query_embedding)
+            if strategy == RetrievalStrategy.FLAT_TOPK:
+                return self._execute_flat_topk(query_text=query_text, raptor_tree=raptor_tree, query_embedding=query_embedding)
             query_variants = self._get_query_variants(
                 parameter=parameter,
                 ingestion_job=ingestion_job,
@@ -134,6 +136,9 @@ class HybridRetrievalRouter:
 
     def _execute_raptor_high(self, **kwargs) -> RetrievalResult:
         return self._executor().execute_raptor_high(self, **kwargs)
+
+    def _execute_flat_topk(self, **kwargs) -> RetrievalResult:
+        return self._executor().execute_flat_topk(self, **kwargs)
 
     def _execute_hybrid(self, **kwargs) -> RetrievalResult:
         return self._executor().execute_hybrid(self, **kwargs)

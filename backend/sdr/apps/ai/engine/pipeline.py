@@ -10,7 +10,7 @@ from sdr.apps.ai.engine.debate.category_analysis_coordinator import CategoryAnal
 from sdr.apps.ai.engine.debate.debate_input_factory import DebateInputFactory
 from sdr.apps.ai.engine.debate.debate_service import DebateService
 from sdr.apps.ai.engine.debate.diagram_analysis_coordinator import DiagramAnalysisCoordinator
-from sdr.apps.ai.engine.debate.diagram_debate_service import DiagramDebateService
+from sdr.apps.ai.engine.debate.diagram_extract_reason_service import DiagramExtractReasonService
 from sdr.apps.ai.engine.debate.text_debate_coordinator import TextDebateCoordinator
 from sdr.apps.ai.engine.dto import AnalysisSummary
 from sdr.apps.ai.engine.persistence.persistence_service import PersistenceService
@@ -46,7 +46,7 @@ class TSDAnalysisPipeline:
         retrieval_service: Optional[RetrievalService] = None,
         debate_service: Optional[DebateService] = None,
         persistence_service: Optional[PersistenceService] = None,
-        diagram_debate_service: Optional[DiagramDebateService] = None,
+        diagram_debate_service: Optional[Any] = None,
         workflow_repository: Optional[ReviewWorkflowRepository] = None,
         overview_generator: Optional[OverviewGenerator] = None,
         debate_input_factory: Optional[DebateInputFactory] = None,
@@ -60,7 +60,7 @@ class TSDAnalysisPipeline:
         self.persistence = persistence_service or PersistenceService(
             recommendation_generator=self._generate_not_met_recommendation,
         )
-        self.diagram_debate_service = diagram_debate_service or DiagramDebateService()
+        self.diagram_debate_service = diagram_debate_service or DiagramExtractReasonService()
         self.workflow_repository = workflow_repository or SqlAlchemyReviewWorkflowRepository()
         self.overview_generator = overview_generator or OverviewGenerator()
         self.debate_input_factory = debate_input_factory or DebateInputFactory()

@@ -62,7 +62,6 @@ class CriticAgent(BaseAgent):
             hunter_evidence_quotes=hunter_result.evidence_quotes,
             hunter_evidence_assessment=hunter_result.evidence_assessment,
             hunter_assumptions=hunter_result.assumptions,
-            hunter_cot_trace=hunter_result.cot_trace,
             available_block_ids=available_block_ids,
             prior_round=prior_round,
         )

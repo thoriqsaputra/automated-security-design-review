@@ -1,0 +1,2500 @@
+{
+  "design_id": 14,
+  "review_id": 104,
+  "ground_truth_path": "/app/sdr/apps/ai/evaluations/data/diagram_ground_truth_design_14_llm_judged.json",
+  "baseline_result_path": "/app/sdr/apps/ai/evaluations/results/debate/diagram_three_way_design14.json",
+  "ground_truth_items": 65,
+  "matched_pairs": 65,
+  "extract_reason": {
+    "tp": 42,
+    "fp": 1,
+    "fn": 12,
+    "tn": 10,
+    "precision": 0.9767,
+    "recall": 0.7778,
+    "f1": 0.866,
+    "fpr": 0.0909
+  },
+  "hunter_only_baseline": {
+    "tp": 47,
+    "fp": 7,
+    "fn": 7,
+    "tn": 4,
+    "precision": 0.8704,
+    "recall": 0.8704,
+    "f1": 0.8704,
+    "fpr": 0.6364
+  },
+  "debate_final_baseline": {
+    "tp": 45,
+    "fp": 5,
+    "fn": 9,
+    "tn": 6,
+    "precision": 0.9,
+    "recall": 0.8333,
+    "f1": 0.8654,
+    "fpr": 0.4545
+  },
+  "delta_fpr_extract_reason_vs_hunter_baseline": 0.5455,
+  "delta_fpr_extract_reason_vs_debate_baseline": 0.3636,
+  "extract_reason_success": false,
+  "per_item_results": [
+    {
+      "diagram_id": "p16_d0",
+      "requirement_id": "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c2",
+        "c3",
+        "f1",
+        "f2",
+        "f3"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Communications are authenticated: f1 uses TLS 1.3, f2 forwards authenticated requests, and f3 verifies OAuth 2.0 tokens between components c2, c3, and c4.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 25,
+        "total_element_count": 25,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p16_d0",
+      "requirement_id": "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c2",
+        "c3",
+        "f2"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Trusted enforcement points exist: c2 (Web Application Firewall) and c3 (Secure API Gateway) enforce controls, evidenced by f2 inspecting payloads and forwarding authenticated requests.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 25,
+        "total_element_count": 25,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p16_d0",
+      "requirement_id": "job53-D-f795ad19b9018b705f38ee07-53-000017",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c4",
+        "f5"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Input validation is enforced: c4 (AI Data Sanitization Agent) performs validation via f5, which removes PII and sanitizes prompt-injection patterns.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 25,
+        "total_element_count": 25,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p16_d0",
+      "requirement_id": "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c1",
+        "c2",
+        "c3",
+        "c7",
+        "f1",
+        "f3",
+        "f11"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Secure communication is depicted: f1 uses TLS 1.3 encryption, f3 uses OAuth 2.0 cryptographic tokens for authenticity, and f11 persists encrypted data.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 25,
+        "total_element_count": 25,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p16_d0",
+      "requirement_id": "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c2",
+        "c5",
+        "c7",
+        "tb1",
+        "tb2",
+        "tb3",
+        "tb4"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Component segregation is present: Trust boundaries tb1-tb4 separate logical zones, and components like c2 (DMZ), c5 (Enclave), and c7 (Private Subnet) represent distinct trust levels.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 25,
+        "total_element_count": 25,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p16_d0",
+      "requirement_id": "job53-D-f9150a032d65c4d7d13987af-53-000038",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c5",
+        "c7",
+        "c2"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Application isolation is depicted: c5 is a 'Vector/NLP Enclave', c7 is in a 'Private Subnet', and c2 is in a 'DMZ', indicating network and logical isolation.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 25,
+        "total_element_count": 25,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p16_d0",
+      "requirement_id": "job53-D-0b309de7950edbfb5e56d372",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "No anti-automation controls such as CAPTCHA or rate limiting are depicted in the component labels or flow descriptions.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 25,
+        "total_element_count": 25,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p16_d0",
+      "requirement_id": "job53-D-composite-0914062a97936d78c1a65e74",
+      "true_label": "not_met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": false,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c6",
+        "c7",
+        "f1",
+        "f9",
+        "f10",
+        "f11"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Sensitive secrets are not sent in clear text: f1 uses TLS 1.3, f9/f10 involve HSM key exchange, and f11 persists encrypted data in the database.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 25,
+        "total_element_count": 25,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p16_d0",
+      "requirement_id": "job53-D-composite-c773c8b1593e37fbfe6ad27e-53-000006",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Session invalidation and re-authentication flows are not depicted in the extraction; only token verification (f3) is shown.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 25,
+        "total_element_count": 25,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p16_d0",
+      "requirement_id": "job53-D-composite-50463b4a59309f108755fa85-53-000015",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c3",
+        "f3"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "OAuth token usage is depicted (f3), but OAuth token revocation is not depicted in any flow or component description.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 25,
+        "total_element_count": 25,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p16_d0",
+      "requirement_id": "job53-D-composite-65241fcf5f2d3be893aec59e-53-000018",
+      "true_label": "not_met",
+      "extract_reason_verdict": "na",
+      "extract_reason_correct": false,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The requirement specifies communication of authentication time limits and re-authentication events between CSPs and RPs. The diagram extraction depicts a Client, WAF, API Gateway, and internal services, but does not explicitly identify CSPs or RPs, nor does it show flows or components related to authentication time limit communication between these specific entities.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 25,
+        "total_element_count": 25,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p16_d0",
+      "requirement_id": "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c3"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Component c3 (Secure API Gateway and Identity Manager) is a trusted service layer that handles identity and access verification (e.g., OAuth tokens in flow f3), satisfying the requirement for access control enforcement within trusted service layers.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 25,
+        "total_element_count": 25,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p16_d0",
+      "requirement_id": "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c4",
+        "f5"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Component c4 (AI Data Sanitization Agent) and flow f5 ('Remove PII and sanitize prompt-injection patterns') explicitly demonstrate validation and sanitization of inputs before processing, covering the requirement for external input validation.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 25,
+        "total_element_count": 25,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p16_d0",
+      "requirement_id": "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c6"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Component c6 (Hardware Security Module) is present and interacts with the API Gateway to request and grant cryptographic keys (flows f9, f10), serving as a secrets management solution for secure secret handling.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 25,
+        "total_element_count": 25,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p16_d0",
+      "requirement_id": "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f1",
+        "f14"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "While flow f1 is labeled with 'TLS 1.3', flow f14 ('Display formatted results in client interface') and other internal flows (e.g., f2, f3) do not have secure protocol labels in the extraction (protocol: null). The requirement mandates *all* data flows across trust boundaries be labeled, which is not evidenced for the response flow f14.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 25,
+        "total_element_count": 25,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p16_d0",
+      "requirement_id": "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
+      "true_label": "met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": false,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The extraction does not explicitly mention 'Anti-automation' or 'business logic controls' in component labels or flow descriptions. While a WAF (c2) is present, the specific controls are not described in the structured extraction.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 25,
+        "total_element_count": 25,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p16_d0",
+      "requirement_id": "job53-D-composite-fbb3a72ceae2857088a8d4c2-53-000004",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c4",
+        "f5"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Component c4 (AI Data Sanitization Agent) and flow f5 ('Remove PII and sanitize prompt-injection patterns') indicate that untrusted file processing (CV upload in f1) includes validation and scanning/sanitization components.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 25,
+        "total_element_count": 25,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p16_d0",
+      "requirement_id": "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f1",
+        "f14"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Flow f1 mentions 'TLS 1.3 encrypted request', but flow f14 ('Display formatted results') and other internal flows do not explicitly state that headers and payload are protected using TLS in the extraction. The requirement requires verification of protection for transit, which is not fully evidenced for all flows.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 25,
+        "total_element_count": 25,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "sequence_or_flow": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "c6",
+        "c7",
+        "c8",
+        "c9",
+        "c10",
+        "c11",
+        "c12",
+        "c13",
+        "c14",
+        "c15",
+        "c16",
+        "tb1",
+        "tb2",
+        "tb3",
+        "tb4",
+        "tb5",
+        "f1",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f7",
+        "f8",
+        "f9",
+        "f10",
+        "f11",
+        "f12"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The extraction explicitly lists all components (c1-c16), trust boundaries (tb1-tb5), and data flows (f1-f12) with their labels and relationships, satisfying the documentation and justification requirement.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "c6",
+        "c7",
+        "c8",
+        "c9",
+        "c10",
+        "c11",
+        "c12",
+        "c13",
+        "c14",
+        "c15",
+        "c16",
+        "tb1",
+        "tb2",
+        "tb3",
+        "tb4",
+        "tb5",
+        "f1",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f7",
+        "f8",
+        "f9",
+        "f10",
+        "f11",
+        "f12"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The high-level architecture is defined with components and boundaries, and connected remote services (c4, c8, c9, c10) are depicted with their data flows (f3, f5, f6).",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f1",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f7",
+        "f8",
+        "f9",
+        "f10",
+        "f11"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "All inter-component flows (f1-f11) explicitly specify the protocol 'mTLS 1.3', which provides authentication. Flow f12 is internal to trust boundary tb4.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c6",
+        "c7"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Components c6 (Web Application Firewall and Load Balancer) and c7 (Secure API Gateway and Identity Manager) are depicted as trusted enforcement points at the entry and gateway layers.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-f795ad19b9018b705f38ee07-53-000017",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c7",
+        "f8"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Flow f8 is labeled 'Sanitized resume text' originating from c7 (Secure API Gateway), indicating input validation/sanitization is enforced before data reaches the AI engine.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f1",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f7",
+        "f8",
+        "f9",
+        "f10",
+        "f11"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Flows f1-f11 explicitly use 'mTLS 1.3', which provides both encryption and authenticity verification between components.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "tb1",
+        "tb2",
+        "tb3",
+        "tb4",
+        "tb5"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Trust boundaries tb1 (DMZ), tb2 (External Public), tb3 (External Regulated), tb4 (Hardware-Secured), and tb5 (Isolated AI Enclave) clearly segregate components by trust level.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-f9150a032d65c4d7d13987af-53-000038",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "tb5",
+        "tb4"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Trust boundary tb5 is labeled 'Isolated AI Execution Enclave' and tb4 is 'Hardware-Secured Data Tier', indicating network-level isolation and security controls.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-composite-ef72f311ee57ad5d1f39d412",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f3",
+        "f5",
+        "f6"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "While external API calls are shown (f3, f5, f6), none of the flow labels or component descriptions explicitly mention 'breached password checks'.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-0b309de7950edbfb5e56d372",
+      "true_label": "met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": false,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c6"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Component c6 (WAF) is present as an entry point, but the extraction does not explicitly depict or label anti-automation controls such as CAPTCHA or rate limiting.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-b7e28781ff521b69f12383e6",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f6",
+        "c7",
+        "c10"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Flow f6 shows 'Verification and OTP alerts' sent from c7 (Secure API Gateway and Identity Manager) to c10 (SMS and Email Notification Gateways) using mTLS 1.3, indicating secure notification transmission.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-85169068a4a72321d8b315e6",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f1",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f7",
+        "f8",
+        "f9",
+        "f10",
+        "f11"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Multiple flows (f1-f11) connecting external entities and internal services explicitly specify protocol 'mTLS 1.3', and text confirms 'strictly enforced mutual TLS (mTLS)'.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-composite-0914062a97936d78c1a65e74",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f1",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f7",
+        "f8",
+        "f9",
+        "f10",
+        "f11"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "All data flows in the diagram are labeled with 'mTLS 1.3', ensuring sensitive secrets are not sent in clear text during transmission.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-composite-293a1c8ed0c3bb4df31cc936",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f6",
+        "c10"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Flow f6 sends 'Verification and OTP alerts' to c10 (SMS and Email Notification Gateways) via mTLS 1.3, representing a secure out-of-band channel.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-composite-ad70cace67ce58c0b04f96e",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c13",
+        "f12"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Component c13 (Hardware Security Module) and flow f12 ('AES-256-GCM Key management') indicate secure management of secrets and keys, implying they are not in source code.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f1",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f7",
+        "f8",
+        "f9",
+        "f10",
+        "f11",
+        "c12",
+        "c13",
+        "f12"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Transmission is protected by mTLS 1.3 (f1-f11). Storage is in c12 (Core Database ledger) within tb4 (Hardware-Secured Data Tier) with AES-256-GCM key management (f12).",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f1",
+        "f2",
+        "f3"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "External flows f1, f2, f3 use mTLS 1.3, which secures all transmitted data including cookie-based session tokens.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c7",
+        "tb1"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Component c7 (Secure API Gateway and Identity Manager) is enclosed in trust boundary tb1 (Demilitarized Zone), indicating access control is in a trusted service layer.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f8",
+        "f7",
+        "c6"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Flow f8 is labeled 'Sanitized resume text', flow f7 is 'Parameterized SQL queries', and c6 is 'Web Application Firewall', indicating input validation and sanitization.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-composite-3dc6f67a223cf26e26edfebf",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c12",
+        "c13",
+        "f12",
+        "tb4"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "c12 (Core Database ledger) is in tb4 (Hardware-Secured Data Tier) and associated with f12 ('AES-256-GCM Key management'), indicating encryption at rest.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c13",
+        "f12"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The extraction identifies component c13 as a 'Hardware Security Module' (service) and flow f12 as 'AES-256-GCM Key management' from c13 to c12. An HSM serves as a secrets management solution for secure key handling.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f1",
+        "f2",
+        "f3",
+        "f5",
+        "f6",
+        "f7",
+        "f8",
+        "f9",
+        "f10"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "All data flows crossing trust boundaries (f1, f2, f3 crossing tb2/tb1; f5, f6 crossing tb1/tb3; f7 crossing tb1/tb4; f8, f9, f10 crossing tb1/tb5) are explicitly labeled with protocol 'mTLS 1.3'.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
+      "true_label": "met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": false,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c6",
+        "c7"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "While c6 (Web Application Firewall) and c7 (Secure API Gateway) are present, the extraction does not explicitly label them with 'Anti-automation', 'Bot Protection', or 'Rate Limiting' capabilities. The structured extraction treats these as the complete set of facts, and no specific anti-automation controls are listed.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-composite-fbb3a72ceae2857088a8d4c2-53-000004",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c15",
+        "f8"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Flow f8 indicates 'Sanitized resume text' to c15 (Resume NLP Parsing Engine), implying validation. However, there is no explicit 'scanning' component (e.g., malware scanner) listed in the extraction to satisfy the 'validation AND scanning' requirement.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
+      "true_label": "met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": false,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c7",
+        "c15",
+        "c16"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The extraction shows application components (c7, c15, c16) connecting to specific resources, but there is no explicit component or flow annotation indicating an 'allowlist' or 'egress control' mechanism that verifies requests are only sent to allowed systems.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p34_d0",
+      "requirement_id": "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f1",
+        "f2",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f7",
+        "f8",
+        "f9",
+        "f10",
+        "f11"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "All data flows listed in the extraction (f1 through f11) are labeled with protocol 'mTLS 1.3', which protects message headers and payload in transit using strong encryption.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 33,
+        "total_element_count": 33,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 0,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-composite-39c0ed17abf94da14821b28e-53-000004",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "c6",
+        "c7",
+        "c8",
+        "c9",
+        "c10",
+        "tb1",
+        "tb2",
+        "tb3",
+        "tb4",
+        "tb5",
+        "f3",
+        "f4",
+        "f5",
+        "f6",
+        "f7",
+        "f8",
+        "f9",
+        "f10",
+        "f11"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The extraction explicitly lists all components (c1-c10), trust boundaries (tb1-tb5), and significant data flows (f3-f11 confirmed), providing the required documentation and justification of the architecture.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-composite-8bff616e6f67a7b8c8b39c6e-53-000005",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c1",
+        "c2",
+        "c3",
+        "c4",
+        "c5",
+        "c6",
+        "c7",
+        "c8",
+        "c9",
+        "c10",
+        "tb1",
+        "tb2",
+        "tb3",
+        "tb4",
+        "tb5"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The diagram defines the high-level architecture with distinct zones (tb1-tb5) and components. Security analysis is supported by the presence of security-specific components like 'Web Application Firewall' (c4), 'Secure API Gateway' (c6), and 'Hardware Security Module' (c10).",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-3293e58191d94d1aef8b2d58-53-000009",
+      "true_label": "met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": false,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f4",
+        "f7",
+        "f8",
+        "f9"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "While f3 (HTTPS/TLS 1.3) and f6 (Authenticated API traffic) show authentication, cross-boundary flows f4 (DMZ to App), f7 (App to Gov), f8 (App to DB), and f9 (App to AI) have protocol: null and no security annotations, failing to verify authentication for all communications.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-db8e0236e3c71a01a22f92fc-53-000012",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c4",
+        "c6"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Components c4 ('Web Application Firewall and Load Balancer') and c6 ('Secure API Gateway and Identity Manager') are depicted as trusted enforcement points that typically enforce access controls.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-f795ad19b9018b705f38ee07-53-000017",
+      "true_label": "met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": false,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c4",
+        "c5",
+        "c6"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The extraction does not explicitly label 'Input Validation' on the trusted service layer components (c5, c6) or flows entering them. While c4 is a WAF, the specific enforcement of input validation is not depicted in the text labels.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-composite-085e9a838bf30e0c0f804ba5-53-000027",
+      "true_label": "met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": false,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f4",
+        "f7",
+        "f9"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Cross-boundary flows f4, f7, and f9 lack explicit protocol labels indicating encryption or authenticity verification (protocol: null), whereas f3 and f8 show encryption/auth. This gap prevents verifying secure communication for all components.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-composite-672799b90935437c9b41ce9b-53-000034",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "tb1",
+        "tb2",
+        "tb3",
+        "tb4",
+        "tb5"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Trust boundaries tb1 through tb5 clearly segregate components into different trust levels (Public, DMZ, App, Gov, AI/Data), separated by security controls like c4 and c6.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-f9150a032d65c4d7d13987af-53-000038",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "tb3",
+        "tb5",
+        "c9"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Network-level isolation is depicted via 'Restricted Application Subnet' (tb3) and 'Isolated Private AI and Data Subnet' (tb5). Component c9 is labeled as an 'Enclave', indicating sandboxing/isolation.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-0b309de7950edbfb5e56d372",
+      "true_label": "met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": false,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c4"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "No anti-automation controls such as CAPTCHA or rate limiting are explicitly depicted or labeled in the extraction. While c4 is a WAF, the specific controls are not shown.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-composite-0914062a97936d78c1a65e74",
+      "true_label": "met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": false,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f11"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Flow f11 ('Secrets and model-access controls') transfers secrets to the Secrets Vault (c10) but lacks a protocol label indicating encryption, making it impossible to verify secrets are not sent in clear text.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-composite-ad70cace67ce58c0b04f96e",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c10"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Component c10 is labeled 'Hardware Security Module and Secrets Vault', indicating a dedicated solution for secure secret management, implying secrets are not stored in source code.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-composite-49e7ed47705f61175f86f7ac-53-000005",
+      "true_label": "met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": false,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c6",
+        "c8",
+        "f3"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "While c6 is an Identity Manager, c8 is an Encrypted Database, and f3 uses TLS, the extraction does not explicitly label session token storage or transmission mechanisms. Specific evidence for session token protection is missing.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-composite-c5081ec9a0b0d16209b83571-53-000010",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f3"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Flow f3 is labeled with 'HTTPS / TLS 1.3', which secures the transmission of data (including cookies) across the public internet boundary.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-composite-8cb448ba5ea05ff69d8d09f2-53-000001",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c4",
+        "c6"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Components c4 (Web Application Firewall) and c6 (Secure API Gateway and Identity Manager) are located within trusted boundaries (tb2, tb3) and handle access control.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-composite-ed0a0a645eb7b31dbb2ed6b3-53-000001",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c4",
+        "c9",
+        "f9"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Component c4 (WAF) validates traffic, and flow f9 is labeled 'Sanitized AI processing requests', indicating input validation and sanitization.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-composite-3dc6f67a223cf26e26edfebf",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c8"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Component c8 is explicitly labeled 'AES-256 Encrypted Core Database', satisfying the requirement for sensitive data stores to be encrypted at rest.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-composite-69496a4f4fc2923440c115b2-53-000015",
+      "true_label": "met",
+      "extract_reason_verdict": "met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c10"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Component c10 is labeled 'Hardware Security Module and Secrets Vault', confirming the use of a secrets management solution.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-composite-807bca2da85437284139bdbb-53-000001",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f4",
+        "f7",
+        "f8",
+        "f9"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Flows f4, f7, f8, and f9 cross trust boundaries (tb2-tb3, tb3-tb4, tb3-tb5) but have 'protocol: null' in the extraction, lacking secure protocol labels like TLS/HTTPS.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-composite-422385e2f351b31ebb2f8772-53-000003",
+      "true_label": "met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": false,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c4"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "Component c4 is a WAF, but the extraction does not explicitly label anti-automation or business logic controls (e.g., rate limiting, bot detection).",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-composite-6ba2549d229c305b232ba4c0-53-000015",
+      "true_label": "met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": false,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "c5",
+        "c6"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "While c5 and c6 route to specific resources, the extraction does not explicitly label an allowlist or whitelist mechanism for allowed resources/systems.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    },
+    {
+      "diagram_id": "p43_d0",
+      "requirement_id": "job53-D-composite-f380c16e0fc09b7f301f1416-53-000009",
+      "true_label": "not_met",
+      "extract_reason_verdict": "not_met",
+      "extract_reason_correct": true,
+      "verdict_policy_source": null,
+      "evidence_quality": null,
+      "cited_element_ids": [
+        "f4",
+        "f7",
+        "f8",
+        "f9"
+      ],
+      "dropped_hallucinated_citations": null,
+      "reasoning": "The requirement mandates that message headers and payload are protected in transit using strong encryption (TLS). While flow f3 (Public Internet to DMZ) explicitly specifies 'HTTPS / TLS 1.3', flows f4 (DMZ to App Subnet), f7 (App Subnet to Gov Databases), f8 (App Subnet to Private AI), and f9 (App Subnet to Private AI) cross trust boundaries but have 'protocol: null' in the extraction. Per the system-wide requirement rules, all in-scope cross-boundary flows must carry the required evidence. Although f8 is labeled 'Encrypted data operations', this does not explicitly confirm TLS for transit headers/payload. The absence of explicit TLS protocol labels on these in-scope flows means the requirement is not met based on the provided extraction.",
+      "extraction_diagnostics": {
+        "extraction_votes": 3,
+        "extraction_passes_succeeded": 3,
+        "merge_threshold": 0.5,
+        "confirmed_element_count": 24,
+        "total_element_count": 30,
+        "scope_agreement_ratio": 1.0,
+        "scope_votes": {
+          "architecture_relevant": 3
+        },
+        "style_votes": {
+          "architecture_or_dfd": 3
+        },
+        "citation_retry_batches": 0,
+        "citation_retry_exhausted_requirements": 0,
+        "completeness_retry_batches": 1,
+        "requirements_missing_after_retry": 0,
+        "full_failure_retry_batches": 1,
+        "full_failure_exhausted_batches": 0
+      }
+    }
+  ]
+}

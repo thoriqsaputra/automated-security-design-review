@@ -22,43 +22,14 @@ except Exception:
 
 _TOKEN_RE = re.compile(r"[a-zA-Z0-9_]+")
 _RRF_K = 60
-# Same order of magnitude as gaining one rank-1 vote from either ranker — a
-# nudge, not a filter, so a different-typed-but-genuinely-relevant item can
-# still outrank a same-typed-but-irrelevant one.
 _TYPE_MATCH_BONUS = 1.0 / _RRF_K
 
 _MIN_RESULTS = 3
 
-# Gatekeeper: batch size for the primary (real-reasoning) selection path.
-# Kept well under typical pool sizes so each call stays focused rather than
-# asking the model to judge dozens of candidates at once in one shot.
 _GATEKEEPER_BATCH_SIZE = 15
 
-# Minimum calibrated confidence for a gatekeeper "relevant: true" to survive
-# into the debate. Without this, every relevant=true call was kept regardless
-# of confidence, and the gatekeeper's relevance question is coarse enough
-# (diagram-type plausibility) that borderline calls were common — confirmed
-# empirically as the direct cause of diagrams pulling in 40-55% of an entire
-# category's requirement pool. The gatekeeper prompt now explicitly asks it to
-# calibrate confidence against how concretely the diagram's actual content (not
-# its general type) supports the call, so this threshold is meaningful.
-#
-# NOTE: an earlier pass at 0.6 combined with an overly strict prompt caused the
-# opposite failure — selection recall against ground truth collapsed (only
-# ~26-48% of genuinely labeled requirements were still selected), because the
-# model was conflating "the control isn't drawn" (still relevant — a not_met
-# case) with "the scope isn't drawn" (genuinely not relevant), and rating
-# confidence low for the former. The prompt now explicitly separates these; 0.5
-# keeps a modest additional safety margin on top of that prompt fix.
 _GATEKEEPER_CONFIDENCE_THRESHOLD = 0.5
 
-# Keyword phrasing matched against caption/surrounding-text/OCR text to guess
-# a diagram's type, using the exact vocabulary stored in
-# CategoryDiagramRequirement.diagram_type ("data_flow" | "sequence" | "architecture").
-# Order matters: first match wins. Unlike the earlier (reverted) attempt, this
-# is only ever used as a soft score nudge below — never to exclude candidates,
-# since most genuinely relevant items for a diagram carry a *different* type
-# label than the diagram itself (confirmed empirically this session).
 _TYPE_KEYWORDS = (
     ("sequence", ("sequence diagram",)),
     ("data_flow", ("data flow diagram", "data-flow diagram", "dfd")),
@@ -103,10 +74,6 @@ class DiagramRequirementSelector:
         ingestion_job,
         force_strategy: str | None = None,
     ) -> List[Any]:
-        """`force_strategy` is an eval-only seam ("gatekeeper" | "hybrid" |
-        "naive") to isolate one retrieval path for measurement. Leave it
-        `None` in production — that uses the recall-oriented hybrid default
-        path, with naive fallback if hybrid has no usable signal."""
         top_k = self.config.vision_diagram_requirements_max_items
         caption = (getattr(diagram, "caption", "") or "").strip()
         surrounding = (getattr(diagram, "surrounding_text", "") or "").strip()
@@ -203,12 +170,6 @@ class DiagramRequirementSelector:
         top_k: int,
         diagram_id: Any = None,
     ) -> List[Any]:
-        """Real-reasoning primary path: batches the full candidate pool through
-        VisionAgent (same model as Hunter/Critic/Mediator), asking a lean
-        scope-only question per batch — same question the ground-truth judge
-        asks: "is this requirement checkable from this diagram?" A distance
-        metric (embeddings/BM25/cross-encoder) can only ever approximate this;
-        actual reasoning is what the precision problem needed."""
         if not pool:
             return []
 
@@ -257,12 +218,6 @@ class DiagramRequirementSelector:
             reverse=True,
         )
 
-        # Confidence cutoff: `relevant: true` alone isn't enough — the
-        # gatekeeper's relevance question is coarse enough that low-confidence
-        # borderline calls were common, and top_k alone doesn't filter those
-        # out (it only caps the count). Keep only calibrated-confident matches
-        # first; only fall back toward weaker matches (then, as a last
-        # resort, the rest of the pool) if that leaves too few to debate.
         above_threshold = [
             req for req in selected
             if ranked_relevances[req.stable_key][0] >= _GATEKEEPER_CONFIDENCE_THRESHOLD
@@ -271,8 +226,6 @@ class DiagramRequirementSelector:
             selected = above_threshold
         elif len(selected) >= _MIN_RESULTS:
             selected = selected[:_MIN_RESULTS]
-        # else: keep every relevant=true match (already < _MIN_RESULTS); the
-        # pool backfill below tops it up to _MIN_RESULTS.
 
         if len(selected) < _MIN_RESULTS:
             for req in pool:
@@ -293,19 +246,6 @@ class DiagramRequirementSelector:
         top_k: int,
         diagram_type: str | None = None,
     ) -> List[Any]:
-        """BM25 + vector cosine, fused via Reciprocal Rank Fusion. The
-        category's requirement pool is small (tens of items), so both
-        rankers score the FULL pool — no need for approximate/top-k-limited
-        search at either stage.
-
-        No cross-encoder reranking step: empirically (measured against the
-        design-14/15 diagram-requirement eval set — see
-        diagram_retrieval_eval.py), ms-marco-MiniLM-L-6-v2 reranking HURTS
-        ranking quality here (MAP 0.640 vs 0.719 for the RRF-fused order
-        alone). It's a general web-passage reranker trained on MS MARCO
-        query/passage pairs and doesn't transfer to short diagram
-        captions/OCR text scored against formal ASVS-style requirement text
-        — the RRF-fused order is used directly instead."""
         vector_pairs = self.workflow_repository.list_diagram_requirements_with_similarity(
             category_id=category_id,
             ingestion_job_id=ingestion_job_id,
@@ -328,8 +268,6 @@ class DiagramRequirementSelector:
             bm25_order = sorted(range(len(pool)), key=lambda i: bm25_scores[i], reverse=True)
             bm25_rank = {pool[i].id: rank for rank, i in enumerate(bm25_order)}
         else:
-            # No BM25 signal available — treat every item as tied, so fusion
-            # degrades gracefully to vector-only ranking.
             bm25_rank = {r.id: 0 for r in pool}
 
         def rrf_score(req) -> float:
@@ -366,10 +304,6 @@ class DiagramRequirementSelector:
         if surrounding_segment:
             parts.append(surrounding_segment)
 
-        # Caption/surrounding text describes what KIND of diagram this is, but
-        # rarely names what's actually drawn in it (component/technology names
-        # like "DMZ", "MySQL Database") — that's the vocabulary an embedding
-        # needs to connect a diagram to the specific requirements it implicates.
         ocr_segment = _normalize_query_segment(ocr_text, max_chars=1200)
         if ocr_segment:
             parts.append(f"Visible diagram elements: {ocr_segment}")

@@ -106,10 +106,6 @@ class DebateService:
         debate_history: List[Dict[str, Any]] = []
         rebuttal_context: List[str] = []
         retrieval_refresh_trace: Dict[str, Any] = {"triggered": False, "attempts": 0, "events": []}
-        # Once a block_id's underlying text has been confirmed grounded in an
-        # earlier round, later rounds don't need to re-derive groundedness from
-        # that round's own re-phrased quote — the source text hasn't changed,
-        # only the agent's wording of it has.
         grounded_block_ids: set = set()
 
         round_number = 0
@@ -150,12 +146,6 @@ class DebateService:
                 grounded_ids=grounded_block_ids,
             )
             grounded_block_ids.update(c.block_id for c in hunter_result.citations)
-            # Capture pre-stabilize state: _stabilize_hunter_grounding (below) flips a
-            # citation-less "met" to "not_met" and sets evidence_found=False, which
-            # would otherwise silently defuse the retry-trigger check just below it
-            # (evidence_found would already be False by the time it's checked) —
-            # the one retry that exists specifically to rescue this case would then
-            # never fire.
             pre_stabilize_verdict = hunter_result.verdict
             pre_stabilize_evidence_found = hunter_result.evidence_found
             hunter_result = self._stabilize_hunter_grounding(
@@ -237,10 +227,6 @@ class DebateService:
                 critic_result.invalid_citation_ids,
                 [citation.block_id for citation in critic_rejected],
             )
-            # Symmetric to the hunter citation-retry above: a "met" critic verdict
-            # with no valid_citations previously went straight to
-            # _stabilize_critic_grounding's forced downgrade with zero chance to
-            # re-ask the model for a citation, unlike hunter which gets one retry.
             if critic_result.revised_verdict == VERDICT_MET and not critic_result.valid_citations:
                 pre_retry_revised_verdict = critic_result.revised_verdict
                 critic_result = self._retry_critic_for_citations(
@@ -754,16 +740,7 @@ class DebateService:
         ):
             return False, escalation_round_granted
         if round_number >= self.max_debate_rounds:
-            # Allow ONE escalation round when the Critic fundamentally disagrees
-            # with the Hunter (overturn) AND the Hunter has low confidence.
-            # This prevents the Mediator from receiving a stale/contested result
-            # that it cannot resolve without additional evidence.
             if not escalation_round_granted and critic_result.outcome == OUTCOME_OVERTURN:
-                # Skip escalation when the Critic "overturns" to the same verdict as
-                # the Hunter with no cited evidence — this is a malformed OVERTURN
-                # (should have been UPHOLD). Granting a rebuttal here lets the Hunter
-                # switch verdicts under Critic pressure without real evidence, creating
-                # false positives. A genuine OVERTURN changes the verdict direction.
                 hunter_ver = getattr(hunter_result, "verdict", None)
                 critic_rev = getattr(critic_result, "revised_verdict", None)
                 if hunter_ver and critic_rev and hunter_ver == critic_rev:
