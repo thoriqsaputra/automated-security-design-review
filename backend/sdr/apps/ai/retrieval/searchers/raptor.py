@@ -396,13 +396,14 @@ class RAPTORSearcher:
         selected: List[RAPTORSearchResult] = []
         token_total = 0
         resolved_top_k = self._resolve_top_k(top_k)
+        enforce_token_budget = max_tokens is not None and int(max_tokens) > 0
         for result in scored:
             if len(selected) >= resolved_top_k:
                 break
             next_tokens = result.node.token_estimate
-            if selected and token_total + next_tokens > max_tokens:
+            if enforce_token_budget and selected and token_total + next_tokens > max_tokens:
                 continue
-            if not selected and next_tokens > max_tokens:
+            if enforce_token_budget and not selected and next_tokens > max_tokens:
                 selected.append(result)
                 break
             selected.append(result)

@@ -17,11 +17,43 @@ from sdr.apps.ai.rate_limiter import get_rate_limiter
 logger = logging.getLogger(__name__)
 _DEFAULT_MAX_TOKENS = 4000
 _MARKDOWN_JSON_FENCE_RE = re.compile(r"^```(?:json)?\s*(.*?)\s*```$", re.DOTALL)
+# Broad object-span match used as a fallback when the model wraps its JSON in
+# explanatory prose (e.g. "Here is the JSON:\n\n{...}\n\nLet me know...").
+# OpenAI's response_format=json_object is a hard constraint on OpenAI's own
+# API, but RouteLLM's pass-through to other model families (Claude, etc.)
+# doesn't enforce it the same way, so those models can add commentary around
+# an otherwise-valid JSON object despite the "Return ONLY a JSON object"
+# instruction. Greedy first-'{'-to-last-'}' is safe here because these judge
+# prompts never legitimately contain other brace-delimited text.
+_JSON_OBJECT_RE = re.compile(r"\{.*\}", re.DOTALL)
 
 
 def _strip_markdown_json_fence(content: str) -> str:
     match = _MARKDOWN_JSON_FENCE_RE.match(content.strip())
     return match.group(1) if match else content
+
+
+def _extract_json_object(content: str) -> str:
+    """Best-effort extraction of a JSON object from a possibly prose-wrapped
+    LLM response. Tries the content as-is (after fence-stripping) first, then
+    falls back to pulling the outermost {...} span out of surrounding text."""
+    stripped = _strip_markdown_json_fence(content)
+    try:
+        json.loads(stripped)
+        return stripped
+    except json.JSONDecodeError:
+        pass
+
+    match = _JSON_OBJECT_RE.search(content)
+    if match:
+        candidate = match.group(0)
+        try:
+            json.loads(candidate)
+            return candidate
+        except json.JSONDecodeError:
+            pass
+
+    return stripped
 
 class RouteLLMAIService(AIServiceInterface):
     def __init__(self):
@@ -104,7 +136,7 @@ class RouteLLMAIService(AIServiceInterface):
                     content = response.choices[0].message.content or ""
                     
                     if response_format and response_format.get("type") == "json_object":
-                        content = _strip_markdown_json_fence(content)
+                        content = _extract_json_object(content)
                         try:
                             json.loads(content)
                         except json.JSONDecodeError:

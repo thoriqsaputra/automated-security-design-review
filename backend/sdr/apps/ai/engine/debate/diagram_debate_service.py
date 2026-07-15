@@ -36,6 +36,8 @@ class DiagramDebateService:
     Orchestrates Hunter→Critic→Mediator debate for a single diagram.
     """
 
+    PIPELINE_MODE = "debate"
+
     def __init__(self) -> None:
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self._hunter_agent = VisionHunterAgent()

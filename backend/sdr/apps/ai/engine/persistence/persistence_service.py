@@ -311,6 +311,17 @@ class PersistenceService:
 
                 requirement_metadata = self._strip_null_bytes({
                     "source": "diagram_debate_service",
+                    "pipeline_mode": getattr(diagram_debate_output, "pipeline_mode", "debate"),
+                    "diagram_extraction": (
+                        {
+                            "components": hunter_result.get("components") or [],
+                            "trust_boundaries": hunter_result.get("trust_boundaries") or [],
+                            "flows": hunter_result.get("flows") or [],
+                            "other_visible_text": hunter_result.get("other_visible_text") or [],
+                        }
+                        if hunter_result.get("components")
+                        else None
+                    ),
                     "diagram_id": diagram_input.diagram_id,
                     "diagram_caption": diagram_display["caption"],
                     "raw_diagram_caption": diagram_display["raw_caption"],

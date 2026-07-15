@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from sdr.apps.ai.retrieval.core import (
+    HybridRetrievalTrace,
     RetrievalCandidate,
     RetrievalResult,
     RetrievalStrategy,
@@ -12,27 +13,15 @@ from sdr.apps.ai.retrieval.core import (
     merge_candidates,
     reciprocal_rank_fusion,
 )
+from sdr.apps.ai.retrieval.core.candidates import _key_for_candidate
 from sdr.apps.ai.retrieval.searchers.raptor import RAPTOR_LEVEL_HIGH, RAPTOR_LEVEL_LOW, RAPTOR_LEVEL_MID, RAPTORSearchResponse
 from sdr.apps.ai.tsd_processing.raptor import RAPTORTree
 from sdr.apps.standards.models import StandardCategory, StandardIngestionJob
 from sdr.core.config import settings
 
+from sdr.apps.ai.retrieval.core.keywords import extract_keywords as _extract_keywords
+
 logger = logging.getLogger(__name__)
-
-_STOPWORDS = frozenset({
-    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
-    "have", "has", "had", "do", "does", "did", "will", "would", "could",
-    "should", "may", "might", "must", "shall", "can", "of", "in", "on",
-    "at", "to", "for", "with", "by", "from", "as", "or", "and", "that",
-    "this", "it", "its", "not", "all", "any", "if", "when", "which",
-    "used", "use", "using", "verify", "ensure", "check", "confirm",
-})
-
-
-def _extract_keywords(text: str) -> List[str]:
-    import re as _re
-    words = _re.split(r"[^a-zA-Z]+", text or "")
-    return [w for w in words if len(w) >= 4 and w.lower() not in _STOPWORDS]
 
 
 def _grade_with_secondary_search(
@@ -111,7 +100,7 @@ def _grade_with_secondary_search(
     return evidence_filtered, evidence_metadata
 
 
-_EVIDENCE_TIER_ORDER = ("implementation_evidence", "__fallback__", "hierarchical_summary")
+_EVIDENCE_TIER_ORDER = ("__literal__", "hierarchical_summary")
 
 
 def _rerank_within_tiers(
@@ -119,27 +108,27 @@ def _rerank_within_tiers(
     query_text: str,
     candidates: List[RetrievalCandidate],
     max_context_chunks: int,
+    trace: Optional[HybridRetrievalTrace] = None,
 ) -> List[RetrievalCandidate]:
-    """Reranks candidates by evidence quality, with the cross-encoder (when
-    enabled) used only to break ties WITHIN each tier.
+    """Reranks literal source chunks together, with summaries only filling
+    after literal evidence.
 
-    Tier priority — implementation_evidence > fallback > hierarchical_summary —
-    is always the dominant signal. A hierarchical summary's embedding/relevance
-    score can look deceptively strong against a broad or generically-worded
-    question (it superficially touches many topics), which previously let a
-    summary spanning dozens of blocks across several pages outrank the actual
-    specific, citable leaf chunk once the cross-encoder was enabled. Letting
-    the cross-encoder fully bypass tiering traded that away for no real gain:
-    its semantic judgment is valuable for discriminating between several
-    plausible literal chunks, not for promoting a whole summary tier above
-    literal evidence.
+    The evidence grader's implementation/weak labels are useful metadata, but
+    making them hard rank tiers pushed exact literal matches behind generic
+    implementation-looking chunks. The only hard boundary retained here is
+    literal source text before hierarchical summaries.
     """
     tiers: Dict[str, List[RetrievalCandidate]] = {key: [] for key in _EVIDENCE_TIER_ORDER}
     for candidate in candidates:
         kind = candidate.metadata.get("evidence_kind")
-        tiers[kind if kind in ("implementation_evidence", "hierarchical_summary") else "__fallback__"].append(
-            candidate
-        )
+        tiers["hierarchical_summary" if kind == "hierarchical_summary" else "__literal__"].append(candidate)
+
+    if trace is not None:
+        trace.pre_rerank_order = [
+            _key_for_candidate(c)
+            for tier_key in _EVIDENCE_TIER_ORDER
+            for c in sorted(tiers[tier_key], key=lambda c: c.score, reverse=True)
+        ]
 
     reranked: List[RetrievalCandidate] = []
     for tier_key in _EVIDENCE_TIER_ORDER:
@@ -149,7 +138,186 @@ def _rerank_within_tiers(
         reranked.extend(
             router._reranker.rerank(query=query_text, candidates=tier_candidates, top_k=len(tier_candidates))
         )
+
+    if trace is not None:
+        trace.post_rerank_order = [_key_for_candidate(c) for c in reranked]
+
     return reranked[:max_context_chunks]
+
+
+def _protected_candidate_keys(
+    *,
+    primary_dense: List[RetrievalCandidate],
+    primary_bm25: List[RetrievalCandidate],
+    raptor_multi: List[RetrievalCandidate],
+    dense_n: int,
+    bm25_n: int,
+    raptor_n: int,
+) -> Dict[str, str]:
+    """Top-N candidate keys per constituent signal (primary-query rankings
+    only — expansion variants are supplementary), mapped to the signal name.
+    These are the recall-safety floor: the hybrid final context must contain
+    each of them unless the evidence grader legitimately rejected it."""
+    protected: Dict[str, str] = {}
+    for source, candidates, top_n in (
+        ("dense", primary_dense, dense_n),
+        ("bm25", primary_bm25, bm25_n),
+        ("raptor", raptor_multi, raptor_n),
+    ):
+        for candidate in candidates[: max(0, int(top_n))]:
+            protected.setdefault(_key_for_candidate(candidate), source)
+    return protected
+
+
+def _enforce_protected_slots(
+    reranked: List[RetrievalCandidate],
+    graded_pool: List[RetrievalCandidate],
+    protected: Dict[str, str],
+    max_context_chunks: int,
+) -> List[RetrievalCandidate]:
+    """Re-inserts missing protected candidates at the TAIL of the final list,
+    evicting the lowest-ranked non-protected items to stay within budget.
+
+    Tail insertion keeps the head of the fused/tiered/reranked ordering intact
+    (context_precision/MRR unaffected) while guaranteeing coverage: a hybrid
+    ensemble must never return a context strictly worse than any of its
+    constituent signals. Candidates the grader rejected outright
+    (baseline_requirement/empty — absent from graded_pool) stay excluded;
+    those filters are legitimate and don't touch literal TSD leaves.
+    """
+    if not protected:
+        return reranked
+
+    present = {_key_for_candidate(c) for c in reranked}
+    graded_by_key: Dict[str, RetrievalCandidate] = {}
+    for candidate in graded_pool:
+        graded_by_key.setdefault(_key_for_candidate(candidate), candidate)
+
+    additions: List[RetrievalCandidate] = []
+    for key, source in protected.items():
+        if key in present:
+            continue
+        candidate = graded_by_key.get(key)
+        if candidate is None:
+            continue
+        candidate.metadata["protected_slot_source"] = source
+        additions.append(candidate)
+        present.add(key)
+
+    if not additions:
+        return reranked
+
+    result = list(reranked) + additions
+    while len(result) > max_context_chunks:
+        evictable = [i for i, c in enumerate(result) if _key_for_candidate(c) not in protected]
+        if not evictable:
+            result = result[:max_context_chunks]
+            break
+        del result[evictable[-1]]
+    return result
+
+
+def _leaf_descendants(node) -> List[Any]:
+    """Recursively collects level-0 (literal, non-summarized) descendant nodes
+    of a RAPTOR tree node. A leaf node is its own sole descendant."""
+    if int(getattr(node, "level", 0) or 0) == 0:
+        return [node]
+    leaves: List[Any] = []
+    for child in getattr(node, "children", None) or []:
+        leaves.extend(_leaf_descendants(child))
+    return leaves
+
+
+def _ground_summaries_with_leaves(
+    router,
+    candidates: List[RetrievalCandidate],
+    *,
+    raptor_tree: Optional[RAPTORTree],
+    query_embedding: List[float],
+    keywords: List[str],
+    max_context_chunks: int,
+    leaves_per_summary: int = 1,
+) -> List[RetrievalCandidate]:
+    """A hierarchical_summary candidate's block_ids are a UNION over many
+    literal blocks — a judge/reader never sees the actual block text, only the
+    LLM-synthesized summary, which produces "coverage=1, recall=0" failures
+    (the block is technically "covered" but its literal content never reaches
+    the answer). For every summary candidate kept in the final list, this
+    grounds it with its top-N highest-cosine literal leaf descendants (if not
+    already present) — one leaf is not enough for a summary spanning many
+    distinct blocks, each of which may be independently "expected" — so at
+    least a few literal chunks back every summary that survives to the final
+    context. Added candidates are treated exactly like protected slots: tail
+    insertion, never evict each other or the protected set, subject to the
+    same evidence-grader legitimacy check.
+    """
+    if raptor_tree is None or raptor_tree.is_empty():
+        return candidates
+
+    summary_ids = [
+        c.id for c in candidates
+        if int(c.metadata.get("level", 0) or 0) > 0 and c.metadata.get("evidence_kind") == "hierarchical_summary"
+    ]
+    if not summary_ids:
+        return candidates
+
+    from sdr.apps.ai.tsd_processing.raptor import _compute_cosine_similarity
+
+    node_map = {n.node_id: n for n in raptor_tree.get_all_nodes()}
+    present_ids = {c.id for c in candidates}
+    groundings: List[RetrievalCandidate] = []
+
+    for summary_id in summary_ids:
+        node = node_map.get(summary_id)
+        if node is None:
+            continue
+        leaves = [leaf for leaf in _leaf_descendants(node) if getattr(leaf, "has_embedding", False)]
+        if not leaves:
+            continue
+        ranked_leaves = sorted(
+            leaves, key=lambda leaf: _compute_cosine_similarity(query_embedding, leaf.embedding), reverse=True
+        )
+
+        for leaf in ranked_leaves[: max(1, leaves_per_summary)]:
+            if leaf.node_id in present_ids:
+                continue
+
+            grounding_candidate = RetrievalCandidate(
+                id=leaf.node_id,
+                source_type="raptor",
+                text=leaf.text,
+                score=_compute_cosine_similarity(query_embedding, leaf.embedding),
+                block_ids=list(leaf.source_block_ids),
+                metadata={
+                    "level": leaf.level,
+                    "page_numbers": list(leaf.page_numbers),
+                    "section_heading": leaf.section_heading,
+                },
+                token_count=leaf.token_estimate,
+            )
+            kind, reason = router._classify_candidate_evidence(grounding_candidate, keywords=keywords)
+            if kind in {"baseline_requirement", "empty"}:
+                continue
+            grounding_candidate.metadata["evidence_kind"] = kind
+            grounding_candidate.metadata["evidence_reason"] = reason
+            grounding_candidate.metadata["leaf_grounded_for"] = summary_id
+            groundings.append(grounding_candidate)
+            present_ids.add(leaf.node_id)
+
+    if not groundings:
+        return candidates
+
+    result = list(candidates) + groundings
+    protected_and_grounded = {c.id for c in groundings} | {
+        c.id for c in candidates if c.metadata.get("protected_slot_source")
+    }
+    while len(result) > max_context_chunks:
+        evictable = [i for i, c in enumerate(result) if c.id not in protected_and_grounded]
+        if not evictable:
+            result = result[:max_context_chunks]
+            break
+        del result[evictable[-1]]
+    return result
 
 
 def _safe_execute(func, *args, on_error=None, **kwargs):
@@ -320,6 +488,7 @@ class RetrievalRouteExecutor:
         query_embedding: List[float],
         keywords: List[str],
         query_variants: Optional[List[Tuple[str, List[float]]]] = None,
+        trace: Optional[HybridRetrievalTrace] = None,
     ) -> RetrievalResult:
         has_raptor = bool(raptor_tree and not raptor_tree.is_empty())
         # query_variants are LLM-generated rephrasings of query_text aimed at bridging
@@ -327,12 +496,14 @@ class RetrievalRouteExecutor:
         # are only run through the literal-text-matching branches (BM25, RAPTOR dense
         # leaf search) — structural/hierarchical branches stay single-query.
         all_queries: List[Tuple[str, List[float]]] = [(query_text, query_embedding)] + list(query_variants or [])
-        branch_count = len(all_queries) * (2 if has_raptor else 1) + (1 if has_raptor else 0)
+        run_dense = has_raptor and router.advanced_config.hybrid_dense_top_k > 0
+        run_bm25 = router.advanced_config.hybrid_bm25_top_k > 0
+        branch_count = (len(all_queries) if run_dense else 0) + (len(all_queries) if run_bm25 else 0) + (1 if has_raptor else 0)
         max_workers = _bounded_pool_size(router.advanced_config.hybrid_max_workers, branch_count)
         with ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix="ThreadPoolExecutor-3") as executor:
             dense_futures = []
             bm25_futures = []
-            if has_raptor:
+            if run_dense:
                 for q_text, q_embedding in all_queries:
                     dense_futures.append(
                         executor.submit(
@@ -340,38 +511,46 @@ class RetrievalRouteExecutor:
                             router._raptor_searcher.search_collapsed_raptor,
                             query_text=q_text,
                             tree=raptor_tree,
-                            top_k=max(router.vector_top_k, 8),
-                            max_tokens=4000,
+                            top_k=max(router.vector_top_k, router.advanced_config.hybrid_dense_top_k),
+                            max_tokens=0,
                             allowed_levels=[RAPTOR_LEVEL_LOW],
                             precomputed_embedding=q_embedding or None,
                             on_error=lambda exc: RAPTORSearchResponse(error=str(exc)),
                         )
                     )
+                # Per-level budget (not a flat top_k collapsed across levels) —
+                # matches execute_raptor_high's own search_multi_level call, so
+                # this branch's candidate pool is a strict superset of what the
+                # raptor_high arm alone would find. A flat top_k here previously
+                # let level-0 leaves crowd out the level-1/2 summary nodes that
+                # raptor_high finds via level, causing hybrid to silently never
+                # pool candidates raptor_high wins on (not merely rank them
+                # lower — genuinely absent from every branch's candidate list).
                 fut_rap = executor.submit(
                     _safe_execute,
-                    router._raptor_searcher.search_collapsed_raptor,
+                    router._raptor_searcher.search_multi_level,
                     query_text=query_text,
                     tree=raptor_tree,
-                    top_k=max(router.raptor_top_k, 6),
-                    max_tokens=4000,
-                    allowed_levels=[RAPTOR_LEVEL_LOW, RAPTOR_LEVEL_MID, RAPTOR_LEVEL_HIGH],
+                    levels=[RAPTOR_LEVEL_LOW, RAPTOR_LEVEL_MID, RAPTOR_LEVEL_HIGH],
+                    top_k_per_level=3,
                     precomputed_embedding=query_embedding or None,
                     on_error=lambda exc: RAPTORSearchResponse(error=str(exc)),
                 )
             else:
                 fut_rap = None
-            for q_text, _q_embedding in all_queries:
-                bm25_futures.append(
-                    executor.submit(
-                        _safe_execute,
-                        router._keyword_searcher.search,
-                        query_text=q_text,
-                        tree=raptor_tree,
-                        top_k=max(router.vector_top_k, router.raptor_top_k, 20),
-                        allowed_levels=[RAPTOR_LEVEL_LOW, RAPTOR_LEVEL_MID, RAPTOR_LEVEL_HIGH],
-                        on_error=lambda exc: [],
+            if run_bm25:
+                for q_text, _q_embedding in all_queries:
+                    bm25_futures.append(
+                        executor.submit(
+                            _safe_execute,
+                            router._keyword_searcher.search,
+                            query_text=q_text,
+                            tree=raptor_tree,
+                            top_k=max(router.vector_top_k, router.raptor_top_k, router.advanced_config.hybrid_bm25_top_k),
+                            allowed_levels=[RAPTOR_LEVEL_LOW],
+                            on_error=lambda exc: [],
+                        )
                     )
-                )
             dense_responses = [fut.result() for fut in dense_futures]
             raptor_response = fut_rap.result() if fut_rap else None
             bm25_candidate_lists = [fut.result() for fut in bm25_futures]
@@ -379,6 +558,17 @@ class RetrievalRouteExecutor:
         dense_candidate_lists = [router._dense_tsd_results_to_candidates(resp) for resp in dense_responses]
         raptor_candidates = router._raptor_results_to_candidates(raptor_response)
         ranked_lists = [*bm25_candidate_lists, *dense_candidate_lists, raptor_candidates]
+
+        if trace is not None:
+            trace.queries = [q for q, _ in all_queries]
+            trace.fusion_method = router.advanced_config.fusion_method
+            trace.max_context_chunks = router.max_context_chunks
+            for i, bm25_list in enumerate(bm25_candidate_lists):
+                trace.record_list(f"bm25[{i}]", bm25_list)
+            for i, dense_list in enumerate(dense_candidate_lists):
+                trace.record_list(f"dense[{i}]", dense_list)
+            trace.record_list("raptor_multi", raptor_candidates)
+
         if router.advanced_config.fusion_method == "rrf":
             # Primary fusion via Reciprocal Rank Fusion across each searcher's
             # own ranked list, replacing the dedupe+agreement-boost merge below.
@@ -387,6 +577,8 @@ class RetrievalRouteExecutor:
         else:
             deduped = dedupe_candidates(merge_candidates(*ranked_lists))
         scored = router._apply_keyword_coverage_boost(deduped, keywords)
+        if trace is not None:
+            trace.record_fused(scored)
         evidence_filtered, evidence_metadata = _grade_with_secondary_search(
             router,
             scored,
@@ -395,8 +587,32 @@ class RetrievalRouteExecutor:
             raptor_tree=raptor_tree,
             has_raptor=has_raptor,
         )
-        reranked = _rerank_within_tiers(router, query_text, evidence_filtered, router.max_context_chunks)
+        if trace is not None:
+            trace.record_graded(evidence_filtered)
+            trace.rejected = list((evidence_metadata.get("evidence_quality") or {}).get("rejected") or [])
+            trace.secondary_search_triggered = bool(evidence_metadata.get("secondary_search_triggered"))
+        reranked = _rerank_within_tiers(router, query_text, evidence_filtered, router.max_context_chunks, trace=trace)
+        protected = _protected_candidate_keys(
+            primary_dense=dense_candidate_lists[0] if dense_candidate_lists else [],
+            primary_bm25=bm25_candidate_lists[0] if bm25_candidate_lists else [],
+            raptor_multi=raptor_candidates,
+            dense_n=router.advanced_config.protected_dense_top_n,
+            bm25_n=router.advanced_config.protected_bm25_top_n,
+            raptor_n=router.advanced_config.protected_raptor_top_n,
+        )
+        reranked = _enforce_protected_slots(reranked, evidence_filtered, protected, router.max_context_chunks)
+        reranked = _ground_summaries_with_leaves(
+            router,
+            reranked,
+            raptor_tree=raptor_tree,
+            query_embedding=query_embedding,
+            keywords=keywords,
+            max_context_chunks=router.max_context_chunks,
+            leaves_per_summary=router.advanced_config.summary_leaves_per_grounding,
+        )
         kept = [c for c in reranked if c.text]
+        if trace is not None:
+            trace.record_final(kept)
         merged_chunks = [c.text for c in kept]
         merged_chunk_block_ids = [list(c.block_ids) for c in kept]
         merged_chunk_levels = [int(c.metadata.get("level", 0) or 0) for c in kept]
@@ -414,6 +630,16 @@ class RetrievalRouteExecutor:
             evidence_metadata={
                 **evidence_metadata,
                 "block_source_map": block_source_map,
+                "protected_slots_added": [
+                    {"id": c.id, "source": c.metadata.get("protected_slot_source")}
+                    for c in kept
+                    if c.metadata.get("protected_slot_source")
+                ],
+                "leaf_groundings_added": [
+                    {"id": c.id, "grounds_summary": c.metadata.get("leaf_grounded_for")}
+                    for c in kept
+                    if c.metadata.get("leaf_grounded_for")
+                ],
             },
         )
 

@@ -102,11 +102,12 @@ logger = logging.getLogger(__name__)
 
 def _aggregate(results: list[dict]) -> dict:
     if not results:
-        return {"count": 0, "context_recall": 0.0, "faithfulness": 0.0,
+        return {"count": 0, "context_precision": 0.0, "context_recall": 0.0, "faithfulness": 0.0,
                 "faithfulness_deterministic": 0.0}
     n = len(results)
     return {
         "count": n,
+        "context_precision": round(sum(r["context_precision"] for r in results) / n, 4),
         "context_recall": round(sum(r["context_recall"] for r in results) / n, 4),
         "faithfulness": round(sum(r["faithfulness"] for r in results) / n, 4),
         "faithfulness_deterministic": round(
@@ -167,10 +168,9 @@ def main():
     invalid_arms = [a for a in run_arms if a not in all_arms]
     if invalid_arms:
         raise SystemExit(f"Unknown --arms value(s) {invalid_arms}; must be a subset of {all_arms}")
-    if "flat_topk" not in run_arms and "hybrid" not in run_arms:
+    if "hybrid" not in run_arms:
         raise SystemExit(
-            "Thesis metrics need a baseline (flat_topk) and a comparison arm (hybrid) — "
-            "--arms must include at least flat_topk and hybrid."
+            "--arms must include hybrid. Baseline arms are optional for targeted reruns."
         )
 
     if os.path.isabs(args.dataset):
@@ -278,6 +278,7 @@ def main():
                             )
                             arm_results[arm] = result
                             row[arm] = {
+                                "context_precision": result["context_precision"],
                                 "context_recall": result["context_recall"],
                                 "faithfulness": result["faithfulness"],
                                 "faithfulness_deterministic": result["faithfulness_deterministic"],
@@ -415,6 +416,7 @@ def main():
     logger.info("")
     for zone in ZONES:
         parts = [
+            f"{a}_precision={by_zone_agg[zone][a].get('context_precision', 0):.4f} "
             f"{a}_recall={by_zone_agg[zone][a].get('context_recall', 0):.4f}"
             for a in run_arms
         ]
@@ -425,6 +427,7 @@ def main():
         logger.info(f"  [{zone:6s}] " + "  ".join(parts))
     logger.info("")
     for a in run_arms:
+        logger.info(f"  Overall {a}_precision: {overall[a].get('context_precision', 0):.4f}")
         logger.info(f"  Overall {a}_recall: {overall[a].get('context_recall', 0):.4f}")
     logger.info("")
     logger.info("  Thesis metrics (baseline = flat_topk, the vanilla top-k retriever):")

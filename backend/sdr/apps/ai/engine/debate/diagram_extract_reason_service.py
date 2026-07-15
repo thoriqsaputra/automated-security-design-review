@@ -86,6 +86,8 @@ class DiagramExtractReasonService:
     DiagramDebateService for the debate-based approach this runs alongside.
     """
 
+    PIPELINE_MODE = "extract_reason"
+
     def __init__(self) -> None:
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
         self._extractor_agent = VisionExtractorAgent()
@@ -163,7 +165,7 @@ class DiagramExtractReasonService:
         agent_started_handler: Optional[Callable[[str], None]] = None,
         agent_completed_handler: Optional[Callable[..., None]] = None,
     ) -> DiagramDebateOutput:
-        output = DiagramDebateOutput(diagram=diagram, requirements=requirements)
+        output = DiagramDebateOutput(diagram=diagram, requirements=requirements, pipeline_mode=self.PIPELINE_MODE)
 
         if callable(cancel_check):
             try:
@@ -215,7 +217,16 @@ class DiagramExtractReasonService:
         )
         merged = self._merge_extraction_passes(raw_passes)
         if agent_completed_handler:
-            agent_completed_handler("extractor", merged.diagram_scope_reasoning)
+            agent_completed_handler(
+                "extractor",
+                merged.diagram_scope_reasoning,
+                extraction={
+                    "components": merged.components,
+                    "trust_boundaries": merged.trust_boundaries,
+                    "flows": merged.flows,
+                    "other_visible_text": merged.other_visible_text,
+                },
+            )
 
         if callable(cancel_check):
             try:
@@ -253,6 +264,15 @@ class DiagramExtractReasonService:
             **reasoning_diagnostics,
         }
 
+        reasoner_summary = (
+            "; ".join(
+                str(a.get("reasoning") or "").strip()
+                for a in assessments
+                if str(a.get("verdict", "")).strip().lower() == VERDICT_NOT_MET and a.get("reasoning")
+            )
+            or merged.diagram_scope_reasoning
+        )
+
         result_payload: Dict[str, Any] = {
             "overall_verdict": aggregated_verdict,
             "final_verdict": aggregated_verdict,
@@ -262,21 +282,37 @@ class DiagramExtractReasonService:
             "diagram_scope_reasoning": merged.diagram_scope_reasoning,
             "confidence": round(float(confidence), 2),
             "extraction_diagnostics": extraction_diagnostics,
+            "reasoning": reasoner_summary,
+            "finding_description": reasoner_summary,
+            "cot_trace": None,
+            "recommendation": None,
         }
 
-        # hunter_result / mediator_result carry the SAME assessments (there is
-        # no separate "first pass vs final" split in this design — Stage 1
-        # produces no verdicts at all) so the eval harness's existing
-        # `_per_requirement_verdicts()` helper reads either interchangeably:
-        # it looks for "requirement_assessments" on hunter_result and
-        # "assessed_requirements" on mediator_result, both present here.
-        output.hunter_result = result_payload
+        # mediator_result carries Stage 2's final per-requirement verdicts —
+        # kept under this name so the eval harness's `_per_requirement_verdicts()`
+        # helper (which reads "assessed_requirements" off mediator_result) is
+        # unaffected. hunter_result now holds Stage 1's OWN extraction summary
+        # (component/boundary/flow structure + scope reasoning) instead of a
+        # duplicate of Stage 2's verdict text, so persisted/live "Extractor"
+        # content is genuinely distinct from "Reasoner" content.
+        output.hunter_result = {
+            "extraction_summary": merged.diagram_scope_reasoning,
+            "reasoning": merged.diagram_scope_reasoning,
+            "diagram_scope_verdict": merged.diagram_scope_verdict,
+            "diagram_style": merged.diagram_style,
+            "components": merged.components,
+            "trust_boundaries": merged.trust_boundaries,
+            "flows": merged.flows,
+            "other_visible_text": merged.other_visible_text,
+            "requirement_assessments": [],
+            "cot_trace": None,
+        }
         output.mediator_result = result_payload
         output.critic_result = {}
         output.debate_rounds = 1
 
         if agent_completed_handler:
-            agent_completed_handler("reasoner", result_payload.get("diagram_scope_reasoning", ""))
+            agent_completed_handler("reasoner", reasoner_summary)
 
         return output
 

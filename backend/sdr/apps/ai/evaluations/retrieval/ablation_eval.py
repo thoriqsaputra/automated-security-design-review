@@ -143,6 +143,24 @@ def main():
              "--arm raptor_high once each to get a clean 6-runs-of-30-questions matrix instead of "
              "4-runs-of-90-questions-with-raptor-duplicates.",
     )
+    parser.add_argument(
+        "--limit",
+        type=int,
+        default=0,
+        help="Evaluate only the first N questions from the dataset (0 = all).",
+    )
+    parser.add_argument(
+        "--hybrid-dense-top-k",
+        type=int,
+        default=None,
+        help="Override dense leaf-search candidate pool width for the hybrid arm. Use 0 to disable dense.",
+    )
+    parser.add_argument(
+        "--hybrid-bm25-top-k",
+        type=int,
+        default=None,
+        help="Override BM25 candidate pool width for the hybrid arm. Use 0 to disable BM25.",
+    )
     args = parser.parse_args()
     run_raptor_low = args.arm in ("all", "raptor_low")
     run_raptor_high = args.arm in ("all", "raptor_high")
@@ -156,6 +174,8 @@ def main():
         dataset_path = data_path(args.dataset)
     with open(dataset_path, "r") as f:
         dataset = json.load(f)
+    if args.limit and args.limit > 0:
+        dataset = dataset[: args.limit]
 
     with SessionLocal() as db:
         design = db.query(Design).filter(Design.id == args.design_id).first()
@@ -225,6 +245,10 @@ def main():
                 enable_cross_encoder_rerank=(args.hybrid_rerank == "on"),
                 fusion_method=args.hybrid_fusion,
                 rrf_k=args.rrf_k,
+                hybrid_dense_top_k=args.hybrid_dense_top_k if args.hybrid_dense_top_k is not None else 20,
+                hybrid_bm25_top_k=args.hybrid_bm25_top_k if args.hybrid_bm25_top_k is not None else 20,
+                protected_dense_top_n=0 if args.hybrid_dense_top_k == 0 else 7,
+                protected_bm25_top_n=0 if args.hybrid_bm25_top_k == 0 else 2,
             )
         ) if run_hybrid else None
 

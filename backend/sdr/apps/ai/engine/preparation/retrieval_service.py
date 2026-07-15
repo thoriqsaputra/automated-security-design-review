@@ -8,7 +8,7 @@ from typing import Any, Dict, List, Optional, Tuple
 from sdr.apps.ai.client.session import capture_current_context
 from sdr.apps.ai.tsd_processing.document_models import TSDDocument
 from sdr.apps.ai.tsd_processing.raptor import RAPTORTree, RAPTORTreeBuilder
-from sdr.apps.ai.retrieval.core import RetrievalResult
+from sdr.apps.ai.retrieval.core import AdvancedRetrievalConfig, RetrievalResult
 from sdr.apps.ai.retrieval.routing.router import HybridRetrievalRouter
 from sdr.apps.standards.models import (
     StandardCategory,
@@ -17,6 +17,20 @@ from sdr.apps.standards.models import (
 from sdr.apps.ai.engine.dto import DebatableParameter, RetrievalIndexes
 
 logger = logging.getLogger(__name__)
+
+
+def _build_default_router() -> HybridRetrievalRouter:
+    return HybridRetrievalRouter(
+        advanced_config=AdvancedRetrievalConfig(
+            enable_cross_encoder_rerank=True,
+            fusion_method="agreement_boost",
+            protected_dense_top_n=7,
+            protected_bm25_top_n=2,
+            protected_raptor_top_n=7,
+            hybrid_dense_top_k=20,
+            hybrid_bm25_top_k=20,
+        )
+    )
 
 
 class RetrievalService:
@@ -31,7 +45,7 @@ class RetrievalService:
         router: Optional[HybridRetrievalRouter] = None,
     ) -> None:
         self.raptor_builder = raptor_builder or RAPTORTreeBuilder()
-        self.router = router or HybridRetrievalRouter()
+        self.router = router or _build_default_router()
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
     def get_retrieve_many_max_concurrency(self, override: Optional[int] = None) -> int:
@@ -235,18 +249,14 @@ class RetrievalService:
         child_requirement = (query_details.get("child_requirement") or "").strip()
         contract_then = (query_details.get("contract_then") or "").strip()
         not_sufficient = query_details.get("contract_not_sufficient") or []
-        domain_keywords = query_details.get("domain_keywords") or []
-        family_scope_terms = query_details.get("family_scope_terms") or []
         retry_queries = query_details.get("retry_queries") or []
         parts = [
-            parent_title,
-            parent_description,
             child_requirement,
+            parent_title,
             contract_then,
-            " ".join([x for x in not_sufficient[:2] if isinstance(x, str)]),
-            " ".join([x for x in retry_queries[:4] if isinstance(x, str)]),
-            " ".join([x for x in family_scope_terms[:8] if isinstance(x, str)]),
-            " ".join([x for x in domain_keywords if isinstance(x, str)]),
+            parent_description[:500],
+            " ".join([x for x in retry_queries[:2] if isinstance(x, str)]),
+            " ".join([x for x in not_sufficient[:1] if isinstance(x, str)]),
         ]
         return "\n".join([p for p in parts if p]).strip() or None
 

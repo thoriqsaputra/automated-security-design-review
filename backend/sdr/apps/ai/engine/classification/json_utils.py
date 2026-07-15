@@ -135,6 +135,7 @@ def parse_json_with_repair(
         component="fallback",
         temperature=0.0,
         max_tokens=max_tokens,
+        reasoning={"effort": "low"},
         response_format={"type": "json_object"},
     )
     if repair_resp.error or not repair_resp.content:

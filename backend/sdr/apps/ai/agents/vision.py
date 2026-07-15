@@ -59,6 +59,7 @@ class DiagramDebateOutput:
     requirements: List[Any] = field(default_factory=list)
     debate_rounds: int = 1
     error: Optional[str] = None
+    pipeline_mode: str = "debate"
 
 
 class VisionAgent(BaseAgent):

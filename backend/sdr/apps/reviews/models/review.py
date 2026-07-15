@@ -126,7 +126,7 @@ class Review(Base):
                     current_debate = debate
                     break
         label = (
-            f"Debate {debate_completed}/{debate_total} · "
+            f"Analyzed {debate_completed}/{debate_total} · "
             f"Persistence {persistence_completed}/{persistence_total}"
         )
         return {

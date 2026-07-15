@@ -5,7 +5,14 @@ from typing import Any, Dict, List, Optional, Set
 
 from sdr.apps.ai.client import get_embedding
 from sdr.apps.ai.engine.classification.query_expansion import expand_retrieval_query_variants
-from sdr.apps.ai.retrieval.core import AdvancedRetrievalConfig, RetrievalCandidate, RetrievalResult, RetrievalStrategy
+from sdr.apps.ai.retrieval.core import (
+    AdvancedRetrievalConfig,
+    HybridRetrievalTrace,
+    RetrievalCandidate,
+    RetrievalResult,
+    RetrievalStrategy,
+)
+from sdr.apps.ai.retrieval.core.keywords import extract_keywords as _extract_keywords
 from sdr.apps.ai.retrieval.postprocessing.evidence_grader import EvidenceGrader
 from sdr.apps.ai.retrieval.postprocessing.reranker import SafeOptionalReranker
 from sdr.apps.ai.retrieval.routing.executors import RetrievalRouteExecutor
@@ -24,40 +31,28 @@ _RAPTOR_TOP_K = 7
 _MAX_CONTEXT_CHUNKS = 16
 _EMBEDDING_DIMENSIONS = 1024
 
-# Simple keyword extractor used for BM25 coverage boost — splits on
-# non-alpha characters and drops short / stopword tokens.
-_STOPWORDS = frozenset({
-    "a", "an", "the", "is", "are", "was", "were", "be", "been", "being",
-    "have", "has", "had", "do", "does", "did", "will", "would", "could",
-    "should", "may", "might", "must", "shall", "can", "of", "in", "on",
-    "at", "to", "for", "with", "by", "from", "as", "or", "and", "that",
-    "this", "it", "its", "not", "all", "any", "if", "when", "which",
-    "used", "use", "using", "verify", "ensure", "check", "confirm",
-})
-
-
-def _extract_keywords(text: str) -> List[str]:
-    import re as _re
-    words = _re.split(r"[^a-zA-Z]+", text or "")
-    return [w for w in words if len(w) >= 4 and w.lower() not in _STOPWORDS]
-
 
 class HybridRetrievalRouter:
     def __init__(
         self,
         vector_top_k: int = _VECTOR_TOP_K,
         raptor_top_k: int = _RAPTOR_TOP_K,
-        max_context_chunks: int = _MAX_CONTEXT_CHUNKS,
+        max_context_chunks: Optional[int] = None,
         advanced_config: Optional[AdvancedRetrievalConfig] = None,
     ) -> None:
         self.vector_top_k = max(raptor_top_k, vector_top_k)
         self.raptor_top_k = raptor_top_k
-        self.max_context_chunks = max_context_chunks
+        self.max_context_chunks = (
+            int(max_context_chunks)
+            if max_context_chunks is not None
+            else int(getattr(settings, "AI_RETRIEVAL_MAX_CONTEXT_CHUNKS", _MAX_CONTEXT_CHUNKS))
+        )
         self.advanced_config = advanced_config or AdvancedRetrievalConfig.from_settings()
         self._raptor_searcher = RAPTORSearcher()
         self._keyword_searcher = KeywordSearcher()
         self._reranker = SafeOptionalReranker(
             enable_cross_encoder=self.advanced_config.enable_cross_encoder_rerank,
+            score_weight=self.advanced_config.rerank_score_weight,
         )
         self._strategy_selector = RetrievalStrategySelector()
         self._route_executor = RetrievalRouteExecutor()
@@ -72,6 +67,7 @@ class HybridRetrievalRouter:
         ingestion_job: Optional[StandardIngestionJob] = None,
         force_strategy: Optional[RetrievalStrategy] = None,
         override_query_text: Optional[str] = None,
+        trace: Optional["HybridRetrievalTrace"] = None,
     ) -> RetrievalResult:
         query_text = (override_query_text or "").strip() or build_parameter_analysis_text(parameter).strip()
         if not query_text:
@@ -87,6 +83,10 @@ class HybridRetrievalRouter:
             keywords=keywords,
             raptor_tree=raptor_tree,
         )
+
+        if trace is not None:
+            trace.strategy = strategy.value
+            trace.query_embedding = list(query_embedding or [])
 
         try:
             if strategy == RetrievalStrategy.RAPTOR_LOW:
@@ -108,6 +108,7 @@ class HybridRetrievalRouter:
                 query_embedding=query_embedding,
                 keywords=keywords,
                 query_variants=query_variants,
+                trace=trace,
             )
         except Exception as exc:
             msg = f"Strategy execution failed for strategy={strategy.value}: {exc}"

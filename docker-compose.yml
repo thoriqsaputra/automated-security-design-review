@@ -107,6 +107,25 @@ services:
       - internal
     restart: unless-stopped
 
+  frontend:
+    image: automated-sdr-frontend:latest
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    expose:
+      - "80"
+    networks:
+      internal:
+        aliases:
+          - frontend
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 15s
+    restart: unless-stopped
+
   nginx:
     image: nginx:alpine
     ports:
@@ -115,6 +134,8 @@ services:
       - ./nginx/docker-http.conf:/etc/nginx/conf.d/default.conf:ro
     depends_on:
       backend:
+        condition: service_healthy
+      frontend:
         condition: service_healthy
     networks:
       - internal

@@ -82,6 +82,121 @@ def test_build_completed_snapshot_uses_persisted_reasoning():
     assert debate["last_snippet"] == "Mediator summary"
 
 
+def test_build_completed_snapshot_uses_extractor_reasoner_labels_for_extract_reason_diagrams():
+    now = datetime.now(timezone.utc)
+    finding = SimpleNamespace(
+        id=42,
+        finding_type="diagram",
+        child_parameter_id=None,
+        diagram_id="diag-1",
+        requirement_reference=None,
+        requirement_text=None,
+        diagram_caption="Network diagram",
+        parent_parameter_title=None,
+        category_code="web_application",
+        hunter_reasoning="Extraction summary text",
+        critic_reasoning=None,
+        mediator_reasoning="Reasoner final verdict text",
+        mediator_thought_process="Reasoner cot",
+        requirement_metadata={"pipeline_mode": "extract_reason", "diagram_extraction": {"components": []}},
+        description="Fallback description",
+        title="Diagram finding",
+        created_at=now,
+        updated_at=now,
+    )
+
+    snapshot = ReviewDebateEventStore().build_completed_snapshot(
+        review_id=10,
+        review_status="completed_with_findings",
+        findings=[finding],
+    )
+
+    debate = snapshot["debates"][0]
+    assert [message["agent"] for message in debate["transcript"]] == ["extractor", "reasoner"]
+    assert debate["active_agent"] == "reasoner"
+    assert debate["pipeline_mode"] == "extract_reason"
+    assert debate["diagram_extraction"] == {"components": []}
+
+
+def test_build_completed_snapshot_defaults_diagram_to_hunter_critic_mediator():
+    now = datetime.now(timezone.utc)
+    finding = SimpleNamespace(
+        id=43,
+        finding_type="diagram",
+        child_parameter_id=None,
+        diagram_id="diag-2",
+        requirement_reference=None,
+        requirement_text=None,
+        diagram_caption="Network diagram",
+        parent_parameter_title=None,
+        category_code="web_application",
+        hunter_reasoning="Hunter summary",
+        hunter_thought_process=None,
+        critic_reasoning="Critic summary",
+        critic_thought_process=None,
+        mediator_reasoning="Mediator summary",
+        mediator_thought_process=None,
+        requirement_metadata={"source": "diagram_debate_service"},
+        description="Fallback description",
+        title="Diagram finding",
+        created_at=now,
+        updated_at=now,
+    )
+
+    snapshot = ReviewDebateEventStore().build_completed_snapshot(
+        review_id=11,
+        review_status="completed_with_findings",
+        findings=[finding],
+    )
+
+    debate = snapshot["debates"][0]
+    assert [message["agent"] for message in debate["transcript"]] == ["hunter", "critic", "mediator"]
+    assert debate["active_agent"] == "mediator"
+    assert debate["pipeline_mode"] == "debate"
+
+
+def test_complete_debate_sets_custom_terminal_agent():
+    store = ReviewDebateEventStore()
+    store._redis_client = _FakeRedis()
+    review_id = 20
+    debate = {"debate_id": "diagram:d1", "diagram_id": "d1", "execution_mode": "single", "pipeline_mode": "extract_reason"}
+
+    store.seed_debates(review_id, review_status="running", debates=[debate])
+    store.start_agent(
+        review_id, debate=debate, agent="extractor", execution_mode="single", content="Extracting", progress_percent=10,
+    )
+    store.complete_debate(review_id, debate_id="diagram:d1", finding_id=7, last_snippet="Done", terminal_agent="reasoner")
+
+    snapshot = store.load_snapshot(review_id)
+    persisted = snapshot["debates"][0]
+    assert persisted["active_agent"] == "reasoner"
+    assert persisted["pipeline_mode"] == "extract_reason"
+
+
+def test_complete_agent_merges_extra_fields():
+    store = ReviewDebateEventStore()
+    store._redis_client = _FakeRedis()
+    review_id = 21
+    debate = {"debate_id": "diagram:d2", "diagram_id": "d2", "execution_mode": "single", "pipeline_mode": "extract_reason"}
+
+    store.seed_debates(review_id, review_status="running", debates=[debate])
+    store.start_agent(
+        review_id, debate=debate, agent="extractor", execution_mode="single", content="Extracting", progress_percent=10,
+    )
+    store.complete_agent(
+        review_id,
+        debate_id="diagram:d2",
+        agent="extractor",
+        content="Extracted",
+        progress_percent=55,
+        extra_fields={"diagram_extraction": {"components": [{"id": "c1", "name": "API", "type": "service"}]}},
+    )
+
+    snapshot = store.load_snapshot(review_id)
+    persisted = snapshot["debates"][0]
+    assert persisted["diagram_extraction"] == {"components": [{"id": "c1", "name": "API", "type": "service"}]}
+
+
 def test_mutate_survives_sequential_calls_without_list_vs_dict_crash():
     """Regression test: _mutate() persists "debates" as a list (the external
     wire shape) on every write, so any call after the first must reload that

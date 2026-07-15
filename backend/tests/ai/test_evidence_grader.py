@@ -49,7 +49,11 @@ def test_implementation_tier_outranks_higher_scoring_fallback():
     assert selected[1].id == "fallback_high"
 
 
-def test_truncation_keeps_highest_scoring_per_tier_not_first_arrived():
+def test_grader_orders_tiers_but_never_truncates():
+    # The grader deliberately returns the FULL tier-ordered pool — truncation
+    # happens downstream in _rerank_within_tiers, after the cross-encoder has
+    # seen every tier member, so a genuinely better candidate beyond an early
+    # per-tier cutoff still gets a chance to surface.
     grader = EvidenceGrader(max_context_chunks=2)
     candidates = [
         _fallback_candidate("fallback_low_first", 0.1),
@@ -57,4 +61,4 @@ def test_truncation_keeps_highest_scoring_per_tier_not_first_arrived():
         _impl_candidate("impl_only", 0.5),
     ]
     selected, _ = grader.grade_and_filter_candidates(candidates, query_text="mfa", keywords=["mfa"])
-    assert [c.id for c in selected] == ["impl_only", "fallback_high_last"]
+    assert [c.id for c in selected] == ["impl_only", "fallback_high_last", "fallback_low_first"]

@@ -35,6 +35,18 @@ class AdvancedRetrievalConfig:
     # instead, as the primary merge step in execute_hybrid.
     fusion_method: Literal["agreement_boost", "rrf"] = "agreement_boost"
     rrf_k: int = 60
+    # Recall-safety floor: guaranteed final-context slots for each constituent
+    # signal's primary-query top-N (see AI_RETRIEVAL_PROTECTED_* settings).
+    # dense floor = raptor_low's top-k; raptor floor rescues raptor_high-only
+    # wins found (but under-protected) in hybrid's own multi-level branch,
+    # sized to stay well under max_context_chunks alongside the other floors.
+    protected_dense_top_n: int = 7
+    protected_bm25_top_n: int = 2
+    protected_raptor_top_n: int = 7
+    summary_leaves_per_grounding: int = 1
+    hybrid_dense_top_k: int = 20
+    hybrid_bm25_top_k: int = 20
+    rerank_score_weight: float = 0.72
 
     @classmethod
     def from_settings(cls) -> "AdvancedRetrievalConfig":
@@ -49,6 +61,18 @@ class AdvancedRetrievalConfig:
             ),
             fusion_method=getattr(settings, "AI_RETRIEVAL_FUSION_METHOD", "agreement_boost"),
             rrf_k=int(getattr(settings, "AI_RETRIEVAL_RRF_K", 60)),
+            protected_dense_top_n=max(0, int(getattr(settings, "AI_RETRIEVAL_PROTECTED_DENSE_TOP_N", 3))),
+            protected_bm25_top_n=max(0, int(getattr(settings, "AI_RETRIEVAL_PROTECTED_BM25_TOP_N", 2))),
+            protected_raptor_top_n=max(0, int(getattr(settings, "AI_RETRIEVAL_PROTECTED_RAPTOR_TOP_N", 7))),
+            summary_leaves_per_grounding=max(
+                1, int(getattr(settings, "AI_RETRIEVAL_SUMMARY_LEAVES_PER_GROUNDING", 1))
+            ),
+            hybrid_dense_top_k=max(1, int(getattr(settings, "AI_RETRIEVAL_HYBRID_DENSE_TOP_K", 20))),
+            hybrid_bm25_top_k=max(1, int(getattr(settings, "AI_RETRIEVAL_HYBRID_BM25_TOP_K", 20))),
+            rerank_score_weight=min(
+                1.0,
+                max(0.0, float(getattr(settings, "AI_RETRIEVAL_RERANK_SCORE_WEIGHT", 0.72))),
+            ),
         )
 
 

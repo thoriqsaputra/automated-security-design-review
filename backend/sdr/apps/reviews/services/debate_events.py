@@ -221,12 +221,15 @@ class ReviewDebateEventStore:
                     "status": existing.get("status") or "pending",
                     "active_agent": existing.get("active_agent"),
                     "execution_mode": debate.get("execution_mode") or existing.get("execution_mode") or "single",
+                    "pipeline_mode": debate.get("pipeline_mode") or existing.get("pipeline_mode") or "debate",
                     "progress_percent": int(existing.get("progress_percent") or 0),
                     "last_snippet": existing.get("last_snippet") or "",
                     "updated_at": utc_now_iso(),
                     "finding_id": finding_id,
                     "transcript": transcript,
                 }
+                if existing.get("diagram_extraction") is not None:
+                    merged["diagram_extraction"] = existing["diagram_extraction"]
                 debate_map[debate_id] = merged
                 changed.append(merged)
             return {
@@ -324,6 +327,7 @@ class ReviewDebateEventStore:
         critic_outcome: Optional[str] = None,
         requires_rebuttal: Optional[bool] = None,
         round_number: Optional[int] = None,
+        extra_fields: Optional[Dict[str, Any]] = None,
     ) -> None:
         def mutate(snapshot: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             debate_state = (snapshot.get("debates") or {}).get(debate_id)
@@ -331,6 +335,8 @@ class ReviewDebateEventStore:
                 return None
             if execution_mode:
                 debate_state["execution_mode"] = execution_mode
+            if extra_fields:
+                debate_state.update(extra_fields)
             message = self._find_active_message(debate_state, agent)
             now = utc_now_iso()
             if message is None:
@@ -423,13 +429,14 @@ class ReviewDebateEventStore:
         debate_id: str,
         finding_id: Optional[int],
         last_snippet: str,
+        terminal_agent: str = "mediator",
     ) -> None:
         def mutate(snapshot: Dict[str, Any]) -> Optional[Dict[str, Any]]:
             debate_state = (snapshot.get("debates") or {}).get(debate_id)
             if not debate_state:
                 return None
             debate_state["status"] = "completed"
-            debate_state["active_agent"] = "mediator"
+            debate_state["active_agent"] = terminal_agent
             debate_state["progress_percent"] = 100
             debate_state["finding_id"] = finding_id
             debate_state["last_snippet"] = last_snippet[-280:]
@@ -487,6 +494,10 @@ class ReviewDebateEventStore:
             requirement_metadata = getattr(finding, "requirement_metadata", None) or {}
             analysis_trace = requirement_metadata.get("analysis_trace") if isinstance(requirement_metadata, dict) else None
             critic_outcome = _extract_critic_outcome(analysis_trace, is_diagram=is_diagram)
+            pipeline_mode = (
+                requirement_metadata.get("pipeline_mode") if isinstance(requirement_metadata, dict) else None
+            ) or "debate"
+            terminal_agent = "reasoner" if (is_diagram and pipeline_mode == "extract_reason") else "mediator"
 
             started_at = getattr(finding, "created_at", None).isoformat() if getattr(finding, "created_at", None) else now
             completed_at = getattr(finding, "updated_at", None).isoformat() if getattr(finding, "updated_at", None) else now
@@ -560,11 +571,24 @@ class ReviewDebateEventStore:
             else:
                 # Fallback (e.g. diagram findings, which don't use text debate_history):
                 # one message per agent from the flat *_thought_process/*_reasoning columns.
-                for agent, cot, reasoning in (
-                    ("hunter", getattr(finding, "hunter_thought_process", None), getattr(finding, "hunter_reasoning", None)),
-                    ("critic", getattr(finding, "critic_thought_process", None), getattr(finding, "critic_reasoning", None)),
-                    ("mediator", getattr(finding, "mediator_thought_process", None), getattr(finding, "mediator_reasoning", None)),
-                ):
+                # The agent set/labels depend on which diagram pipeline produced this
+                # finding (extract-then-reason vs classic hunter/critic/mediator debate).
+                if is_diagram and pipeline_mode == "extract_reason":
+                    agent_pairs = (
+                        ("extractor", None, getattr(finding, "hunter_reasoning", None)),
+                        (
+                            "reasoner",
+                            getattr(finding, "mediator_thought_process", None),
+                            getattr(finding, "mediator_reasoning", None),
+                        ),
+                    )
+                else:
+                    agent_pairs = (
+                        ("hunter", getattr(finding, "hunter_thought_process", None), getattr(finding, "hunter_reasoning", None)),
+                        ("critic", getattr(finding, "critic_thought_process", None), getattr(finding, "critic_reasoning", None)),
+                        ("mediator", getattr(finding, "mediator_thought_process", None), getattr(finding, "mediator_reasoning", None)),
+                    )
+                for agent, cot, reasoning in agent_pairs:
                     text = _clean_text(cot) or _clean_text(reasoning)
                     if not text:
                         continue
@@ -597,8 +621,12 @@ class ReviewDebateEventStore:
                 "section_title": _clean_text(section_title) or _clean_text(getattr(finding, "parent_parameter_title", None)) or None,
                 "category_code": _clean_text(getattr(finding, "category_code", None)) or None,
                 "status": "completed",
-                "active_agent": "mediator",
+                "active_agent": terminal_agent,
                 "execution_mode": "single",
+                "pipeline_mode": pipeline_mode,
+                "diagram_extraction": (
+                    requirement_metadata.get("diagram_extraction") if isinstance(requirement_metadata, dict) else None
+                ),
                 "progress_percent": 100,
                 "last_snippet": last_snippet,
                 "updated_at": getattr(finding, "updated_at", None).isoformat() if getattr(finding, "updated_at", None) else now,
@@ -654,12 +682,15 @@ class ReviewDebateEventStore:
             "status": existing.get("status") or "pending",
             "active_agent": existing.get("active_agent"),
             "execution_mode": execution_mode or existing.get("execution_mode") or "single",
+            "pipeline_mode": debate.get("pipeline_mode") or existing.get("pipeline_mode") or "debate",
             "progress_percent": int(existing.get("progress_percent") or 0),
             "last_snippet": existing.get("last_snippet") or "",
             "updated_at": utc_now_iso(),
             "finding_id": existing.get("finding_id"),
             "transcript": transcript,
         }
+        if existing.get("diagram_extraction") is not None:
+            merged["diagram_extraction"] = existing["diagram_extraction"]
         if "active_message_id" in existing:
             merged["active_message_id"] = existing["active_message_id"]
         debate_map[debate_id] = merged

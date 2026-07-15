@@ -14,13 +14,20 @@ from sdr.apps.reviews.services.debate_events import build_debate_id, review_deba
 # Coarse per-agent progress checkpoints — diagram debate has no token-level
 # streaming (each vision agent call is a single blocking round-trip), so only
 # start/complete boundaries per agent are meaningful here.
-_DIAGRAM_AGENT_PROGRESS = {
+_DEBATE_AGENT_PROGRESS = {
     ("hunter", "started"): 10,
     ("hunter", "completed"): 40,
     ("critic", "started"): 45,
     ("critic", "completed"): 70,
     ("mediator", "started"): 75,
     ("mediator", "completed"): 100,
+}
+
+_EXTRACT_REASON_AGENT_PROGRESS = {
+    ("extractor", "started"): 10,
+    ("extractor", "completed"): 55,
+    ("reasoner", "started"): 60,
+    ("reasoner", "completed"): 100,
 }
 
 
@@ -32,15 +39,24 @@ class DiagramAnalysisCoordinator:
         workflow_repository,
         diagram_debate_service,
         persistence_service,
+        progress_service=None,
+        run_state_service=None,
         requirement_selector=None,
     ) -> None:
         self.config = config
         self.workflow_repository = workflow_repository
         self.diagram_debate_service = diagram_debate_service
         self.persistence = persistence_service
+        self.progress_service = progress_service
+        self.run_state = run_state_service
         self.requirement_selector = requirement_selector or DiagramRequirementSelector(
             config=config,
             workflow_repository=workflow_repository,
+        )
+        self.pipeline_mode = getattr(diagram_debate_service, "PIPELINE_MODE", "debate")
+        self.terminal_agent = "reasoner" if self.pipeline_mode == "extract_reason" else "mediator"
+        self._progress_map = (
+            _EXTRACT_REASON_AGENT_PROGRESS if self.pipeline_mode == "extract_reason" else _DEBATE_AGENT_PROGRESS
         )
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
 
@@ -116,6 +132,15 @@ class DiagramAnalysisCoordinator:
             return
         category_code = getattr(category, "code", None) or "unknown"
 
+        if self.progress_service is not None and self.run_state is not None:
+            with summary.lock:
+                summary.debate_total_parameters += len(eligible_diagrams)
+                summary.debate_remaining_parameters += len(eligible_diagrams)
+                summary.persistence_total_parameters += len(eligible_diagrams)
+                summary.persistence_remaining_parameters += len(eligible_diagrams)
+            self.progress_service.sync_analysis_aliases(summary=summary, category_code=category_code)
+            self.run_state.persist_summary_snapshot(review, summary)
+
         review_debate_event_store.seed_debates(
             review.id,
             review_status=getattr(review, "status", None) or "running",
@@ -156,6 +181,7 @@ class DiagramAnalysisCoordinator:
                 diagram = futures[future]
                 try:
                     diagram_outputs.append(future.result())
+                    self._record_debate_progress(summary=summary, review=review, category_code=category_code)
                 except Exception as exc:
                     self.logger.exception(
                         "DiagramAnalysisCoordinator.run: debate failed for diagram_id=%s: %s",
@@ -165,9 +191,14 @@ class DiagramAnalysisCoordinator:
                     review_debate_event_store.fail_agent(
                         review.id,
                         debate_id=build_debate_id(None, diagram_id=diagram.diagram_id),
-                        agent="mediator",
+                        agent=self.terminal_agent,
                         error_message=str(exc)[:500] or "Diagram debate failed unexpectedly.",
                     )
+                    # This diagram never produces an output, so it never reaches
+                    # the persistence loop below — count both phases as done now
+                    # so "remaining" still reaches 0 instead of stalling.
+                    self._record_debate_progress(summary=summary, review=review, category_code=category_code)
+                    self._record_persistence_progress(summary=summary, review=review, category_code=category_code)
 
         persisted_count = 0
         for output in diagram_outputs:
@@ -183,9 +214,10 @@ class DiagramAnalysisCoordinator:
                     review_debate_event_store.fail_agent(
                         review.id,
                         debate_id=build_debate_id(None, diagram_id=output.diagram.diagram_id),
-                        agent="mediator",
+                        agent=self.terminal_agent,
                         error_message=output.error[:500],
                     )
+                    self._record_persistence_progress(summary=summary, review=review, category_code=category_code)
                     continue
             finding = self.persistence.persist_diagram_debate_finding(
                 review=review,
@@ -193,6 +225,7 @@ class DiagramAnalysisCoordinator:
                 diagram_debate_output=output,
                 summary=summary,
             )
+            self._record_persistence_progress(summary=summary, review=review, category_code=category_code)
             if finding is not None:
                 persisted_count += 1
                 review_debate_event_store.complete_debate(
@@ -200,6 +233,7 @@ class DiagramAnalysisCoordinator:
                     debate_id=build_debate_id(None, diagram_id=output.diagram.diagram_id),
                     finding_id=finding.id,
                     last_snippet=(output.mediator_result or {}).get("finding_description") or "",
+                    terminal_agent=self.terminal_agent,
                 )
 
         self.logger.info(
@@ -249,13 +283,14 @@ class DiagramAnalysisCoordinator:
             agent_started_handler=lambda agent, diagram=diagram: self._publish_live_agent_start(
                 review=review, diagram=diagram, category_code=category_code, agent=agent,
             ),
-            agent_completed_handler=lambda agent, content, diagram=diagram, critic_outcome=None, requires_rebuttal=None: self._publish_live_agent_complete(
+            agent_completed_handler=lambda agent, content, diagram=diagram, critic_outcome=None, requires_rebuttal=None, extraction=None: self._publish_live_agent_complete(
                 review=review,
                 diagram=diagram,
                 agent=agent,
                 content=content,
                 critic_outcome=critic_outcome,
                 requires_rebuttal=requires_rebuttal,
+                extraction=extraction,
             ),
         )
 
@@ -285,6 +320,22 @@ class DiagramAnalysisCoordinator:
         full_text = getattr(tsd_document, "full_text", "") or ""
         return full_text[:max_chars]
 
+    def _record_debate_progress(self, *, summary, review, category_code: str) -> None:
+        if self.progress_service is None or self.run_state is None:
+            return
+        self.progress_service.record_debate_progress(
+            summary=summary,
+            category_code=category_code,
+            completed_count=1,
+        )
+        self.run_state.persist_summary_snapshot(review, summary)
+
+    def _record_persistence_progress(self, *, summary, review, category_code: str) -> None:
+        if self.progress_service is None or self.run_state is None:
+            return
+        self.progress_service.record_persistence_progress(summary=summary, category_code=category_code)
+        self.run_state.persist_summary_snapshot(review, summary)
+
     def _build_live_debate_descriptor(self, *, diagram, category_code: str) -> dict:
         return {
             "debate_id": build_debate_id(None, diagram_id=diagram.diagram_id),
@@ -295,6 +346,7 @@ class DiagramAnalysisCoordinator:
             "section_title": None,
             "category_code": category_code,
             "execution_mode": "single",
+            "pipeline_mode": self.pipeline_mode,
         }
 
     def _publish_live_agent_start(self, *, review, diagram, category_code: str, agent: str) -> None:
@@ -304,7 +356,7 @@ class DiagramAnalysisCoordinator:
             agent=agent,
             execution_mode="single",
             content=f"{agent.title()} is analyzing this diagram.",
-            progress_percent=_DIAGRAM_AGENT_PROGRESS.get((agent, "started"), 0),
+            progress_percent=self._progress_map.get((agent, "started"), 0),
         )
 
     def _publish_live_agent_complete(
@@ -316,14 +368,16 @@ class DiagramAnalysisCoordinator:
         content: str,
         critic_outcome=None,
         requires_rebuttal=None,
+        extraction=None,
     ) -> None:
         review_debate_event_store.complete_agent(
             review.id,
             debate_id=build_debate_id(None, diagram_id=diagram.diagram_id),
             agent=agent,
             content=content,
-            progress_percent=_DIAGRAM_AGENT_PROGRESS.get((agent, "completed"), 100),
+            progress_percent=self._progress_map.get((agent, "completed"), 100),
             execution_mode="single",
+            extra_fields={"diagram_extraction": extraction} if extraction else None,
             critic_outcome=critic_outcome,
             requires_rebuttal=requires_rebuttal,
         )

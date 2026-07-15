@@ -78,6 +78,8 @@ class TSDAnalysisPipeline:
             workflow_repository=self.workflow_repository,
             diagram_debate_service=self.diagram_debate_service,
             persistence_service=self.persistence,
+            progress_service=self.progress_service,
+            run_state_service=self.run_state,
         )
         self.text_debate = TextDebateCoordinator(
             config=self.config,

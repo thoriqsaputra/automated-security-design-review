@@ -26,6 +26,15 @@ _TYPE_MATCH_BONUS = 1.0 / _RRF_K
 
 _MIN_RESULTS = 3
 
+# Optional ASVS-chapter prior: which requirement parent-section themes each
+# diagram type most plausibly evidences. Only applied when
+# config.diagram_chapter_prior_bonus > 0 (default 0.0 = off).
+_CHAPTER_PRIOR_SECTIONS = {
+    "sequence": ("session", "authentication", "authorization", "access control"),
+    "data_flow": ("data protection", "communication", "cryptography", "privacy", "validation"),
+    "architecture": ("configuration", "communication", "network", "architecture", "dependency"),
+}
+
 _GATEKEEPER_BATCH_SIZE = 15
 
 _GATEKEEPER_CONFIDENCE_THRESHOLD = 0.5
@@ -112,10 +121,11 @@ class DiagramRequirementSelector:
                 return requirements
 
         if force_strategy == "hybrid" or force_strategy is None:
-            query_text = self._build_query_text(
+            query_segments = self._build_query_segments(
                 diagram=diagram, tsd_document=tsd_document,
                 caption=caption, surrounding=surrounding, ocr_text=ocr_text,
             )
+            query_text = self._assemble_query_text(query_segments)
             if not query_text:
                 if force_strategy == "hybrid":
                     return []
@@ -144,6 +154,7 @@ class DiagramRequirementSelector:
                         query_vector=query_vector,
                         top_k=top_k,
                         diagram_type=diagram_type,
+                        query_segments=query_segments,
                     )
                 except Exception as exc:
                     self.logger.warning(
@@ -245,6 +256,8 @@ class DiagramRequirementSelector:
         query_vector: List[float],
         top_k: int,
         diagram_type: str | None = None,
+        query_segments: dict | None = None,
+        explain_out: dict | None = None,
     ) -> List[Any]:
         vector_pairs = self.workflow_repository.list_diagram_requirements_with_similarity(
             category_id=category_id,
@@ -257,7 +270,17 @@ class DiagramRequirementSelector:
         pool = [req for req, _distance in vector_pairs]
         vector_rank = {req.id: rank for rank, (req, _distance) in enumerate(vector_pairs)}
 
-        query_tokens = _tokenize(query_text)
+        # BM25 over short requirement texts is easily diluted by the broad
+        # page-window prose, so when segments are available BM25 only sees the
+        # high-signal ones (caption/OCR/surrounding). The dense embedding keeps
+        # the full query — embeddings tolerate broad context far better.
+        if query_segments is not None:
+            bm25_query = " ".join(
+                query_segments.get(key) or "" for key in ("caption", "ocr", "surrounding")
+            ).strip()
+        else:
+            bm25_query = query_text
+        query_tokens = _tokenize(bm25_query)
         if BM25_AVAILABLE and query_tokens:
             corpus_tokens = [
                 _tokenize(f"{r.parent_section} {r.requirement_text} {r.verification_hint}")
@@ -270,15 +293,53 @@ class DiagramRequirementSelector:
         else:
             bm25_rank = {r.id: 0 for r in pool}
 
+        rrf_k = getattr(self.config, "diagram_rrf_k", _RRF_K)
+        vector_weight = getattr(self.config, "diagram_rrf_vector_weight", 1.0)
+        bm25_weight = getattr(self.config, "diagram_rrf_bm25_weight", 1.0)
+        type_bonus = getattr(self.config, "diagram_type_match_bonus", _TYPE_MATCH_BONUS)
+        chapter_bonus = getattr(self.config, "diagram_chapter_prior_bonus", 0.0)
+        prior_sections = _CHAPTER_PRIOR_SECTIONS.get(diagram_type or "", ())
+
         def rrf_score(req) -> float:
-            score = 1.0 / (_RRF_K + vector_rank[req.id]) + 1.0 / (_RRF_K + bm25_rank[req.id])
+            score = vector_weight / (rrf_k + vector_rank[req.id]) + bm25_weight / (rrf_k + bm25_rank[req.id])
             if diagram_type and req.diagram_type == diagram_type:
-                score += _TYPE_MATCH_BONUS
+                score += type_bonus
+            if chapter_bonus > 0 and prior_sections:
+                section = (getattr(req, "parent_section", "") or "").lower()
+                if any(theme in section for theme in prior_sections):
+                    score += chapter_bonus
             return score
 
         fused = sorted(pool, key=rrf_score, reverse=True)
+
+        if explain_out is not None:
+            explain_out["diagram_type"] = diagram_type
+            explain_out["ranking"] = [
+                {
+                    "stable_key": req.stable_key,
+                    "fused_rank": rank,
+                    "vector_rank": vector_rank[req.id],
+                    "bm25_rank": bm25_rank[req.id],
+                    "rrf_score": round(rrf_score(req), 6),
+                    "type_match": bool(diagram_type and req.diagram_type == diagram_type),
+                }
+                for rank, req in enumerate(fused)
+            ]
+
         effective_k = max(_MIN_RESULTS, min(len(fused), top_k))
-        return fused[:effective_k]
+        selected = fused[:effective_k]
+
+        # Adaptive confidence cutoff: trim the fused tail once scores collapse
+        # relative to the top hit, instead of always returning a fixed-size
+        # list (a fixed 32-slot return is the main precision drag vs the
+        # confidence-thresholded gatekeeper). 0.0 disables (current behavior).
+        floor_ratio = getattr(self.config, "diagram_score_floor_ratio", 0.0)
+        if floor_ratio > 0 and selected:
+            top_score = rrf_score(selected[0])
+            floored = [req for req in selected if rrf_score(req) >= floor_ratio * top_score]
+            selected = floored if len(floored) >= _MIN_RESULTS else selected[:_MIN_RESULTS]
+
+        return selected
 
     def _extract_ocr_text(self, diagram) -> str:
         try:
@@ -295,18 +356,16 @@ class DiagramRequirementSelector:
             )
         return ""
 
-    def _build_query_text(self, *, diagram, tsd_document, caption: str, surrounding: str, ocr_text: str) -> str:
-        parts = []
-        caption_segment = _normalize_query_segment(caption)
-        if caption_segment:
-            parts.append(caption_segment)
-        surrounding_segment = _normalize_query_segment(surrounding)
-        if surrounding_segment:
-            parts.append(surrounding_segment)
-
-        ocr_segment = _normalize_query_segment(ocr_text, max_chars=1200)
-        if ocr_segment:
-            parts.append(f"Visible diagram elements: {ocr_segment}")
+    def _build_query_segments(self, *, diagram, tsd_document, caption: str, surrounding: str, ocr_text: str) -> dict:
+        """Returns the individual query segments keyed by kind, so callers can
+        weight or ablate them independently (caption/OCR are high-signal,
+        the page window is broad context)."""
+        segments = {
+            "caption": _normalize_query_segment(caption),
+            "surrounding": _normalize_query_segment(surrounding),
+            "ocr": _normalize_query_segment(ocr_text, max_chars=1200),
+            "page_window": "",
+        }
 
         page_number = getattr(diagram, "page_number", None)
         pages = getattr(tsd_document, "pages", None) or []
@@ -319,9 +378,24 @@ class DiagramRequirementSelector:
                     )
                     if page_text:
                         page_window_parts.append(page_text)
-            page_window = _normalize_query_segment(" ".join(page_window_parts), max_chars=1800)
-            if page_window:
-                parts.append(f"Nearby page context: {page_window}")
+            segments["page_window"] = _normalize_query_segment(
+                " ".join(page_window_parts),
+                max_chars=max(0, int(getattr(self.config, "diagram_query_page_window_chars", 1800))),
+            )
+
+        return segments
+
+    @staticmethod
+    def _assemble_query_text(segments: dict) -> str:
+        parts = []
+        if segments.get("caption"):
+            parts.append(segments["caption"])
+        if segments.get("surrounding"):
+            parts.append(segments["surrounding"])
+        if segments.get("ocr"):
+            parts.append(f"Visible diagram elements: {segments['ocr']}")
+        if segments.get("page_window"):
+            parts.append(f"Nearby page context: {segments['page_window']}")
 
         deduped_parts = []
         seen = set()
@@ -332,6 +406,13 @@ class DiagramRequirementSelector:
                 deduped_parts.append(normalized)
 
         return "\n\n".join(deduped_parts).strip()
+
+    def _build_query_text(self, *, diagram, tsd_document, caption: str, surrounding: str, ocr_text: str) -> str:
+        segments = self._build_query_segments(
+            diagram=diagram, tsd_document=tsd_document,
+            caption=caption, surrounding=surrounding, ocr_text=ocr_text,
+        )
+        return self._assemble_query_text(segments)
 
     def _fallback_requirements(
         self,

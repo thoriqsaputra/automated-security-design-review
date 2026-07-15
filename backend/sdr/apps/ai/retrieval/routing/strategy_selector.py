@@ -28,12 +28,6 @@ class RetrievalStrategySelector:
         if not has_raptor:
             raise ValueError("RAPTORTree is required for retrieval.")
 
-        if query_type == QueryType.FACT_BASED:
-            return RetrievalStrategy.HYBRID
-
-        if query_type in (QueryType.MULTI_HOP_SECURITY, QueryType.REASONING_BASED, QueryType.GLOBAL_ARCHITECTURAL):
-            return RetrievalStrategy.RAPTOR_HIGH
-
         return RetrievalStrategy.HYBRID
 
     def classify_query_type(
@@ -68,6 +62,8 @@ class RetrievalStrategySelector:
             return QueryType.MULTI_HOP_SECURITY
         if any(_marker_matches(marker, text) for marker in reasoning_markers):
             return QueryType.REASONING_BASED
+        if len(query_entities or []) >= 2 and inferred_relations:
+            return QueryType.MULTI_HOP_SECURITY
         return QueryType.FACT_BASED
 
 

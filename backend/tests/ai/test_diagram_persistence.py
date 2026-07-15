@@ -438,6 +438,76 @@ def test_persist_finding_downgrades_met_when_no_citations_at_all(monkeypatch):
     assert finding.met_status == "na"
 
 
+def test_persist_diagram_debate_finding_stores_pipeline_mode_and_extraction(monkeypatch):
+    service = PersistenceService()
+    session = _Session()
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.persistence.persistence_service.SessionLocal",
+        lambda: _SessionContext(session),
+    )
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.persistence.persistence_service.storage_service.upload_file",
+        lambda content, object_name, content_type: None,
+    )
+
+    review = SimpleNamespace(id=77)
+    category = SimpleNamespace(id=4, code="web_application")
+    diagram = SimpleNamespace(
+        diagram_id="d-3",
+        caption="Network diagram",
+        page_number=2,
+        bbox_x0=1.0,
+        bbox_y0=2.0,
+        bbox_x1=3.0,
+        bbox_y1=4.0,
+        image_format="png",
+        image_b64=base64.b64encode(b"x" * 600).decode("ascii"),
+    )
+    diagram_output = SimpleNamespace(
+        diagram=diagram,
+        pipeline_mode="extract_reason",
+        hunter_result={
+            "extraction_summary": "Frontend talks to backend over HTTPS.",
+            "reasoning": "Frontend talks to backend over HTTPS.",
+            "components": [{"id": "c1", "name": "Frontend", "type": "service"}],
+            "trust_boundaries": [],
+            "flows": [{"id": "f1", "source_component_id": "c1", "target_component_id": "c2", "protocol": "HTTPS"}],
+            "other_visible_text": [],
+            "requirement_assessments": [],
+        },
+        critic_result={},
+        mediator_result={
+            "final_verdict": "not_met",
+            "confidence": 0.7,
+            "finding_description": "No MFA step is visible.",
+            "reasoning": "No MFA step is visible.",
+            "recommendation": None,
+            "assessed_requirements": [
+                {"requirement_id": "D-V2", "verdict": "not_met", "summary": "No MFA step is visible."}
+            ],
+        },
+        debate_rounds=1,
+        error=None,
+    )
+    summary = AnalysisSummary()
+
+    finding = service.persist_diagram_debate_finding(
+        review=review,
+        category=category,
+        diagram_debate_output=diagram_output,
+        summary=summary,
+    )
+
+    assert finding is session.finding
+    assert finding.requirement_metadata["pipeline_mode"] == "extract_reason"
+    assert finding.requirement_metadata["diagram_extraction"]["components"] == [
+        {"id": "c1", "name": "Frontend", "type": "service"}
+    ]
+    assert finding.requirement_metadata["diagram_extraction"]["flows"][0]["protocol"] == "HTTPS"
+    assert finding.description == "No MFA step is visible."
+    assert finding.reason == "No MFA step is visible."
+
+
 def test_persist_diagram_debate_finding_preserves_non_architecture_scope(monkeypatch):
     service = PersistenceService()
     session = _Session()

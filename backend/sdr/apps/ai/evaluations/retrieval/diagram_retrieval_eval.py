@@ -54,7 +54,11 @@ from sdr.apps.designs.preparation_store import DesignPreparationStore
 from sdr.apps.standards.models import StandardCategory, StandardIngestionJob
 from sdr.apps.ai.engine.config import AnalysisPipelineConfig
 from sdr.apps.ai.engine.persistence.workflow_repository import SqlAlchemyReviewWorkflowRepository
-from sdr.apps.ai.engine.debate.diagram_requirement_selector import DiagramRequirementSelector
+from sdr.apps.ai.client import get_embedding
+from sdr.apps.ai.engine.debate.diagram_requirement_selector import (
+    DiagramRequirementSelector,
+    _classify_diagram_type,
+)
 
 from sdr.apps.ai.evaluations.shared import results_path
 from sdr.apps.ai.evaluations.shared.diagram_ground_truth import resolve_diagram_ground_truth_path
@@ -110,6 +114,65 @@ def _diagram_metrics(expected_ids: set[str], ranked: list) -> dict:
     }
 
 
+def _dump_hybrid_rankings(selector, diagram, tsd_doc, category, ingestion_job, expected_ids, top_k) -> dict:
+    """Full fused ranking + query-segment ablations for one diagram.
+
+    Each ablation re-runs the hybrid arm with a subset of query segments so
+    the dump shows which segment helps or hurts the ranking (the page-window
+    segment is suspected of diluting BM25 over short requirement texts)."""
+    caption = (getattr(diagram, "caption", "") or "").strip()
+    surrounding = (getattr(diagram, "surrounding_text", "") or "").strip()
+    ocr_text = selector._extract_ocr_text(diagram)
+    segments = selector._build_query_segments(
+        diagram=diagram, tsd_document=tsd_doc,
+        caption=caption, surrounding=surrounding, ocr_text=ocr_text,
+    )
+    diagram_type = _classify_diagram_type(caption, surrounding, ocr_text)
+
+    ablations = {
+        "caption_only": {"caption": segments["caption"]},
+        "caption_ocr": {"caption": segments["caption"], "ocr": segments["ocr"]},
+        "caption_ocr_surrounding": {
+            "caption": segments["caption"],
+            "ocr": segments["ocr"],
+            "surrounding": segments["surrounding"],
+        },
+        "full": segments,
+    }
+
+    dump = {"segment_chars": {k: len(v or "") for k, v in segments.items()}, "ablations": {}}
+    for name, seg_subset in ablations.items():
+        query_text = selector._assemble_query_text(seg_subset)
+        if not query_text:
+            dump["ablations"][name] = {"skipped": "empty query"}
+            continue
+        try:
+            query_vector = get_embedding(text=query_text, dimensions=1024)
+        except Exception as exc:
+            dump["ablations"][name] = {"skipped": f"embedding failed: {exc}"}
+            continue
+        explain: dict = {}
+        ranked = selector._hybrid_search(
+            category_id=category.id,
+            ingestion_job_id=ingestion_job.id,
+            query_text=query_text,
+            query_vector=query_vector,
+            top_k=top_k,
+            diagram_type=diagram_type,
+            explain_out=explain,
+        )
+        for row in explain.get("ranking", []):
+            row["relevant"] = _normalize_requirement_id(row["stable_key"]) in expected_ids
+        relevant_ranks = [row["fused_rank"] for row in explain.get("ranking", []) if row["relevant"]]
+        dump["ablations"][name] = {
+            "metrics": _diagram_metrics(expected_ids, ranked),
+            "relevant_fused_ranks": relevant_ranks,
+            "max_relevant_rank": max(relevant_ranks) if relevant_ranks else None,
+            "ranking": explain.get("ranking", []),
+        }
+    return dump
+
+
 def _aggregate(rows: list[dict]) -> dict:
     if not rows:
         return {"count": 0, "precision": 0.0, "recall": 0.0, "hit_rate": 0.0, "mrr": 0.0}
@@ -137,6 +200,24 @@ def main():
     parser.add_argument("--top-k", type=int, default=AnalysisPipelineConfig().vision_diagram_requirements_max_items)
     parser.add_argument("--sample-seed", type=int, default=42, help="Seed for the random-baseline draw.")
     parser.add_argument("--output", type=str, default="eval_diagram_retrieval.json")
+    defaults = AnalysisPipelineConfig()
+    parser.add_argument("--page-window-chars", type=int, default=defaults.diagram_query_page_window_chars,
+                        help="Max chars of the 'nearby page context' query segment (dense side only; BM25 never sees it).")
+    parser.add_argument("--rrf-vector-weight", type=float, default=defaults.diagram_rrf_vector_weight)
+    parser.add_argument("--rrf-bm25-weight", type=float, default=defaults.diagram_rrf_bm25_weight)
+    parser.add_argument("--type-match-bonus", type=float, default=defaults.diagram_type_match_bonus)
+    parser.add_argument("--chapter-prior-bonus", type=float, default=defaults.diagram_chapter_prior_bonus,
+                        help="ASVS-chapter prior bonus (0.0 = off).")
+    parser.add_argument("--score-floor-ratio", type=float, default=defaults.diagram_score_floor_ratio,
+                        help="Adaptive cutoff: keep items scoring >= ratio*top_score (0.0 = fixed-size list, current behavior).")
+    parser.add_argument(
+        "--dump-rankings",
+        action="store_true",
+        help="Also dump, per diagram, the hybrid arm's full fused ranking (per-item vector rank, "
+             "BM25 rank, RRF score, relevance flag) plus query-segment ablation rankings "
+             "(caption_only / caption_ocr / caption_ocr_surrounding / full). Diagnosis aid for "
+             "tuning query construction and the precision cutoff; adds one embedding call per ablation.",
+    )
     args = parser.parse_args()
 
     gt_path = args.ground_truth or resolve_diagram_ground_truth_path(args.design_id)
@@ -169,7 +250,15 @@ def main():
         store = DesignPreparationStore()
         _, tsd_doc, _ = store.load_prepared_assets(db, design)
 
-    config = AnalysisPipelineConfig(vision_diagram_requirements_max_items=args.top_k)
+    config = AnalysisPipelineConfig(
+        vision_diagram_requirements_max_items=args.top_k,
+        diagram_query_page_window_chars=args.page_window_chars,
+        diagram_rrf_vector_weight=args.rrf_vector_weight,
+        diagram_rrf_bm25_weight=args.rrf_bm25_weight,
+        diagram_type_match_bonus=args.type_match_bonus,
+        diagram_chapter_prior_bonus=args.chapter_prior_bonus,
+        diagram_score_floor_ratio=args.score_floor_ratio,
+    )
     workflow_repository = SqlAlchemyReviewWorkflowRepository()
     selector = DiagramRequirementSelector(config=config, workflow_repository=workflow_repository)
 
@@ -240,7 +329,7 @@ def main():
         naive_rows.append(naive_metrics)
         random_rows.append(random_metrics)
 
-        per_diagram_results.append({
+        per_diagram_result = {
             "diagram_id": diagram_id,
             "expected_ids": sorted(expected_ids),
             "production_default": default_metrics,
@@ -248,7 +337,12 @@ def main():
             "hybrid": hybrid_metrics,
             "naive_fallback": naive_metrics,
             "random_baseline": random_metrics,
-        })
+        }
+        if args.dump_rankings:
+            per_diagram_result["ranking_dump"] = _dump_hybrid_rankings(
+                selector, diagram, tsd_doc, category, ingestion_job, expected_ids, args.top_k
+            )
+        per_diagram_results.append(per_diagram_result)
 
         logger.info(
             f"  diagram_id={diagram_id} expected={len(expected_ids)} "
@@ -284,6 +378,15 @@ def main():
         "ground_truth_path": gt_path,
         "top_k": args.top_k,
         "sample_seed": args.sample_seed,
+        "hybrid_config": {
+            "page_window_chars": args.page_window_chars,
+            "rrf_vector_weight": args.rrf_vector_weight,
+            "rrf_bm25_weight": args.rrf_bm25_weight,
+            "type_match_bonus": args.type_match_bonus,
+            "chapter_prior_bonus": args.chapter_prior_bonus,
+            "score_floor_ratio": args.score_floor_ratio,
+            "bm25_segments": "caption+ocr+surrounding",
+        },
         "diagrams_evaluated": len(per_diagram_results),
         "diagrams_skipped": skipped,
         "production_default": default_summary,
