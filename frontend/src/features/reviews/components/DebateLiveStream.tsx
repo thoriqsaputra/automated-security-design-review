@@ -4,6 +4,7 @@ import type { DebateAgent, DebateStreamState } from '../../../api/reviews';
 import AgentMessageBubble from './AgentMessageBubble';
 import DebateAgentFlow from './DebateAgentFlow';
 import DebateStatusBadge from './DebateStatusBadge';
+import DiagramStructurePanel from './DiagramStructurePanel';
 
 interface DebateLiveStreamProps {
   debate: DebateStreamState | null;
@@ -66,6 +67,10 @@ export default function DebateLiveStream({ debate }: DebateLiveStreamProps) {
       <div className="mt-5">
         <DebateAgentFlow debate={debate} selectedAgent={selectedAgent} onSelectAgent={setSelectedAgent} />
       </div>
+
+      {debate.pipeline_mode === 'extract_reason' && (
+        <DiagramStructurePanel extraction={debate.diagram_extraction} />
+      )}
 
       <div className="mt-5 space-y-3">
         <div className="flex items-center justify-between">

@@ -1,6 +1,13 @@
 import { useState, type ReactNode } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import type { CitationAnchor, DebateStreamState, Finding, FindingEvidenceSource, JsonRecord } from '../../../api/reviews';
+import type {
+  CitationAnchor,
+  DebateStreamState,
+  DiagramExtractionSummary,
+  Finding,
+  FindingEvidenceSource,
+  JsonRecord,
+} from '../../../api/reviews';
 import {
   formatLabel,
   formatValue,
@@ -11,6 +18,7 @@ import {
 } from '../utils/reviewPresentation';
 import type { DetailItem } from '../utils/reviewPresentation';
 import AgentMessageBubble from './AgentMessageBubble';
+import DiagramStructurePanel from './DiagramStructurePanel';
 
 // Mirrors backend build_debate_id (debate_events.py) so a persisted Finding
 // can be matched against its live/replayed debate transcript client-side.
@@ -305,7 +313,9 @@ interface FindingDetailsProps {
 }
 
 export function FindingDetails({ finding, debatesById, activeCitationId = null, onCitationSelect }: FindingDetailsProps) {
-  const [activeAgentAudit, setActiveAgentAudit] = useState<string | null>('Hunter');
+  const [activeAgentAudit, setActiveAgentAudit] = useState<string | null>(
+    finding.requirement_metadata?.pipeline_mode === 'extract_reason' ? 'Extractor' : 'Hunter',
+  );
   const debateTranscript = debatesById?.[computeDebateId(finding)]?.transcript ?? null;
   const hasDebateTranscript = Boolean(debateTranscript && debateTranscript.length > 0);
   const evidenceSources = (finding.evidence_sources || []).filter(
@@ -427,12 +437,23 @@ export function FindingDetails({ finding, debatesById, activeCitationId = null, 
         (finding.hunter_reasoning || finding.critic_reasoning || finding.mediator_reasoning || finding.hunter_thought_process || finding.critic_thought_process || finding.mediator_thought_process) && (
           <section className="space-y-3 rounded-xl border border-surface-border bg-surface-base/50 p-4">
             <p className="text-xs font-semibold text-text-muted uppercase tracking-wider">Agent Audit</p>
+            {finding.requirement_metadata?.pipeline_mode === 'extract_reason' && (
+              <DiagramStructurePanel
+                extraction={finding.requirement_metadata?.diagram_extraction as DiagramExtractionSummary | null | undefined}
+              />
+            )}
             <div className="flex flex-col gap-3">
-              {[
-                { role: 'Hunter', color: 'text-flame', reasoning: finding.hunter_reasoning, thought: finding.hunter_thought_process },
-                { role: 'Critic', color: 'text-burgundy-light', reasoning: finding.critic_reasoning, thought: finding.critic_thought_process },
-                { role: 'Mediator', color: 'text-emerald-400', reasoning: finding.mediator_reasoning, thought: finding.mediator_thought_process },
-              ].map((agent) => {
+              {(finding.requirement_metadata?.pipeline_mode === 'extract_reason'
+                ? [
+                    { role: 'Extractor', color: 'text-violet-400', reasoning: finding.hunter_reasoning, thought: finding.hunter_thought_process },
+                    { role: 'Reasoner', color: 'text-crimson', reasoning: finding.mediator_reasoning, thought: finding.mediator_thought_process },
+                  ]
+                : [
+                    { role: 'Hunter', color: 'text-flame', reasoning: finding.hunter_reasoning, thought: finding.hunter_thought_process },
+                    { role: 'Critic', color: 'text-burgundy-light', reasoning: finding.critic_reasoning, thought: finding.critic_thought_process },
+                    { role: 'Mediator', color: 'text-emerald-400', reasoning: finding.mediator_reasoning, thought: finding.mediator_thought_process },
+                  ]
+              ).map((agent) => {
                 if (!agent.reasoning && !agent.thought) return null;
                 const isActive = activeAgentAudit === agent.role;
                 return (

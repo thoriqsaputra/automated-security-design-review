@@ -132,11 +132,42 @@ export interface Review {
   updated_at: string;
 }
 
-export type DebateAgent = 'hunter' | 'critic' | 'mediator' | 'system';
+export type DebateAgent = 'hunter' | 'critic' | 'mediator' | 'extractor' | 'reasoner' | 'system';
 export type DebateStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type DebateExecutionMode = 'single' | 'batch' | 'fallback';
 export type DebateFindingType = 'requirement' | 'diagram';
+export type DebatePipelineMode = 'debate' | 'extract_reason';
 export type CriticOutcome = 'UPHOLD' | 'OVERTURN' | 'PARTIAL';
+
+export interface DiagramExtractionComponent {
+  id: string;
+  name: string;
+  type: string;
+  confirmed?: boolean;
+}
+
+export interface DiagramExtractionTrustBoundary {
+  id: string;
+  label: string;
+  encloses_component_ids: string[];
+  confirmed?: boolean;
+}
+
+export interface DiagramExtractionFlow {
+  id: string;
+  source_component_id: string;
+  target_component_id: string;
+  label?: string | null;
+  protocol?: string | null;
+  confirmed?: boolean;
+}
+
+export interface DiagramExtractionSummary {
+  components: DiagramExtractionComponent[];
+  trust_boundaries: DiagramExtractionTrustBoundary[];
+  flows: DiagramExtractionFlow[];
+  other_visible_text?: string[];
+}
 
 export interface DebateTranscriptMessage {
   message_id: string;
@@ -164,6 +195,7 @@ export interface DebateStreamState {
   status: DebateStatus;
   active_agent: DebateAgent | null;
   execution_mode: DebateExecutionMode;
+  pipeline_mode?: DebatePipelineMode;
   progress_percent: number;
   last_snippet: string;
   updated_at: string | null;
@@ -171,6 +203,7 @@ export interface DebateStreamState {
   transcript: DebateTranscriptMessage[];
   critic_outcome?: CriticOutcome | null;
   requires_rebuttal?: boolean | null;
+  diagram_extraction?: DiagramExtractionSummary | null;
 }
 
 export interface DebateSnapshotPayload {

@@ -4,6 +4,8 @@ const agentStyles: Record<string, string> = {
   hunter: 'border-sky-500/30 bg-sky-500/10',
   critic: 'border-amber-500/30 bg-amber-500/10',
   mediator: 'border-emerald-500/30 bg-emerald-500/10',
+  extractor: 'border-violet-500/30 bg-violet-500/10',
+  reasoner: 'border-crimson/30 bg-crimson/10',
   system: 'border-surface-border bg-midnight/40',
 };
 

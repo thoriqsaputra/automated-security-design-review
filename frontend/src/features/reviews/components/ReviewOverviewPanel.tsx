@@ -22,9 +22,8 @@ function reviewDurationLabel(review: Review): string {
 export default function ReviewOverviewPanel({ review, findingCount }: ReviewOverviewPanelProps) {
   return (
     <div className="space-y-6 animate-fade-in">
-      <div className="grid grid-cols-2 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-4">
         {[
-          { label: 'Status', value: review.status },
           { label: 'Analysis Mode', value: formatAnalysisModeLabel(normalizeAnalysisMode(review.analysis_mode)) },
           { label: 'Findings', value: findingCount },
           { label: 'Duration', value: reviewDurationLabel(review) },

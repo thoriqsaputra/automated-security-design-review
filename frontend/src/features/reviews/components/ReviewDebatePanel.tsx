@@ -116,7 +116,7 @@ export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
             <div>
               <h3 className="text-sm font-semibold text-text-primary">Analysis Progress</h3>
               <p className="mt-1 text-xs text-text-muted">
-                Debate counts reflect post-filtering requirement selection. Persistence tracks final write-out after debate completes.
+                Analyzed counts reflect post-filtering selection across both requirement and diagram analysis. Persistence tracks final write-out after each analysis completes.
               </p>
             </div>
             <div className="rounded-full border border-surface-border px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-text-secondary">
@@ -125,9 +125,9 @@ export default function ReviewDebatePanel(props: ReviewDebatePanelProps) {
           </div>
           <div className="mt-4 grid grid-cols-2 gap-4 lg:grid-cols-3">
             {[
-              { label: 'Debated Total', value: debatedTotal ?? '—' },
-              { label: 'Debated Completed', value: debatedProcessed ?? '—' },
-              { label: 'Debated Remaining', value: debatedRemaining ?? '—' },
+              { label: 'Analyzed Total', value: debatedTotal ?? '—' },
+              { label: 'Analyzed Completed', value: debatedProcessed ?? '—' },
+              { label: 'Analyzed Remaining', value: debatedRemaining ?? '—' },
             ].map((item) => (
               <div key={item.label} className="rounded-lg border border-surface-border bg-midnight/30 p-3">
                 <p className="text-[10px] font-semibold text-text-muted uppercase tracking-wider">{item.label}</p>

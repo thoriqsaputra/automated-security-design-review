@@ -9,21 +9,34 @@ import {
   type Node,
 } from '@xyflow/react';
 import '@xyflow/react/dist/style.css';
-import type { DebateAgent, DebateStreamState, DebateTranscriptMessage } from '../../../api/reviews';
+import { ScanEye, Brain } from 'lucide-react';
+import type { DebateAgent, DebatePipelineMode, DebateStreamState, DebateTranscriptMessage } from '../../../api/reviews';
 
-const AGENT_ORDER: DebateAgent[] = ['hunter', 'critic', 'mediator'];
+const AGENT_ORDER_BY_MODE: Record<DebatePipelineMode, DebateAgent[]> = {
+  debate: ['hunter', 'critic', 'mediator'],
+  extract_reason: ['extractor', 'reasoner'],
+};
 
 const AGENT_LABELS: Record<DebateAgent, string> = {
   hunter: 'Hunter',
   critic: 'Critic',
   mediator: 'Mediator',
+  extractor: 'Extractor',
+  reasoner: 'Reasoner',
   system: 'System',
+};
+
+const AGENT_ICONS: Partial<Record<DebateAgent, typeof ScanEye>> = {
+  extractor: ScanEye,
+  reasoner: Brain,
 };
 
 const AGENT_COLORS: Record<DebateAgent, { bg: string; border: string; text: string }> = {
   hunter: { bg: '#0c2233', border: '#38bdf8', text: '#e0f2fe' },
   critic: { bg: '#2b1d05', border: '#f59e0b', text: '#fef3c7' },
   mediator: { bg: '#062b22', border: '#10b981', text: '#d1fae5' },
+  extractor: { bg: '#1a0f2e', border: '#a78bfa', text: '#ede9fe' },
+  reasoner: { bg: '#2a0f14', border: '#872341', text: '#fbd5d5' },
   system: { bg: '#161324', border: '#3e2050', text: '#c9b8d6' },
 };
 
@@ -60,6 +73,7 @@ interface DebateAgentFlowProps {
 }
 
 export default function DebateAgentFlow({ debate, selectedAgent, onSelectAgent }: DebateAgentFlowProps) {
+  const agentOrder = AGENT_ORDER_BY_MODE[debate.pipeline_mode ?? 'debate'];
   const { nodes, edges } = useMemo(() => {
     const ns: Node[] = [
       {
@@ -85,13 +99,14 @@ export default function DebateAgentFlow({ debate, selectedAgent, onSelectAgent }
       },
     ];
 
-    AGENT_ORDER.forEach((agent, index) => {
+    agentOrder.forEach((agent, index) => {
       const status = agentStatus(debate, agent);
       const message = latestMessageForAgent(debate.transcript, agent);
       const colors = status === 'failed' ? FAILED_COLORS : status === 'pending' ? IDLE_COLORS : AGENT_COLORS[agent];
       const isSelected = selectedAgent === agent;
       const isActive = debate.active_agent === agent && debate.status === 'running';
       const snippet = (message?.content || '').trim().slice(-140);
+      const AgentIcon = AGENT_ICONS[agent];
       ns.push({
         id: agent,
         position: { x: 300 * (index + 1), y: 40 },
@@ -99,7 +114,10 @@ export default function DebateAgentFlow({ debate, selectedAgent, onSelectAgent }
           label: (
             <div className="text-left">
               <div className="flex items-center justify-between gap-2">
-                <span className="text-xs font-semibold uppercase tracking-[0.16em]">{AGENT_LABELS[agent]}</span>
+                <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-[0.16em]">
+                  {AgentIcon && <AgentIcon className="h-3 w-3" />}
+                  {AGENT_LABELS[agent]}
+                </span>
                 <span
                   className={`h-1.5 w-1.5 rounded-full ${
                     status === 'running' ? 'animate-pulse bg-current' : status === 'failed' ? 'bg-current' : 'bg-current opacity-70'
@@ -131,7 +149,7 @@ export default function DebateAgentFlow({ debate, selectedAgent, onSelectAgent }
 
     ns.push({
       id: 'verdict',
-      position: { x: 300 * (AGENT_ORDER.length + 1), y: 60 },
+      position: { x: 300 * (agentOrder.length + 1), y: 60 },
       data: { label: debate.status === 'completed' ? 'Finding Recorded' : 'Verdict' },
       sourcePosition: Position.Right,
       targetPosition: Position.Left,
@@ -151,24 +169,25 @@ export default function DebateAgentFlow({ debate, selectedAgent, onSelectAgent }
       },
     });
 
-    const chain = ['requirement', ...AGENT_ORDER, 'verdict'];
+    const chain = ['requirement', ...agentOrder, 'verdict'];
+    const terminalAgent = agentOrder[agentOrder.length - 1];
     const es: Edge[] = [];
     for (let i = 0; i < chain.length - 1; i += 1) {
       const source = chain[i];
       const target = chain[i + 1];
-      const targetIsActiveAgent = AGENT_ORDER.includes(target as DebateAgent) && debate.active_agent === target;
+      const targetIsActiveAgent = agentOrder.includes(target as DebateAgent) && debate.active_agent === target;
       es.push({
         id: `e-${source}-${target}`,
         source,
         target,
-        animated: debate.status === 'running' && (targetIsActiveAgent || (source === 'mediator' && target === 'verdict' && debate.status === 'running')),
+        animated: debate.status === 'running' && (targetIsActiveAgent || (source === terminalAgent && target === 'verdict' && debate.status === 'running')),
         style: { stroke: '#872341', strokeWidth: 2 },
         markerEnd: { type: MarkerType.ArrowClosed, color: '#872341', width: 14, height: 14 },
       });
     }
 
     return { nodes: ns, edges: es };
-  }, [debate, selectedAgent]);
+  }, [debate, selectedAgent, agentOrder]);
 
   return (
     <div className="h-80 lg:h-[28rem] w-full rounded-xl border border-surface-border overflow-hidden bg-midnight">
@@ -188,7 +207,7 @@ export default function DebateAgentFlow({ debate, selectedAgent, onSelectAgent }
         minZoom={0.3}
         maxZoom={1.5}
         onNodeClick={(_, node) => {
-          if (AGENT_ORDER.includes(node.id as DebateAgent)) {
+          if (agentOrder.includes(node.id as DebateAgent)) {
             onSelectAgent(selectedAgent === node.id ? null : (node.id as DebateAgent));
           }
         }}

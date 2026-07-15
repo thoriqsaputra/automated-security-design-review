@@ -20,12 +20,8 @@ export default function CategoryUploadModal(props: CategoryUploadModalProps) {
     title,
     uploading,
     file,
-    startPage,
-    endPage,
     onClose,
     onFileChange,
-    onStartPageChange,
-    onEndPageChange,
     onSubmit,
   } = props;
 
