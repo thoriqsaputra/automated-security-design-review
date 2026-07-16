@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import json
-from typing import Callable, List, Optional
+from typing import Callable, Dict, List, Optional
 
 from sdr.apps.ai.prompts.agents import (
     MEDIATOR_RECOMMENDATION_SYSTEM_PROMPT,
@@ -18,16 +18,12 @@ from .base import (
     CriticResult,
     HunterResult,
     MediatorResult,
-    OUTCOME_UPHOLD,
-    OUTCOME_OVERTURN,
-    OUTCOME_PARTIAL,
     VERDICT_MET,
     VERDICT_NOT_MET,
     VERDICT_NA,
     VERDICT_PARTIAL,
     SEVERITY_CRITICAL,
     SEVERITY_HIGH,
-    VALID_SEVERITIES,
 )
 
 logger = logging.getLogger(__name__)
@@ -38,7 +34,7 @@ class MediatorAgent(BaseAgent):
     model_component: str = "mediator"
     max_tokens: int = 8192  # Give the structured JSON enough room to finish cleanly
     temperature: float = 0.0
-    reasoning_effort: str = "medium"
+    reasoning_effort: str = "high"
 
     def _build_user_prompt(
         self,
@@ -64,6 +60,8 @@ class MediatorAgent(BaseAgent):
             critic_valid_citations=[c.to_dict() for c in critic_result.valid_citations],
             critic_revised_confidence=critic_result.revised_confidence,
             hunter_reasoning=hunter_result.logic_summary or hunter_result.reasoning,
+            hunter_validated_citations=[c.to_dict() for c in hunter_result.citations],
+            critic_invalid_citation_ids=list(critic_result.invalid_citation_ids or []),
             critic_objections=critic_result.objections,
             critic_weak_evidence=critic_result.weak_evidence,
             critic_missed_evidence=critic_result.missed_evidence,
@@ -92,19 +90,8 @@ class MediatorAgent(BaseAgent):
             return self._mediator_error(msg)
 
         # ------------------------------------------------------------------
-        # 2. Fast-path cases
+        # 2. Both agents errored — nothing meaningful to mediate.
         # ------------------------------------------------------------------
-
-        fast_path_result = self._try_fast_path(
-            parameter_text=parameter_text,
-            hunter_result=hunter_result,
-            critic_result=critic_result,
-            debate_history=debate_history,
-        )
-        if fast_path_result is not None:
-            return fast_path_result
-
-        # Fast-path B: Both agents errored — nothing meaningful to mediate.
         if hunter_result.error and critic_result.error:
             msg = (
                 "Both Hunter and Critic returned errors — "
@@ -220,8 +207,10 @@ class MediatorAgent(BaseAgent):
         except (TypeError, ValueError):
             debate_rounds_used = len(debate_history or [])
 
-        # Final citations come from the Critic-verified set only —
-        # the Mediator must not invent new citations the Critic didn't verify
+        # Final citations come from the Critic-verified set, or from the
+        # Hunter's own grounded citations when the Mediator explicitly
+        # chooses to override a Critic non-adoption — the Mediator must
+        # never invent a citation neither agent grounded.
         final_citations = self._reconcile_final_citations(
             llm_citations=self._extract_citations(
                 parsed.get("final_citations", []),
@@ -229,6 +218,8 @@ class MediatorAgent(BaseAgent):
             ),
             critic_valid_citations=critic_result.valid_citations,
             parameter_text=parameter_text,
+            hunter_validated_citations=hunter_result.citations,
+            critic_invalid_citation_ids=critic_result.invalid_citation_ids,
         )
 
         final_verdict, confidence, recommendation, reasoning_fields = (
@@ -345,138 +336,6 @@ class MediatorAgent(BaseAgent):
         )
 
     # ------------------------------------------------------------------
-    # Fast-path logic
-    # ------------------------------------------------------------------
-
-    def _try_fast_path(
-        self,
-        parameter_text: str,
-        hunter_result: HunterResult,
-        critic_result: CriticResult,
-        debate_history: Optional[List[dict]] = None,
-    ) -> Optional[MediatorResult]:
-        _FAST_PATH_CONFIDENCE_THRESHOLD = 0.75
-
-        if hunter_result.error or critic_result.error:
-            return None
-
-        if critic_result.outcome != OUTCOME_UPHOLD:
-            return None
-
-        final_rebuttal_converged = (
-            bool(debate_history)
-            and len(debate_history) > 1
-            and critic_result.outcome == OUTCOME_UPHOLD
-            and hunter_result.verdict == critic_result.revised_verdict
-            and bool(critic_result.valid_citations)
-        )
-
-        if critic_result.requires_rebuttal or (
-            critic_result.objections and not final_rebuttal_converged
-        ):
-            return None
-
-        if hunter_result.verdict != critic_result.revised_verdict:
-            return None
-
-        agreed_verdict = hunter_result.verdict
-        if agreed_verdict == VERDICT_NOT_MET and not critic_result.valid_citations:
-            return None
-        if agreed_verdict == VERDICT_MET and not critic_result.valid_citations:
-            return None
-        if agreed_verdict != VERDICT_MET and (
-            hunter_result.confidence < _FAST_PATH_CONFIDENCE_THRESHOLD
-            or critic_result.revised_confidence < _FAST_PATH_CONFIDENCE_THRESHOLD
-        ):
-            return None
-
-        # All conditions met — produce a fast-path result
-
-        averaged_confidence = (
-            hunter_result.confidence + critic_result.revised_confidence
-        ) / 2
-
-        # For fast-path not_met, assign severity from Critic reasoning heuristic
-        severity = self._infer_severity_from_confidence(
-            verdict=agreed_verdict,
-            confidence=averaged_confidence,
-        )
-
-        self.logger.info(
-            "MediatorAgent._try_fast_path: Hunter and Critic agree "
-            "verdict='%s' with averaged_confidence=%.2f — "
-            "skipping LLM call for parameter '%s...'",
-            agreed_verdict,
-            averaged_confidence,
-            parameter_text[:60],
-        )
-
-        return MediatorResult(
-            final_verdict=agreed_verdict,
-            confidence=averaged_confidence,
-            applicability_status=(
-                APPLICABILITY_NOT_ESTABLISHED
-                if agreed_verdict == VERDICT_NA
-                else APPLICABILITY_ESTABLISHED
-            ),
-            applicability_reason=(
-                "Hunter and Critic agreed that applicability was not established."
-                if agreed_verdict == VERDICT_NA
-                else "Hunter and Critic agreed the requirement remains applicable."
-            ),
-            missing_expected_evidence=list(critic_result.missing_expected_evidence or []),
-            finding_description=self._build_fast_path_description(agreed_verdict),
-            reasoning=self._build_fast_path_reasoning(
-                agreed_verdict=agreed_verdict,
-                hunter_result=hunter_result,
-                critic_result=critic_result,
-            ),
-            logic_summary=self._build_fast_path_reasoning(
-                agreed_verdict=agreed_verdict,
-                hunter_result=hunter_result,
-                critic_result=critic_result,
-            ),
-            final_citations=list(critic_result.valid_citations),
-            severity=severity,
-            recommendation=None,  # Fast-path does not generate recommendations
-            raw_final_verdict=agreed_verdict,
-            verified_evidence=[c.quoted_text for c in critic_result.valid_citations if c.quoted_text],
-            rejected_evidence=[],
-            debate_rounds_used=0,
-            raw_response=None,
-            error=None,
-        )
-
-    def _build_fast_path_reasoning(
-        self,
-        *,
-        agreed_verdict: str,
-        hunter_result: HunterResult,
-        critic_result: CriticResult,
-    ) -> str:
-        if agreed_verdict == VERDICT_MET:
-            return (
-                "The cited TSD evidence was verified by the Critic and directly supports the requirement. "
-                "The final verdict is met because the accepted citations provide implementation-level support."
-            )
-        if agreed_verdict == VERDICT_NA:
-            return (
-                "The retrieved TSD context does not establish that this control applies to the design scope. "
-                "The final verdict is not applicable rather than a security failure."
-            )
-        return (
-            "The requirement is applicable, but the verified TSD evidence does not show the required implementation. "
-            "The final verdict is not met because the accepted review record identifies missing or insufficient control evidence."
-        )
-
-    def _build_fast_path_description(self, agreed_verdict: str) -> str:
-        if agreed_verdict == VERDICT_MET:
-            return "The TSD contains verified evidence that satisfies this control."
-        if agreed_verdict == VERDICT_NA:
-            return "This control is not applicable to the documented design scope."
-        return "The TSD lacks verified evidence showing this control is implemented."
-
-    # ------------------------------------------------------------------
     # Citation reconciliation
     # ------------------------------------------------------------------
 
@@ -485,21 +344,34 @@ class MediatorAgent(BaseAgent):
         llm_citations: List[Citation],
         critic_valid_citations: List[Citation],
         parameter_text: str,
+        hunter_validated_citations: Optional[List[Citation]] = None,
+        critic_invalid_citation_ids: Optional[List[str]] = None,
     ) -> List[Citation]:
-        if not critic_valid_citations:
-            # Critic verified nothing — no citations can be considered final
-            if llm_citations:
-                self.logger.warning(
-                    "MediatorAgent._reconcile_final_citations: Mediator "
-                    "returned %d citation(s) but Critic verified none — "
-                    "discarding all Mediator citations for parameter '%s...'",
-                    len(llm_citations),
-                    parameter_text[:60],
-                )
-            return []
+        # Eligible pool = Critic-verified citations, plus Hunter's own
+        # grounded citations (already quote-validated by the debate's citation
+        # validator before either agent saw them) that the Critic did not
+        # actively invalidate. A block_id the Critic verified takes priority
+        # over the Hunter's version of the same block_id (confirmed bbox
+        # data); a block_id the Critic invalidated is never eligible, no
+        # matter what the Hunter or Mediator says about it — that's a
+        # verified rejection, not a mere non-adoption.
+        invalid_ids = set(critic_invalid_citation_ids or [])
+        eligible_by_block_id: Dict[str, Citation] = {}
+        hunter_sourced_ids: set = set()
+        for citation in hunter_validated_citations or []:
+            if citation.block_id and citation.block_id not in invalid_ids:
+                eligible_by_block_id[citation.block_id] = citation
+                hunter_sourced_ids.add(citation.block_id)
+        for citation in critic_valid_citations:
+            if citation.block_id:
+                eligible_by_block_id[citation.block_id] = citation
+                hunter_sourced_ids.discard(citation.block_id)
 
         if not llm_citations:
-            # Mediator returned no citations — use Critic's verified set directly
+            # Mediator returned no citations of its own — use Critic's
+            # verified set directly. The Hunter pool is only usable when the
+            # Mediator explicitly selects from it with justification, not as
+            # an automatic fallback.
             self.logger.debug(
                 "MediatorAgent._reconcile_final_citations: Mediator returned "
                 "no citations — using %d Critic-verified citation(s) for "
@@ -509,16 +381,9 @@ class MediatorAgent(BaseAgent):
             )
             return list(critic_valid_citations)
 
-        # Build a lookup set of Critic-verified block_ids for O(1) membership check
-        critic_verified_ids = {c.block_id for c in critic_valid_citations}
-
-        # Build a lookup dict of Critic citations by block_id so we can return
-        # the Critic's version — which carries verified bbox and quoted_text data
-        # rather than the Mediator's potentially hallucinated version
-        critic_by_block_id = {c.block_id: c for c in critic_valid_citations}
-
         reconciled: List[Citation] = []
         discarded_ids: List[str] = []
+        adopted_from_hunter_ids: List[str] = []
         seen_block_ids: set = set()
 
         for citation in llm_citations:
@@ -529,10 +394,13 @@ class MediatorAgent(BaseAgent):
                 # Deduplicate — Mediator occasionally repeats the same block_id
                 continue
 
-            if citation.block_id in critic_verified_ids:
-                # Use the Critic's verified version — it has confirmed bbox data
-                reconciled.append(critic_by_block_id[citation.block_id])
+            if citation.block_id in eligible_by_block_id:
+                # Use the verified version — it has confirmed bbox/quote data
+                # rather than the Mediator's potentially hallucinated version
+                reconciled.append(eligible_by_block_id[citation.block_id])
                 seen_block_ids.add(citation.block_id)
+                if citation.block_id in hunter_sourced_ids:
+                    adopted_from_hunter_ids.append(citation.block_id)
             else:
                 discarded_ids.append(citation.block_id)
 
@@ -543,6 +411,16 @@ class MediatorAgent(BaseAgent):
                 "parameter '%s...'",
                 len(discarded_ids),
                 discarded_ids,
+                parameter_text[:60],
+            )
+
+        if adopted_from_hunter_ids:
+            self.logger.warning(
+                "MediatorAgent._reconcile_final_citations: adopted %d "
+                "Hunter-grounded citation(s) not verified by Critic: %s for "
+                "parameter '%s...'",
+                len(adopted_from_hunter_ids),
+                adopted_from_hunter_ids,
                 parameter_text[:60],
             )
 

@@ -1,0 +1,38 @@
+{
+  "source_files": {
+    "design_14": "backend/sdr/apps/ai/evaluations/results/debate/diagram_extract_reason_design14_rebuiltfix.json",
+    "design_15": "backend/sdr/apps/ai/evaluations/results/debate/diagram_extract_reason_design15_rebuiltfix.json"
+  },
+  "aggregate": {
+    "tp": 62,
+    "fp": 4,
+    "fn": 4,
+    "tn": 45,
+    "precision": 0.9394,
+    "recall": 0.9394,
+    "f1": 0.9394,
+    "fpr": 0.0816
+  },
+  "per_design": {
+    "design_14": {
+      "tp": 51,
+      "fp": 2,
+      "fn": 3,
+      "tn": 9,
+      "precision": 0.9623,
+      "recall": 0.9444,
+      "f1": 0.9533,
+      "fpr": 0.1818
+    },
+    "design_15": {
+      "tp": 11,
+      "fp": 2,
+      "fn": 1,
+      "tn": 36,
+      "precision": 0.8462,
+      "recall": 0.9167,
+      "f1": 0.88,
+      "fpr": 0.0526
+    }
+  }
+}

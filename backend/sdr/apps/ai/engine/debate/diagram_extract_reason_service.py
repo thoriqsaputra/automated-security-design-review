@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+from math import ceil, floor
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from difflib import SequenceMatcher
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -67,6 +68,90 @@ def _jaccard(a: Any, b: Any) -> float:
     if not set_a or not set_b:
         return 0.0
     return len(set_a & set_b) / len(set_a | set_b)
+
+
+def _strict_confirmation_votes(votes_total: int, threshold: float) -> int:
+    if votes_total <= 0:
+        return 0
+    ratio_requirement = ceil(votes_total * max(0.0, threshold))
+    majority_requirement = floor(votes_total / 2) + 1
+    return max(1, majority_requirement, ratio_requirement)
+
+
+def _best_alias_similarity(value: Any, aliases: List[str]) -> float:
+    normalized_value = _normalize_label(value)
+    if not normalized_value:
+        return 0.0
+    best = 0.0
+    for alias in aliases:
+        best = max(best, _similarity(normalized_value, alias))
+    return best
+
+
+def _clean_component_labels(component: Dict[str, Any]) -> List[str]:
+    labels = []
+    seen = set()
+    for label in component.get("labels") or []:
+        text = str(label or "").strip()
+        if not text:
+            continue
+        normalized = _normalize_label(text)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        labels.append(text)
+    return labels
+
+
+def _clean_security_annotations(flow_item: Dict[str, Any]) -> List[str]:
+    cleaned = []
+    seen = set()
+    for annotation in flow_item.get("security_annotations") or []:
+        text = str(annotation or "").strip()
+        if not text:
+            continue
+        normalized = _normalize_label(text)
+        if not normalized or normalized in seen:
+            continue
+        seen.add(normalized)
+        cleaned.append(text)
+    return cleaned
+
+
+def _component_aliases(component: Dict[str, Any]) -> List[str]:
+    aliases = [str(component.get("name") or "").strip()]
+    aliases.extend(str(label or "").strip() for label in component.get("labels") or [])
+    normalized = []
+    seen = set()
+    for alias in aliases:
+        norm = _normalize_label(alias)
+        if not norm or norm in seen:
+            continue
+        seen.add(norm)
+        normalized.append(norm)
+    return normalized
+
+
+def _normalize_assessment_rows(raw_result: Optional[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    if not isinstance(raw_result, dict):
+        return []
+
+    candidate_lists = [
+        raw_result.get("requirement_assessments"),
+        raw_result.get("assessed_requirements"),
+    ]
+    for candidate in candidate_lists:
+        if isinstance(candidate, list):
+            normalized_rows: List[Dict[str, Any]] = []
+            for row in candidate:
+                if not isinstance(row, dict):
+                    continue
+                item = dict(row)
+                if not item.get("requirement_id") and item.get("id"):
+                    item["requirement_id"] = item.get("id")
+                normalized_rows.append(item)
+            return normalized_rows
+    return []
 
 
 class DiagramExtractReasonService:
@@ -258,8 +343,10 @@ class DiagramExtractReasonService:
             "extraction_votes": self._extraction_votes,
             "extraction_passes_succeeded": len(raw_passes),
             "merge_threshold": self._merge_threshold,
+            "strict_confirmation_votes_required": _strict_confirmation_votes(len(raw_passes), self._merge_threshold),
             "confirmed_element_count": len(merged.confirmed_element_ids()),
             "total_element_count": len(merged.all_element_ids()),
+            "raw_extraction_passes": raw_passes,
             **merged.merge_diagnostics,
             **reasoning_diagnostics,
         }
@@ -304,6 +391,7 @@ class DiagramExtractReasonService:
             "trust_boundaries": merged.trust_boundaries,
             "flows": merged.flows,
             "other_visible_text": merged.other_visible_text,
+            "raw_extraction_passes": raw_passes,
             "requirement_assessments": [],
             "cot_trace": None,
         }
@@ -437,10 +525,16 @@ class DiagramExtractReasonService:
                 comp_type = str(component.get("type", "other"))
                 best_cluster = None
                 best_score = 0.0
+                component_aliases = _component_aliases(component)
                 for cluster in component_clusters:
                     if id(cluster) in matched_in_this_pass:
                         continue
-                    score = _similarity(name, cluster["name"])
+                    score = _best_alias_similarity(name, cluster["aliases"])
+                    if component_aliases:
+                        score = max(
+                            score,
+                            max(_best_alias_similarity(alias, cluster["aliases"]) for alias in component_aliases),
+                        )
                     if 0.55 <= score < self._fuzzy_match_threshold and comp_type == cluster["type"]:
                         label_overlap = _jaccard(component.get("labels") or [], cluster["labels"])
                         if label_overlap >= 0.5:
@@ -450,7 +544,8 @@ class DiagramExtractReasonService:
                 if best_cluster is not None and best_score >= self._fuzzy_match_threshold:
                     matched_in_this_pass.add(id(best_cluster))
                     best_cluster["vote_count"] += 1
-                    best_cluster["labels"] = list(set(best_cluster["labels"]) | set(component.get("labels") or []))
+                    best_cluster["labels"] = list(set(best_cluster["labels"]) | set(_clean_component_labels(component)))
+                    best_cluster["aliases"] = sorted(set(best_cluster["aliases"]) | set(component_aliases))
                     existing_notes = best_cluster.get("notes", "")
                     new_notes = str(component.get("notes", "") or "")
                     best_cluster["notes"] = new_notes if len(new_notes) > len(existing_notes) else existing_notes
@@ -461,7 +556,8 @@ class DiagramExtractReasonService:
                         "local_key": local_key,
                         "name": name,
                         "type": comp_type,
-                        "labels": list(component.get("labels") or []),
+                        "labels": _clean_component_labels(component),
+                        "aliases": component_aliases or [_normalize_label(name)] if _normalize_label(name) else [],
                         "notes": str(component.get("notes", "") or ""),
                         "vote_count": 1,
                     }
@@ -529,7 +625,18 @@ class DiagramExtractReasonService:
                     if id(cluster) in flow_matched_in_this_pass:
                         continue
                     if cluster["source_component_id"] != resolved_source or cluster["target_component_id"] != resolved_target:
-                        continue
+                        if not (
+                            flow_item.get("direction") == "bidirectional"
+                            or cluster.get("direction") == "bidirectional"
+                            or flow_item.get("direction") == "unclear"
+                            or cluster.get("direction") == "unclear"
+                        ):
+                            continue
+                        if not (
+                            cluster["source_component_id"] == resolved_target
+                            and cluster["target_component_id"] == resolved_source
+                        ):
+                            continue
                     score = _similarity(f"{label} {protocol}", f"{cluster['label']} {cluster['protocol']}")
                     if score > best_score:
                         best_score, best_cluster = score, cluster
@@ -539,7 +646,7 @@ class DiagramExtractReasonService:
                     if flow_item.get("direction") != best_cluster.get("direction"):
                         best_cluster.setdefault("direction_disagreement", True)
                     best_cluster["security_annotations"] = list(
-                        set(best_cluster["security_annotations"]) | set(flow_item.get("security_annotations") or [])
+                        set(best_cluster["security_annotations"]) | set(_clean_security_annotations(flow_item))
                     )
                 else:
                     new_cluster = {
@@ -548,7 +655,7 @@ class DiagramExtractReasonService:
                         "direction": flow_item.get("direction", "unclear"),
                         "label": label,
                         "protocol": protocol or None,
-                        "security_annotations": list(flow_item.get("security_annotations") or []),
+                        "security_annotations": _clean_security_annotations(flow_item),
                         "vote_count": 1,
                     }
                     flow_clusters.append(new_cluster)
@@ -559,16 +666,16 @@ class DiagramExtractReasonService:
         for cluster_index, cluster in enumerate(flow_clusters, start=1):
             cluster["id"] = f"f{cluster_index}"
 
-        threshold = self._merge_threshold
+        required_votes = _strict_confirmation_votes(n, self._merge_threshold)
 
-        def finalize(clusters: List[Dict[str, Any]], drop_keys: Tuple[str, ...] = ("local_key",)) -> List[Dict[str, Any]]:
+        def finalize(clusters: List[Dict[str, Any]], drop_keys: Tuple[str, ...] = ("local_key", "aliases")) -> List[Dict[str, Any]]:
             finalized = []
             for cluster in clusters:
                 item = {k: v for k, v in cluster.items() if k not in drop_keys}
                 vote_count = item.pop("vote_count")
                 item["vote_count"] = vote_count
                 item["votes_total"] = n
-                item["confirmed"] = (vote_count / n) >= threshold
+                item["confirmed"] = vote_count >= required_votes
                 finalized.append(item)
             return finalized
 
@@ -681,11 +788,22 @@ class DiagramExtractReasonService:
                         f"agent=reasoner batch={batch_index}/{len(requirement_batches)} attempt={attempt + 1}"
                     ),
                 )
-                is_total_failure = raw_result is None
-                raw_assessments = (raw_result or {}).get("requirement_assessments") or []
-                assessments, invalid_met_ids = self._validate_and_filter_citations(raw_assessments, merged)
+                raw_assessments = _normalize_assessment_rows(raw_result)
+                is_total_failure = raw_result is None or not raw_assessments
+                attempt_assessments, _ = self._validate_and_filter_citations(raw_assessments, merged)
+                merged_by_id: Dict[str, Dict[str, Any]] = {
+                    str(a.get("requirement_id", "")).strip(): dict(a)
+                    for a in assessments
+                    if str(a.get("requirement_id", "")).strip()
+                }
+                for item in attempt_assessments:
+                    requirement_id = str(item.get("requirement_id", "")).strip()
+                    if requirement_id:
+                        merged_by_id[requirement_id] = item
+                assessments = list(merged_by_id.values())
                 answered_ids = {str(a.get("requirement_id", "")).strip() for a in assessments}
                 missing_ids = [req_id for req_id in batch_req_ids if req_id not in answered_ids]
+                _, invalid_met_ids = self._validate_and_filter_citations(assessments, merged)
 
                 if not invalid_met_ids and not missing_ids:
                     break

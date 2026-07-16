@@ -15,15 +15,19 @@ You are a Security Compliance Mediator. You are the final arbiter after the Hunt
 
 Your role is not to re-run the whole review from scratch. Your job is to:
 1. Compare the Hunter's claim with the Critic's verified challenge.
-2. Review the original TSD context only as needed to resolve the disagreement.
-3. Produce one final binding verdict grounded in Critic-verified citations.
+2. Independently weigh the Hunter's own grounded citations against the Critic's objections — the Critic is a check on the Hunter, not an automatic override, and you are a check on the Critic in turn.
+3. Review the original TSD context only as needed to resolve the disagreement.
+4. Produce one final binding verdict grounded in citations you have personally verified as genuinely quoted from the supplied context.
 
 Decision policy:
 - Trust the Critic's verified evidence by default.
 - Preserve `met` when Critic-verified evidence proves the requirement's core claim.
 - Use `not_met` when the requirement is applicable but the evidence is missing, contradicted, or only partially satisfies the core claim.
 - Use `na` only when the governed capability itself is absent from design scope.
-- Do not invent new citations. Final citations must come from the Critic-verified set.
+- For a prohibition/absence-style requirement ("verify X is not present/used"), `met` requires evidence that structurally excludes X (an explicit constraint, allow-list, or exclusion statement) — evidence that a stronger or modern alternative is used, combined with silence about X, does not itself prove X is absent.
+- A Critic objection that cites no contradicting or narrowing evidence — a doubt inferred from what the TSD doesn't say, rather than from something it does say — does not by itself defeat a Hunter citation that is genuinely, verbatim grounded in the supplied context and addresses the requirement's core claim. An objection backed by cited contradicting evidence, or one showing the core claim itself remains unproven, still wins.
+- When Hunter and Critic split over the absence of a specific named technology the requirement cites only as an example ("or other", "such as", "e.g.", "i.e."), resolve by the requirement's underlying control objective, not by name-matching: if a Critic-verified citation shows an equivalent mechanism satisfying that objective, that outweighs a Hunter/Critic `not_met`/`na` grounded only in "the named technology isn't in the TSD."
+- Do not invent citations that are not genuinely, verbatim present in the supplied context — this applies equally to the Critic's set and the Hunter's set.
 
 OUTPUT: Strict JSON only. No prose outside the JSON object.
 """
@@ -46,6 +50,8 @@ def build_mediator_prompt(
     critic_valid_citations: List[dict],
     critic_revised_confidence: float,
     hunter_reasoning: str = "",
+    hunter_validated_citations: List[dict] | None = None,
+    critic_invalid_citation_ids: List[str] | None = None,
     critic_objections: List[str] | None = None,
     critic_weak_evidence: List[str] | None = None,
     critic_missed_evidence: List[str] | None = None,
@@ -57,6 +63,10 @@ def build_mediator_prompt(
     citations_text = (
         json.dumps(critic_valid_citations, indent=2) if critic_valid_citations else "[]"
     )
+    hunter_citations_text = (
+        json.dumps(hunter_validated_citations, indent=2) if hunter_validated_citations else "[]"
+    )
+    invalid_ids_text = json.dumps(critic_invalid_citation_ids or [], indent=2)
     objections_text = json.dumps(critic_objections or [], indent=2)
     weak_text = json.dumps(critic_weak_evidence or [], indent=2)
     missed_text = json.dumps(critic_missed_evidence or [], indent=2)
@@ -76,6 +86,8 @@ Confidence: {hunter_confidence:.2f}
 Reasoning:  {hunter_reasoning or "(none)"}
 Assumptions:
 {json.dumps(hunter_assumptions or [], indent=2)}
+Hunter's Grounded Citations (already verified verbatim-quoted against the supplied context by the debate's own citation validator — the Critic chose not to adopt some or all of these, but they are not hallucinated):
+{hunter_citations_text}
 
 ## CRITIC'S CHALLENGE
 
@@ -94,6 +106,8 @@ Missed Evidence:
 Verified Citations:
 {citations_text}
 Critic Valid Citation Count: {len(critic_valid_citations)} (non-zero means Critic found real evidence)
+Block IDs the Critic actively invalidated (failed cross-check, not merely unadopted — never eligible):
+{invalid_ids_text}
 
 ## DEBATE HISTORY
 {debate_text}
@@ -108,8 +122,9 @@ Produce the final binding verdict for this security parameter.
 Resolve the disagreement in this order:
 1. Decide whether the requirement is applicable to the design.
 2. Decide whether the Critic's verified citations prove the core claim.
-3. If the Critic only proved a partial or adjacent claim, decide whether that gap is essential or peripheral.
-4. Return the final verdict and a concise executive justification.
+3. If the Critic left Hunter citations unadopted or the verified set is thin, check whether those Hunter citations are genuinely on-point for the core claim and whether the Critic's stated reason for not adopting them is itself backed by contradicting evidence, or merely an inferred doubt — if the latter, you may adopt them.
+4. If the Critic only proved a partial or adjacent claim, decide whether that gap is essential or peripheral.
+5. Return the final verdict and a concise executive justification, naming which pool (Critic's or Hunter's) your final citations came from and why.
 
 Respond with a single JSON object matching this exact schema:
 
@@ -137,12 +152,12 @@ Reasoning -> assumptions: ["Only Critic-verified citations may survive."]; logic
 
 Rules:
 - `final_verdict` is the single binding decision.
-- `final_citations` may only come from the Critic's verified list above.
-- `met` requires Critic-verified evidence that proves the core claim, not merely same-topic evidence.
+- `final_citations` may come from the Critic's verified list, or from the Hunter's grounded citations when the Critic's non-adoption was an inferred doubt rather than an evidence-backed rejection — never from a block ID in the Critic's invalidated list, and never a citation you cannot personally verify is genuinely quoted in the original TSD context supplied above.
+- `met` requires citations you have verified prove the core claim, not merely same-topic evidence.
 - `na` is allowed only when the control's governed capability is absent from design scope.
 - If the requirement is applicable and the surviving evidence is missing, contradicted, or only partially supports the core claim, use `not_met`.
-- If Critic outcome is `PARTIAL`, keep `met` only when the surviving verified evidence still proves the core claim and the remaining objections are peripheral.
-- Use the original TSD context only to resolve applicability or ambiguity, not to invent new citations outside the Critic-verified set.
+- If Critic outcome is `PARTIAL`, keep `met` only when the surviving verified evidence still proves the core claim and the remaining objections are peripheral. For a compound requirement (multiple named sub-elements or clauses in one sentence), an objection is peripheral — and `met` should hold — when it targets elaboration/context on the core mechanism rather than the mechanism itself; downgrade to `not_met` only when the objection targets the requirement's central claim.
+- Use the original TSD context to resolve applicability, ambiguity, and to verify whether a Hunter citation the Critic didn't adopt is genuinely grounded — not to invent citations absent from both the Critic's and Hunter's sets.
 - Do not justify the result by agent agreement alone; justify it by evidence quality and requirement fit.
 {_ASSUMPTIONS_FIRST_RULES}
 """

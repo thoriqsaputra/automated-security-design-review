@@ -58,59 +58,73 @@ def expand_retrieval_query_variants(
     if cached is not None:
         return cached
 
-    variants = _generate_variants(requirement_text, variant_count=variant_count)
+    variants = _generate_variants(requirement_text, variant_count=variant_count, cache_key=cache_key)
 
-    with _cache_lock:
-        _variant_cache[key] = variants
+    if variants:
+        with _cache_lock:
+            _variant_cache[key] = variants
     return variants
 
 
-def _generate_variants(requirement_text: str, *, variant_count: int) -> List[str]:
+def _generate_variants(requirement_text: str, *, variant_count: int, cache_key: str = "") -> List[str]:
     prompt = (
         f"Abstract security requirement:\n{requirement_text}\n\n"
         f"Produce exactly {variant_count} concrete, implementation-flavored rephrasings "
         "of this requirement, each on its own line within the JSON array. Keep each "
         "variant under 30 words."
     )
+    messages = [
+        {"role": "system", "content": _QUERY_EXPANSION_SYSTEM_PROMPT},
+        {"role": "user", "content": prompt},
+    ]
     try:
-        response = chat_completion(
-            messages=[
-                {"role": "system", "content": _QUERY_EXPANSION_SYSTEM_PROMPT},
-                {"role": "user", "content": prompt},
-            ],
-            component="query_expansion",
-            temperature=0.0,
-            max_tokens=2000,
-            reasoning={"effort": "low"},
-            response_format={"type": "json_object"},
-        )
-        if response.error or not response.content:
-            logger.warning(
-                "expand_retrieval_query_variants: empty/error response: %s",
-                response.error,
+        for attempt in range(2):
+            response = chat_completion(
+                messages=messages,
+                component="query_expansion",
+                temperature=0.0,
+                max_tokens=2000,
+                # First attempt uses low-effort reasoning for latency; if that
+                # comes back empty (observed failure mode: reasoning tokens
+                # consume the whole budget, leaving nothing for content), the
+                # retry drops reasoning entirely rather than repeating the
+                # same failure.
+                reasoning=({"effort": "low"} if attempt == 0 else None),
+                response_format={"type": "json_object"},
             )
-            return []
+            if response.error or not response.content:
+                logger.warning(
+                    "expand_retrieval_query_variants: empty/error response (attempt %d/2, cache_key=%s): %s",
+                    attempt + 1,
+                    cache_key,
+                    response.error,
+                )
+                continue
 
-        parsed, parse_error = parse_json_with_repair(
-            response.content,
-            component="query_expansion",
-            max_tokens=400,
-            chat_completion_fn=chat_completion,
-        )
-        if not isinstance(parsed, dict):
-            logger.warning(
-                "expand_retrieval_query_variants: could not parse variants: %s",
-                parse_error,
+            parsed, parse_error = parse_json_with_repair(
+                response.content,
+                component="query_expansion",
+                max_tokens=400,
+                chat_completion_fn=chat_completion,
             )
-            return []
+            if not isinstance(parsed, dict):
+                logger.warning(
+                    "expand_retrieval_query_variants: could not parse variants (attempt %d/2, cache_key=%s): %s",
+                    attempt + 1,
+                    cache_key,
+                    parse_error,
+                )
+                continue
 
-        raw_variants = parsed.get("variants") or []
-        if not isinstance(raw_variants, list):
-            return []
-        variants = [str(item).strip() for item in raw_variants if str(item).strip()]
-        return variants[:variant_count]
+            raw_variants = parsed.get("variants") or []
+            if not isinstance(raw_variants, list):
+                continue
+            variants = [str(item).strip() for item in raw_variants if str(item).strip()]
+            if variants:
+                return variants[:variant_count]
+        return []
     except Exception:
-        logger.exception("expand_retrieval_query_variants: failed")
+        logger.exception("expand_retrieval_query_variants: failed (cache_key=%s)", cache_key)
         return []
 
 

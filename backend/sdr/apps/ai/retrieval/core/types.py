@@ -43,6 +43,13 @@ class AdvancedRetrievalConfig:
     protected_dense_top_n: int = 7
     protected_bm25_top_n: int = 2
     protected_raptor_top_n: int = 7
+    # Query-expansion variant branches (bm25[1..n], dense[1..n]) are
+    # supplementary in the main protected floors above, so a vocabulary-gap
+    # chunk they alone surface can still be lost to truncation/reranking
+    # against the abstract primary query. This gives each variant branch its
+    # own (smaller) protected floor.
+    protected_variant_top_n: int = 5
+    rerank_with_variants: bool = True
     summary_leaves_per_grounding: int = 1
     hybrid_dense_top_k: int = 20
     hybrid_bm25_top_k: int = 20
@@ -64,6 +71,8 @@ class AdvancedRetrievalConfig:
             protected_dense_top_n=max(0, int(getattr(settings, "AI_RETRIEVAL_PROTECTED_DENSE_TOP_N", 3))),
             protected_bm25_top_n=max(0, int(getattr(settings, "AI_RETRIEVAL_PROTECTED_BM25_TOP_N", 2))),
             protected_raptor_top_n=max(0, int(getattr(settings, "AI_RETRIEVAL_PROTECTED_RAPTOR_TOP_N", 7))),
+            protected_variant_top_n=max(0, int(getattr(settings, "AI_RETRIEVAL_PROTECTED_VARIANT_TOP_N", 5))),
+            rerank_with_variants=bool(getattr(settings, "AI_RETRIEVAL_RERANK_WITH_VARIANTS", True)),
             summary_leaves_per_grounding=max(
                 1, int(getattr(settings, "AI_RETRIEVAL_SUMMARY_LEAVES_PER_GROUNDING", 1))
             ),

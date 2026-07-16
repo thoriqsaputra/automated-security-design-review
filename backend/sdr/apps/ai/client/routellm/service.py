@@ -55,6 +55,31 @@ def _extract_json_object(content: str) -> str:
 
     return stripped
 
+
+def _has_image_payload(
+    image_bytes: Optional[bytes] = None,
+    image_payloads: Optional[List[Dict[str, Any]]] = None,
+) -> bool:
+    if image_bytes:
+        return True
+    return any(payload.get("image_bytes") for payload in (image_payloads or []))
+
+
+def _annotate_routellm_error(error: Exception, *, model: str, has_image: bool) -> str:
+    message = str(error)
+    lowered = message.lower()
+    if has_image and "does not support image uploads" in lowered:
+        return (
+            f"RouteLLM model '{model}' does not support image uploads. "
+            "Use an image-capable model/provider for multimodal requests."
+        )
+    if "invalid model" in lowered:
+        return (
+            f"RouteLLM rejected model '{model}' as unsupported. "
+            "Use a RouteLLM-supported model name for this provider."
+        )
+    return message
+
 class RouteLLMAIService(AIServiceInterface):
     def __init__(self):
         self.api_key = getattr(settings, 'ROUTELLM_API_KEY', None)
@@ -93,6 +118,7 @@ class RouteLLMAIService(AIServiceInterface):
             return AIResponse(content="", model=model_to_use, provider=AIProvider.ROUTELLM, error="API key missing")
 
         self.rate_limiter.acquire()
+        has_image = _has_image_payload(image_bytes=image_bytes, image_payloads=image_payloads)
         
         try:
             # Convert messages to OpenAI format (handling images if any)
@@ -113,7 +139,17 @@ class RouteLLMAIService(AIServiceInterface):
 
             if "top_p" in kwargs:
                 request_kwargs["top_p"] = kwargs["top_p"]
-            
+
+            reasoning = kwargs.get("reasoning")
+            metadata = kwargs.get("metadata")
+            if reasoning or metadata:
+                extra_body: Dict[str, Any] = {}
+                if reasoning:
+                    extra_body["reasoning"] = reasoning
+                if metadata:
+                    extra_body["metadata"] = metadata
+                request_kwargs["extra_body"] = extra_body
+
             if response_format:
                 request_kwargs["response_format"] = response_format
                 
@@ -169,13 +205,35 @@ class RouteLLMAIService(AIServiceInterface):
                         finish_reason=response.choices[0].finish_reason if response.choices else None
                     )
                 except (APIError, APIConnectionError) as ae:
-                    logger.error(f"RouteLLM API Error: {ae}")
+                    annotated_error = _annotate_routellm_error(ae, model=model_to_use, has_image=has_image)
+                    logger.error(
+                        "RouteLLM API Error model=%s has_image=%s: %s",
+                        model_to_use,
+                        has_image,
+                        annotated_error,
+                    )
                     if attempt == 2:
-                        return AIResponse(content="", model=model_to_use, provider=AIProvider.ROUTELLM, error=str(ae))
+                        return AIResponse(
+                            content="",
+                            model=model_to_use,
+                            provider=AIProvider.ROUTELLM,
+                            error=annotated_error,
+                        )
                     time.sleep(2)
                 except Exception as e:
-                    logger.error(f"RouteLLM unexpected error: {e}")
-                    return AIResponse(content="", model=model_to_use, provider=AIProvider.ROUTELLM, error=str(e))
+                    annotated_error = _annotate_routellm_error(e, model=model_to_use, has_image=has_image)
+                    logger.error(
+                        "RouteLLM unexpected error model=%s has_image=%s: %s",
+                        model_to_use,
+                        has_image,
+                        annotated_error,
+                    )
+                    return AIResponse(
+                        content="",
+                        model=model_to_use,
+                        provider=AIProvider.ROUTELLM,
+                        error=annotated_error,
+                    )
                     
         except SoftTimeLimitExceeded:
             logger.error("RouteLLM task timed out.")

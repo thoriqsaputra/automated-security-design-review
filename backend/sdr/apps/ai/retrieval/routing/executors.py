@@ -109,6 +109,7 @@ def _rerank_within_tiers(
     candidates: List[RetrievalCandidate],
     max_context_chunks: int,
     trace: Optional[HybridRetrievalTrace] = None,
+    extra_queries: Optional[List[str]] = None,
 ) -> List[RetrievalCandidate]:
     """Reranks literal source chunks together, with summaries only filling
     after literal evidence.
@@ -117,6 +118,10 @@ def _rerank_within_tiers(
     making them hard rank tiers pushed exact literal matches behind generic
     implementation-looking chunks. The only hard boundary retained here is
     literal source text before hierarchical summaries.
+
+    extra_queries (query-expansion variants) are passed through to the
+    reranker so a chunk phrased in TSD-implementation language scores well
+    even when it reads poorly against the original abstract requirement text.
     """
     tiers: Dict[str, List[RetrievalCandidate]] = {key: [] for key in _EVIDENCE_TIER_ORDER}
     for candidate in candidates:
@@ -136,7 +141,12 @@ def _rerank_within_tiers(
         if not tier_candidates:
             continue
         reranked.extend(
-            router._reranker.rerank(query=query_text, candidates=tier_candidates, top_k=len(tier_candidates))
+            router._reranker.rerank(
+                query=query_text,
+                candidates=tier_candidates,
+                top_k=len(tier_candidates),
+                extra_queries=extra_queries,
+            )
         )
 
     if trace is not None:
@@ -153,11 +163,19 @@ def _protected_candidate_keys(
     dense_n: int,
     bm25_n: int,
     raptor_n: int,
+    variant_dense: Optional[List[List[RetrievalCandidate]]] = None,
+    variant_bm25: Optional[List[List[RetrievalCandidate]]] = None,
+    variant_n: int = 0,
 ) -> Dict[str, str]:
-    """Top-N candidate keys per constituent signal (primary-query rankings
-    only — expansion variants are supplementary), mapped to the signal name.
+    """Top-N candidate keys per constituent signal, mapped to the signal name.
     These are the recall-safety floor: the hybrid final context must contain
-    each of them unless the evidence grader legitimately rejected it."""
+    each of them unless the evidence grader legitimately rejected it.
+
+    Primary-query rankings get the full floor (dense_n/bm25_n/raptor_n).
+    Query-expansion variant branches (variant_dense/variant_bm25) get a
+    smaller floor each (variant_n) — they bridge a vocabulary gap the primary
+    query can't, so a chunk only they surface must not be silently truncated
+    away downstream."""
     protected: Dict[str, str] = {}
     for source, candidates, top_n in (
         ("dense", primary_dense, dense_n),
@@ -166,6 +184,14 @@ def _protected_candidate_keys(
     ):
         for candidate in candidates[: max(0, int(top_n))]:
             protected.setdefault(_key_for_candidate(candidate), source)
+    if variant_n > 0:
+        for source, variant_lists in (
+            ("dense_variant", variant_dense or []),
+            ("bm25_variant", variant_bm25 or []),
+        ):
+            for candidates in variant_lists:
+                for candidate in candidates[: max(0, int(variant_n))]:
+                    protected.setdefault(_key_for_candidate(candidate), source)
     return protected
 
 
@@ -187,6 +213,17 @@ def _enforce_protected_slots(
     """
     if not protected:
         return reranked
+
+    # Tag every candidate already present that matches a protected key, not
+    # just ones we add below — downstream stages (leaf-grounding eviction)
+    # only recognize protection via this metadata tag, not via re-deriving
+    # the `protected` key set, so an item that happened to already rank
+    # within budget must still be marked or it can get silently evicted
+    # later by an unrelated stage's own eviction pass.
+    for candidate in reranked:
+        source = protected.get(_key_for_candidate(candidate))
+        if source:
+            candidate.metadata["protected_slot_source"] = source
 
     present = {_key_for_candidate(c) for c in reranked}
     graded_by_key: Dict[str, RetrievalCandidate] = {}
@@ -211,7 +248,15 @@ def _enforce_protected_slots(
     while len(result) > max_context_chunks:
         evictable = [i for i, c in enumerate(result) if _key_for_candidate(c) not in protected]
         if not evictable:
-            result = result[:max_context_chunks]
+            # More protected candidates than the context budget allows (can
+            # happen once query-expansion variant floors are added on top of
+            # the primary per-signal floors). A plain result[:max_context_chunks]
+            # here would keep protected items by incidental list position
+            # rather than by relevance, silently dropping some — stable-sort
+            # protected-first (preserving each group's existing relative
+            # order) so which protected items survive is at least driven by
+            # the fused/reranked ordering, not by insertion-order accident.
+            result = sorted(result, key=lambda c: _key_for_candidate(c) not in protected)[:max_context_chunks]
             break
         del result[evictable[-1]]
     return result
@@ -558,6 +603,7 @@ class RetrievalRouteExecutor:
         dense_candidate_lists = [router._dense_tsd_results_to_candidates(resp) for resp in dense_responses]
         raptor_candidates = router._raptor_results_to_candidates(raptor_response)
         ranked_lists = [*bm25_candidate_lists, *dense_candidate_lists, raptor_candidates]
+        variant_texts = [q for q, _ in all_queries[1:]]
 
         if trace is not None:
             trace.queries = [q for q, _ in all_queries]
@@ -576,14 +622,23 @@ class RetrievalRouteExecutor:
             deduped = reciprocal_rank_fusion(ranked_lists, k=router.advanced_config.rrf_k)
         else:
             deduped = dedupe_candidates(merge_candidates(*ranked_lists))
-        scored = router._apply_keyword_coverage_boost(deduped, keywords)
+        # Boost keywords use the union of the primary query and every
+        # expansion variant, not just the primary query — otherwise a chunk
+        # only a variant found (e.g. "MAX_APPLICATIONS_PER_MINUTE" for a
+        # variant mentioning "rate limiting") scores no better on keyword
+        # coverage than a chunk that has nothing to do with the requirement,
+        # and gets pushed out of the truncated context by generic score noise.
+        ensemble_keywords = list(keywords)
+        for variant_text in variant_texts:
+            ensemble_keywords.extend(_extract_keywords(variant_text))
+        scored = router._apply_keyword_coverage_boost(deduped, ensemble_keywords)
         if trace is not None:
             trace.record_fused(scored)
         evidence_filtered, evidence_metadata = _grade_with_secondary_search(
             router,
             scored,
             query_text=query_text,
-            keywords=keywords,
+            keywords=ensemble_keywords,
             raptor_tree=raptor_tree,
             has_raptor=has_raptor,
         )
@@ -591,7 +646,14 @@ class RetrievalRouteExecutor:
             trace.record_graded(evidence_filtered)
             trace.rejected = list((evidence_metadata.get("evidence_quality") or {}).get("rejected") or [])
             trace.secondary_search_triggered = bool(evidence_metadata.get("secondary_search_triggered"))
-        reranked = _rerank_within_tiers(router, query_text, evidence_filtered, router.max_context_chunks, trace=trace)
+        reranked = _rerank_within_tiers(
+            router,
+            query_text,
+            evidence_filtered,
+            router.max_context_chunks,
+            trace=trace,
+            extra_queries=variant_texts if router.advanced_config.rerank_with_variants else None,
+        )
         protected = _protected_candidate_keys(
             primary_dense=dense_candidate_lists[0] if dense_candidate_lists else [],
             primary_bm25=bm25_candidate_lists[0] if bm25_candidate_lists else [],
@@ -599,6 +661,9 @@ class RetrievalRouteExecutor:
             dense_n=router.advanced_config.protected_dense_top_n,
             bm25_n=router.advanced_config.protected_bm25_top_n,
             raptor_n=router.advanced_config.protected_raptor_top_n,
+            variant_dense=dense_candidate_lists[1:] if len(dense_candidate_lists) > 1 else [],
+            variant_bm25=bm25_candidate_lists[1:] if len(bm25_candidate_lists) > 1 else [],
+            variant_n=router.advanced_config.protected_variant_top_n,
         )
         reranked = _enforce_protected_slots(reranked, evidence_filtered, protected, router.max_context_chunks)
         reranked = _ground_summaries_with_leaves(
@@ -606,7 +671,7 @@ class RetrievalRouteExecutor:
             reranked,
             raptor_tree=raptor_tree,
             query_embedding=query_embedding,
-            keywords=keywords,
+            keywords=ensemble_keywords,
             max_context_chunks=router.max_context_chunks,
             leaves_per_summary=router.advanced_config.summary_leaves_per_grounding,
         )

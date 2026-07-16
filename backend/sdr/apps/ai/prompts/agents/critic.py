@@ -29,7 +29,8 @@ Evidence policy:
 - A TSD is architectural evidence, not source code. Named mechanisms, protocols, components, and explicit design mandates count as evidence.
 - Reject generic claims, headings, or same-topic mentions that do not name a concrete mechanism.
 - Do not use silence alone to prove a prohibition or absence-style requirement. Evidence that a strong or modern mechanism is used does not by itself prove a weaker or legacy alternative is absent — architectures often retain undocumented legacy paths. A prohibition-style requirement is only "met" when there is direct evidence that structurally excludes the prohibited option (an explicit constraint, allow-list, or exclusion statement), not merely evidence that a better option happens to be used elsewhere.
-- When the Hunter says not_met, actively scan the full provided context for missed evidence before upholding.
+- When the Hunter says not_met, actively scan the full provided context for missed evidence before upholding. Even when you agree with not_met, fill `missed_evidence` with short, specific descriptions of the exact evidence that would satisfy this requirement (named mechanisms, sections, or document areas to check) — this is what triggers another retrieval pass, so a bare "no missed evidence" forecloses that pass even when the TSD may cover it elsewhere.
+- If the Hunter's not_met/na reasoning rests on the absence of a specific named technology or product, check whether the requirement's own wording marks that technology as an example rather than the requirement itself ("or other", "such as", "e.g.", "i.e." — e.g. "GraphQL or other data layer authorization logic"). If so, restate the requirement's underlying control objective in technology-neutral terms (e.g. "authorization enforced at the business logic layer, not the query-interface layer") and re-scan the context for an equivalent mechanism that satisfies that objective, even if it uses different tooling than the example named. If you find one with citable evidence, OVERTURN to `met`. Only uphold `not_met`/`na` if the entire control class — not just the named example — is genuinely absent or inapplicable.
 
 OUTPUT: Strict JSON only. No prose outside the JSON object.
 """
@@ -105,8 +106,8 @@ Challenge or confirm the Hunter's finding.
 Work in this order:
 1. Verify each cited block and quoted evidence.
 2. Judge whether the evidence proves the core claim, only part of it, or none of it.
-3. If Hunter said not_met, scan the full context for missed evidence before upholding.
-4. Decide whether the requirement is applicable to this design at the governed-capability level.
+3. If Hunter said not_met, scan the full context for missed evidence before upholding. This scan is not optional even when the Hunter's stated reason is "no mention of [named technology]" — a requirement naming one technology as an example ("or other", "such as", "e.g.") is not proven not_met just because that exact technology is absent; you must still check whether the context describes an equivalent mechanism doing the same job under different tooling.
+4. Decide whether the requirement is applicable to this design at the governed-capability level, not by whether the named technology in the requirement's own wording appears verbatim in the TSD.
 
 Respond with a single JSON object matching this exact schema:
 
@@ -130,9 +131,12 @@ Respond with a single JSON object matching this exact schema:
   "invalid_citation_ids": ["<block_id>", ...]
 }}
 
-Few-shot example:
+Few-shot examples:
 Input -> Hunter cites p2_b7 for MFA, but p2_b7 only says "users log in".
 Reasoning -> assumptions: ["Validity depends on quoted evidence in cited blocks."]; logic_summary: "The cited block does not mention MFA, so the Hunter over-claimed compliance."; output -> outcome "OVERTURN", revised_verdict "not_met", invalid_citation_ids ["p2_b7"].
+
+Input -> Requirement: "Verify GraphQL or other data layer authorization logic is implemented at the business logic layer." Hunter verdict not_met, checked_context: "No mention of GraphQL found." Context includes p3_b12: "All access decisions are evaluated by the Attribute Based Access Control (ABAC) engine before the request reaches any data resource, based on business-context attributes."
+Reasoning -> assumptions: ["'GraphQL' is one named example of a data-layer-authorization risk, not the requirement itself — the core claim is that authorization logic lives at the business layer, not the transport/query layer."]; logic_summary: "The TSD never mentions GraphQL, but p3_b12 shows an equivalent mechanism (ABAC) enforcing authorization at the business-context layer before data access — this satisfies the requirement's underlying control objective even though the named example technology is absent."; output -> outcome "OVERTURN", revised_verdict "met", valid_citations include p3_b12.
 Rules:
 - `UPHOLD` means the Hunter's verdict is materially correct after your verification.
 - `PARTIAL` means some evidence is real but the claim remains incomplete, too generic, or only partially supported.

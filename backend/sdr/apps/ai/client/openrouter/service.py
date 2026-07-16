@@ -21,12 +21,14 @@ class OpenRouterAIService(AIServiceInterface):
         self.api_key = getattr(settings, 'OPENROUTER_API_KEY', None)
         self.default_model = getattr(settings, 'OPENROUTER_DEFAULT_MODEL', 'meta-llama/llama-3.1-70b-instruct')
         self.fast_model = getattr(settings, 'OPENROUTER_FAST_MODEL', 'meta-llama/llama-3.1-8b-instruct')
+        self.timeout_seconds = max(1, int(getattr(settings, 'OPENROUTER_TIMEOUT_SECONDS', 180)))
         
         self.client = None
         if self.api_key:
             self.client = OpenAI(
                 base_url="https://openrouter.ai/api/v1",
-                api_key=self.api_key
+                api_key=self.api_key,
+                timeout=self.timeout_seconds,
             )
         self.rate_limiter = get_rate_limiter("openrouter")
 

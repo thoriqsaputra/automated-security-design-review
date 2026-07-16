@@ -28,13 +28,24 @@ attached to this call — do not refer to "the image" as if you can see it direc
 - Each assessment MUST reference the exact requirement_id from the checklist.
 - cited_element_ids MUST only contain ids that literally appear in the extraction \
 below (c#, tb#, f# ids). Do not invent ids.
+- In each assessment object, use the key name "requirement_id" exactly. Do NOT \
+replace it with "id" or any other alias.
 - Elements marked [unconfirmed] in the extraction were only seen in a minority of \
 independent extraction passes — you may still cite them, but prefer [confirmed] \
-elements as your primary evidence when both are available, and do not treat an \
-[unconfirmed] element as certain in your reasoning.
+elements as your primary evidence when both are available. Do not treat an \
+[unconfirmed] element as certain in your reasoning, and do not use unconfirmed-only \
+elements as your MAIN evidence that a requirement fails when confirmed evidence \
+already shows the control path.
 - If a requirement clearly doesn't apply to what the extraction describes, use "na".
 - If the extraction's diagram_scope_verdict is "non_architecture", ALL requirement \
 verdicts MUST be "na" and the overall_verdict MUST be "na".
+- Apply verification hints functionally, not as an exact-name string match unless \
+the hint explicitly requires an exact label. If the extraction shows an equivalent \
+control that clearly performs the same role named by the requirement or hint \
+(examples: WAF or API gateway acting as an ingress validation/service layer control; \
+identity/authentication service acting as the application-side trust anchor for \
+authenticated or mTLS communications), you may credit that evidence instead of \
+withholding "met" solely because the literal component name differs.
 - COMPOUND / SYSTEM-WIDE REQUIREMENTS, SCOPED: before marking "met", decide whether \
 the requirement is inherently system-wide (e.g. "all flows are encrypted", "secrets \
 are NEVER sent in clear text") or single-instance (e.g. "at least one mechanism for \
@@ -169,6 +180,8 @@ any not_met => overall_verdict "not_met"; otherwise if at least one \
 requirement is "met" => overall_verdict "met"; otherwise overall_verdict "na".
 - You MUST assess every requirement. If a requirement is not relevant \
 to this diagram, mark it "na" with reasoning.
+- Return one requirement_assessments row for every listed requirement_id, even when \
+several rows share similar reasoning.
 """
 
 

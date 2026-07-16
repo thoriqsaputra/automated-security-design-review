@@ -42,3 +42,32 @@ def test_load_labeled_samples_reads_design_scoped_ground_truth():
 
     assert samples
     assert {sample.label for sample in samples} <= {"met", "not_met"}
+
+
+def test_load_labeled_samples_backfills_missing_verification_hint(monkeypatch):
+    monkeypatch.setattr(
+        "sdr.apps.ai.evaluations.vision.real_diagram_source._load_requirement_hint_map",
+        lambda gt_data: {"R1": "Recovered hint"},
+    )
+    data = {
+        "category_id": 1,
+        "ingestion_job_id": 2,
+        "items": [
+            {
+                "diagram_id": "d1",
+                "candidate_requirements": [
+                    {
+                        "requirement_id": "R1",
+                        "requirement_text": "Requirement",
+                        "verification_hint": "",
+                        "relevant": True,
+                        "label": "met",
+                    }
+                ],
+            }
+        ],
+    }
+
+    samples = load_labeled_samples(data, labels=("met",))
+
+    assert samples[0].verification_hint == "Recovered hint"

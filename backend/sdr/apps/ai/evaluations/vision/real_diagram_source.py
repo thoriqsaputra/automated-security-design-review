@@ -19,11 +19,13 @@ from dataclasses import dataclass
 from typing import Optional
 
 import sdr.apps.designs.models  # noqa: F401 — resolve SQLAlchemy FK
+import sdr.apps.standards.models  # noqa: F401
 
 from sdr.core.database import SessionLocal
 from sdr.apps.designs.models import Design
 from sdr.apps.designs.preparation_store import DesignPreparationStore
 from sdr.apps.ai.agents.vision import DiagramInput
+from sdr.apps.standards.models.diagram_requirement import CategoryDiagramRequirement
 
 _MIN_DIAGRAM_BYTES = 512
 
@@ -46,6 +48,7 @@ def load_labeled_samples(
     gt_data: dict, labels: tuple[str, ...] = ("met", "not_met")
 ) -> list[RealLabeledSample]:
     """Flatten the ground-truth JSON into one row per relevant, labeled (diagram, requirement) pair."""
+    hint_map = _load_requirement_hint_map(gt_data)
     samples: list[RealLabeledSample] = []
     for item in gt_data.get("items", []):
         diagram_id = str(item.get("diagram_id", "")).strip()
@@ -65,11 +68,37 @@ def load_labeled_samples(
                     diagram_id=diagram_id,
                     requirement_id=requirement_id,
                     requirement_text=req.get("requirement_text") or "",
-                    verification_hint=req.get("verification_hint") or "",
+                    verification_hint=(
+                        req.get("verification_hint")
+                        or hint_map.get(requirement_id)
+                        or ""
+                    ),
                     label=label,
                 )
             )
     return samples
+
+
+def _load_requirement_hint_map(gt_data: dict) -> dict[str, str]:
+    category_id = gt_data.get("category_id")
+    ingestion_job_id = gt_data.get("ingestion_job_id")
+    if not category_id or not ingestion_job_id:
+        return {}
+
+    with SessionLocal() as db:
+        rows = (
+            db.query(CategoryDiagramRequirement.stable_key, CategoryDiagramRequirement.verification_hint)
+            .filter(
+                CategoryDiagramRequirement.category_id == category_id,
+                CategoryDiagramRequirement.ingestion_job_id == ingestion_job_id,
+            )
+            .all()
+        )
+    return {
+        str(stable_key).strip(): str(verification_hint or "").strip()
+        for stable_key, verification_hint in rows
+        if str(stable_key).strip()
+    }
 
 
 def select_balanced_samples(

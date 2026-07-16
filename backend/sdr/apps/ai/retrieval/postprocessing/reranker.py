@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from typing import List
+from typing import List, Optional
 
 from sdr.apps.ai.retrieval.core.candidates import RetrievalCandidate
 
@@ -16,12 +16,24 @@ except Exception:
 
 
 class BaseReranker:
-    def rerank(self, query: str, candidates: List[RetrievalCandidate], top_k: int) -> List[RetrievalCandidate]:
+    def rerank(
+        self,
+        query: str,
+        candidates: List[RetrievalCandidate],
+        top_k: int,
+        extra_queries: Optional[List[str]] = None,
+    ) -> List[RetrievalCandidate]:
         raise NotImplementedError
 
 
 class NoOpReranker(BaseReranker):
-    def rerank(self, query: str, candidates: List[RetrievalCandidate], top_k: int) -> List[RetrievalCandidate]:
+    def rerank(
+        self,
+        query: str,
+        candidates: List[RetrievalCandidate],
+        top_k: int,
+        extra_queries: Optional[List[str]] = None,
+    ) -> List[RetrievalCandidate]:
         ranked = sorted(candidates, key=lambda c: c.score, reverse=True)
         return ranked[:top_k]
 
@@ -46,12 +58,19 @@ class SafeOptionalReranker(BaseReranker):
                 logger.exception("Failed to initialize cross-encoder reranker; using fallback.")
                 self._cross_encoder = None
 
-    def rerank(self, query: str, candidates: List[RetrievalCandidate], top_k: int) -> List[RetrievalCandidate]:
+    def rerank(
+        self,
+        query: str,
+        candidates: List[RetrievalCandidate],
+        top_k: int,
+        extra_queries: Optional[List[str]] = None,
+    ) -> List[RetrievalCandidate]:
         try:
             if self._cross_encoder is not None and candidates:
+                queries = [query] + [q for q in (extra_queries or []) if q and q != query]
                 original_scores = [float(c.score) for c in candidates]
                 semantic_scores = [
-                    self._score_candidate(query=query, candidate=c)
+                    self._score_candidate(queries=queries, candidate=c)
                     for c in candidates
                 ]
                 normalized_original = _normalize_scores(original_scores)
@@ -85,10 +104,11 @@ class SafeOptionalReranker(BaseReranker):
             logger.warning("Reranker failed, using fallback order: %s", exc)
             return sorted(candidates, key=lambda c: c.score, reverse=True)[:top_k]
 
-    def _score_candidate(self, *, query: str, candidate: RetrievalCandidate) -> float:
+    def _score_candidate(self, *, queries: List[str], candidate: RetrievalCandidate) -> float:
         text = candidate.text or ""
         windows = _candidate_windows(text, self.max_window_chars)
-        scores = self._cross_encoder.predict([[query, window] for window in windows])
+        pairs = [[q, window] for q in queries for window in windows]
+        scores = self._cross_encoder.predict(pairs)
         return max(float(score) for score in scores)
 
 

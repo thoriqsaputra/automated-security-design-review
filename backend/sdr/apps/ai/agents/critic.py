@@ -33,7 +33,7 @@ class CriticAgent(BaseAgent):
     model_component: str = "critic"
     max_tokens: int = 8192
     temperature: float = 0.0
-    reasoning_effort: str = "medium"
+    reasoning_effort: str = "high"
 
     def _build_user_prompt(
         self,
@@ -203,12 +203,23 @@ class CriticAgent(BaseAgent):
             return self._critic_error(msg, raw=response.content)
 
         # ------------------------------------------------------------------
-        # 6. Parse JSON response
+        # 6. Parse JSON response (retry once on failure before degrading —
+        #    a single malformed completion should not poison the verified-
+        #    citation set for a whole finding).
         # ------------------------------------------------------------------
         parsed = self._parse_json_response(response)
 
         if parsed is None:
-            msg = "Failed to parse LLM response as JSON."
+            self.logger.warning(
+                "CriticAgent.run: failed to parse LLM response as JSON — retrying once. "
+                "Raw (first 300 chars): %s",
+                (response.content or "")[:300],
+            )
+            response = self._call_llm_with_truncation_retry(user_prompt, stream_handler=stream_handler)
+            parsed = self._parse_json_response(response) if not response.error else None
+
+        if parsed is None:
+            msg = "Failed to parse LLM response as JSON after retry."
             self.logger.error(
                 "CriticAgent.run: %s Raw (first 300 chars): %s",
                 msg,

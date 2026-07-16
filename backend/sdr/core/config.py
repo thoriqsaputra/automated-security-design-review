@@ -47,6 +47,7 @@ class Settings(BaseSettings):
     OPENROUTER_API_KEY: str | None = Field(default=None)
     OPENROUTER_DEFAULT_MODEL: str = Field(default="meta-llama/llama-3.1-70b-instruct")
     OPENROUTER_FAST_MODEL: str = Field(default="meta-llama/llama-3.1-8b-instruct")
+    OPENROUTER_TIMEOUT_SECONDS: int = Field(default=180)
 
     ROUTELLM_API_KEY: str | None = Field(default=None)
     ROUTELLM_DEFAULT_MODEL: str = Field(default="gpt-4o")

@@ -97,6 +97,10 @@ def main():
 
     per_item = []
     extract_reason_labels, extract_reason_preds = [], []
+    total_requirements_with_hints = 0
+    total_requirements_missing_hints = 0
+    total_confirmed_elements = 0
+    total_extracted_elements = 0
 
     gt_data = load_ground_truth(gt_path)
     samples = load_labeled_samples(gt_data, labels=("met", "not_met", "na"))
@@ -122,6 +126,10 @@ def main():
             )
             for i, sample in enumerate(diagram_samples)
         ]
+        total_requirements_with_hints += len(requirements)
+        total_requirements_missing_hints += sum(
+            1 for requirement in requirements if not str(requirement.verification_hint or "").strip()
+        )
 
         logger.info(f"Live diagram extract-reason: diagram_id={diagram_id} requirements={len(requirements)}")
         extract_reason_output = extract_reason_service.run_diagram_extract_reason(
@@ -137,13 +145,17 @@ def main():
             (extract_reason_output.mediator_result or {}).get("assessed_requirements", [])
         )
         extraction_diagnostics = (extract_reason_output.mediator_result or {}).get("extraction_diagnostics", {})
+        total_confirmed_elements += int(extraction_diagnostics.get("confirmed_element_count") or 0)
+        total_extracted_elements += int(extraction_diagnostics.get("total_element_count") or 0)
 
         for sample in diagram_samples:
             requirement_id = _normalize_requirement_id(sample.requirement_id)
             extract_reason_verdict = extract_reason_verdicts.get(requirement_id)
             if extract_reason_verdict is None:
-                logger.warning(f"  [diagram={diagram_id} req={requirement_id}] no extract_reason verdict — skipping")
-                continue
+                logger.warning(
+                    f"  [diagram={diagram_id} req={requirement_id}] no extract_reason verdict — counting as conservative 'na'"
+                )
+                extract_reason_verdict = "na"
 
             true_label = sample.label
             extract_reason_labels.append(true_label)
@@ -180,6 +192,20 @@ def main():
         "baseline_result_path": args.baseline_result,
         "ground_truth_items": len(gt),
         "matched_pairs": len(per_item),
+        "requirement_hint_coverage": {
+            "with_hint": total_requirements_with_hints - total_requirements_missing_hints,
+            "missing_hint": total_requirements_missing_hints,
+            "coverage_ratio": round(
+                (total_requirements_with_hints - total_requirements_missing_hints) / total_requirements_with_hints,
+                4,
+            ) if total_requirements_with_hints else None,
+        },
+        "extraction_consistency": {
+            "confirmed_element_count": total_confirmed_elements,
+            "total_element_count": total_extracted_elements,
+            "confirmed_ratio": round(total_confirmed_elements / total_extracted_elements, 4)
+            if total_extracted_elements else None,
+        },
         "extract_reason": extract_reason_cm,
         "hunter_only_baseline": hunter_cm,
         "debate_final_baseline": debate_cm,
