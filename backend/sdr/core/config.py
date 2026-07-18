@@ -64,9 +64,9 @@ class Settings(BaseSettings):
     AI_STANDARD_EXTRACTION_CACHE_TTL_SECONDS: int = Field(default=86400)
     AI_DIAGRAM_REQUIREMENT_EXTRACTION_MAX_CONCURRENCY: int = Field(default=3)
     AI_MODEL_TSD_INGESTION: str = Field(default="meta/llama-3.1-8b-instruct")
-    AI_MODEL_HUNTER: str = Field(default="meta/llama-3.1-70b-instruct")
-    AI_MODEL_CRITIC: str = Field(default="meta/llama-3.1-70b-instruct")
-    AI_MODEL_MEDIATOR: str = Field(default="meta/llama-3.1-70b-instruct")
+    AI_MODEL_HUNTER: str = Field(default="deepseek-ai/DeepSeek-V4-Flash|routellm")
+    AI_MODEL_CRITIC: str = Field(default="deepseek-ai/DeepSeek-V4-Flash|routellm")
+    AI_MODEL_MEDIATOR: str = Field(default="deepseek-ai/DeepSeek-V4-Flash|routellm")
     # Deliberately a different model family from Hunter/Critic/Mediator so the eval
     # harness doesn't grade answers with the same model that produced them.
     AI_MODEL_EVAL_JUDGE: str = Field(default="anthropic/claude-sonnet-4.5")

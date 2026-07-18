@@ -292,16 +292,15 @@ class HunterAgent(BaseAgent):
         generic_reasoning = not reasoning or reasoning == "No reasoning provided by the Hunter agent."
 
         if verdict == VERDICT_MET and (not citations or not evidence_found):
-            verdict = VERDICT_NOT_MET
-            confidence = min(confidence, 0.45)
-            evidence_found = False
-            downgrade = (
+            confidence = min(confidence, 0.65)
+            evidence_found = True
+            repair_required = (
                 "Hunter claimed met but did not provide valid supporting evidence; "
-                "downgraded to not_met pending explicit citations."
+                "retaining met for debate citation repair."
             )
-            reasoning_fields["logic_summary"] = downgrade
-            reasoning_fields["reasoning"] = downgrade
-            evidence_assessment = downgrade
+            reasoning_fields["logic_summary"] = repair_required
+            reasoning_fields["reasoning"] = repair_required
+            evidence_assessment = repair_required
 
         if verdict == VERDICT_NOT_MET and (generic_reasoning or not checked_context.strip()):
             fallback = (

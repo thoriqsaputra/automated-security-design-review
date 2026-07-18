@@ -123,6 +123,11 @@ class CriticResult(AgentReasoningMixin):
     missed_evidence: List[str] = field(default_factory=list)
     objections: List[str] = field(default_factory=list)
     requires_rebuttal: bool = False
+    requirement_object: str = ""
+    requirement_polarity: Optional[str] = None
+    evidence_relation: Optional[str] = None
+    risk_flags: List[str] = field(default_factory=list)
+    clause_coverage: List[Dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass

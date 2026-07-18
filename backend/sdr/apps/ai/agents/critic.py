@@ -3,8 +3,6 @@ from __future__ import annotations
 import logging
 from typing import Callable, List, Optional
 
-from sdr.core.config import settings
-
 from sdr.apps.ai.prompts.agents import (
     CRITIC_SYSTEM_PROMPT,
     build_critic_prompt,
@@ -128,48 +126,7 @@ class CriticAgent(BaseAgent):
             )
 
         # ------------------------------------------------------------------
-        # 3. Fast-path: Hunter returned "not_met" with no citations
-        #
-        #    Nothing to verify — Critic automatically upholds. This avoids
-        #    an unnecessary LLM call for the most common compliant outcome.
-        # ------------------------------------------------------------------
-        if self._can_auto_uphold_strong_not_met(hunter_result):
-            self.logger.info(
-                "CriticAgent.run: Hunter returned not_met with no citations "
-                "for parameter '%s...' — auto-upholding, skipping LLM call.",
-                parameter_text[:60],
-            )
-            return CriticResult(
-                outcome=OUTCOME_UPHOLD,
-                revised_verdict=VERDICT_NOT_MET,
-                revised_confidence=hunter_result.confidence,
-                applicability_status=APPLICABILITY_ESTABLISHED,
-                applicability_reason=(
-                    hunter_result.applicability_reason
-                    or "The requirement remains applicable; the issue is missing implementation evidence."
-                ),
-                missing_expected_evidence=list(hunter_result.missing_expected_evidence or []),
-                reasoning=(
-                    "Critic auto-upheld: Hunter returned not_met with no "
-                    "citations or evidence. No LLM call required."
-                ),
-                logic_summary=(
-                    "Critic auto-upheld: Hunter returned not_met with no "
-                    "citations or evidence. No LLM call required."
-                ),
-                valid_citations=[],
-                invalid_citation_ids=[],
-                decision="uphold",
-                weak_evidence=[],
-                missed_evidence=[],
-                objections=[],
-                requires_rebuttal=False,
-                raw_response=None,
-                error=None,
-            )
-
-        # ------------------------------------------------------------------
-        # 4. Build prompt
+        # 3. Build prompt
         # ------------------------------------------------------------------
         user_prompt = self._build_user_prompt(
             parameter_text=parameter_text,
@@ -191,7 +148,7 @@ class CriticAgent(BaseAgent):
         )
 
         # ------------------------------------------------------------------
-        # 5. Call LLM
+        # 4. Call LLM
         # ------------------------------------------------------------------
         response = self._call_llm_with_truncation_retry(user_prompt, stream_handler=stream_handler)
 
@@ -203,7 +160,7 @@ class CriticAgent(BaseAgent):
             return self._critic_error(msg, raw=response.content)
 
         # ------------------------------------------------------------------
-        # 6. Parse JSON response (retry once on failure before degrading —
+        # 5. Parse JSON response (retry once on failure before degrading —
         #    a single malformed completion should not poison the verified-
         #    citation set for a whole finding).
         # ------------------------------------------------------------------
@@ -228,7 +185,7 @@ class CriticAgent(BaseAgent):
             return self._critic_error(msg, raw=response.content)
 
         # ------------------------------------------------------------------
-        # 7. Extract and validate all fields
+        # 6. Extract and validate all fields
         # ------------------------------------------------------------------
         decision = self._validate_decision(parsed.get("decision"))
         outcome = self._validate_outcome(parsed.get("outcome"))
@@ -259,6 +216,11 @@ class CriticAgent(BaseAgent):
         missed_evidence = self._extract_string_list(parsed, "missed_evidence")
         objections = self._extract_string_list(parsed, "objections")
         requires_rebuttal = self._extract_bool(parsed.get("requires_rebuttal"), default=False)
+        requirement_object = self._extract_text_field(parsed, "requirement_object", max_chars=300)
+        requirement_polarity = self._extract_requirement_polarity(parsed.get("requirement_polarity"))
+        evidence_relation = self._extract_evidence_relation(parsed.get("evidence_relation"))
+        risk_flags = self._extract_risk_flags(parsed.get("risk_flags"))
+        clause_coverage = self._extract_clause_coverage(parsed.get("clause_coverage"))
 
         # ------------------------------------------------------------------
         # 8. Post-parse citation cross-check
@@ -382,6 +344,11 @@ class CriticAgent(BaseAgent):
             missed_evidence=missed_evidence,
             objections=objections,
             requires_rebuttal=requires_rebuttal,
+            requirement_object=requirement_object,
+            requirement_polarity=requirement_polarity,
+            evidence_relation=evidence_relation,
+            risk_flags=risk_flags,
+            clause_coverage=clause_coverage,
             raw_response=response.content,
             error=None,
         )
@@ -389,6 +356,71 @@ class CriticAgent(BaseAgent):
     # ------------------------------------------------------------------
     # Critic-specific private helpers
     # ------------------------------------------------------------------
+
+    def _extract_requirement_polarity(self, value: object) -> Optional[str]:
+        text = str(value or "").strip().lower()
+        return text if text in {"positive", "prohibition", "policy"} else None
+
+    def _extract_evidence_relation(self, value: object) -> Optional[str]:
+        text = str(value or "").strip().lower()
+        return text if text in {"direct", "universal", "equivalent", "partial", "none"} else None
+
+    def _extract_risk_flags(self, raw: object) -> List[str]:
+        allowed = {
+            "absence_inference",
+            "object_substitution",
+            "generic_scope",
+            "compound_logic",
+            "policy_literalism",
+            "example_literalism",
+            "universal_scope_ignored",
+            "citation_thin",
+            "none",
+        }
+        if isinstance(raw, str):
+            raw = [raw]
+        if not isinstance(raw, list):
+            return []
+        flags: List[str] = []
+        for item in raw[:10]:
+            text = str(item or "").strip().lower()
+            if text in allowed and text not in flags:
+                flags.append(text)
+        if len(flags) > 1 and "none" in flags:
+            flags.remove("none")
+        return [] if flags == ["none"] else flags
+
+    def _extract_clause_coverage(self, raw: object) -> List[dict]:
+        if not isinstance(raw, list):
+            return []
+        clauses: List[dict] = []
+        for item in raw[:12]:
+            if not isinstance(item, dict):
+                continue
+            clause_text = str(item.get("clause") or "").strip()
+            if not clause_text:
+                continue
+            citation_id = item.get("citation_id")
+            role = str(item.get("role") or "required").strip().lower()
+            if role not in {"required", "alternative", "example", "context"}:
+                role = "required"
+            group_operator = str(item.get("group_operator") or "").strip().lower() or None
+            if group_operator not in {"all", "any", None}:
+                group_operator = None
+            relation = self._extract_evidence_relation(item.get("evidence_relation"))
+            group_id = item.get("group_id")
+            clauses.append(
+                {
+                    "clause": clause_text[:300],
+                    "role": role,
+                    "group_id": str(group_id).strip()[:80] if group_id else None,
+                    "group_operator": group_operator,
+                    "evidenced": bool(item.get("evidenced")),
+                    "evidence_relation": relation,
+                    "citation_id": str(citation_id).strip() if citation_id else None,
+                }
+            )
+        return clauses
 
     def _validate_outcome(self, value: object) -> str:
         """
@@ -436,29 +468,6 @@ class CriticAgent(BaseAgent):
             if lowered in {"false", "no", "0"}:
                 return False
         return default
-
-    def _can_auto_uphold_strong_not_met(self, hunter_result: HunterResult) -> bool:
-        if not bool(getattr(settings, "AI_DEBATE_CRITIC_AUTO_UPHOLD_STRONG_NOT_MET", False)):
-            return False
-        if hunter_result.verdict != VERDICT_NOT_MET:
-            return False
-        if hunter_result.citations or hunter_result.evidence_found:
-            return False
-        if hunter_result.confidence < 0.75:
-            return False
-        reasoning = (hunter_result.logic_summary or hunter_result.reasoning or "").strip().lower()
-        checked_context = (hunter_result.checked_context or "").strip()
-        generic_fragments = {
-            "no reasoning provided",
-            "auto-upheld",
-            "default",
-            "nothing to verify",
-        }
-        if not checked_context or len(reasoning) < 80:
-            return False
-        if any(fragment in reasoning for fragment in generic_fragments):
-            return False
-        return True
 
     def _extract_invalid_citation_ids(self, raw: object) -> List[str]:
         """

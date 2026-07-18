@@ -371,11 +371,9 @@ def test_persist_finding_keeps_met_when_citations_cannot_be_anchored(monkeypatch
     assert summary.met_count == 1
 
 
-def test_persist_finding_downgrades_met_when_no_citations_at_all(monkeypatch):
-    # Contrast case: a "met" verdict with genuinely no citations at all must
-    # still downgrade to "na" — the fix only protects citations that exist
-    # but fail to anchor, not the (policy-shouldn't-happen) case of no
-    # citations whatsoever.
+def test_persist_finding_repairs_met_when_no_citations_at_all(monkeypatch):
+    # Grounded verdicts must now be repaired from retrieved context rather than
+    # silently downgraded when the agent output omitted citations.
     service = PersistenceService()
     session = _Session()
     monkeypatch.setattr(
@@ -419,7 +417,17 @@ def test_persist_finding_downgrades_met_when_no_citations_at_all(monkeypatch):
             finding_description="MFA is present for privileged access.",
             recommendation=None,
         ),
-        analysis_trace={"context_chunk_map": {}},
+        analysis_trace={
+            "context_chunk_map": {
+                "p4_b7": {
+                    "citation_grade": True,
+                    "text": "Privileged administrators must authenticate with MFA before access is granted.",
+                    "section": "Authentication",
+                    "page_number": 4,
+                    "bbox": {"x0": 3.0, "y0": 11.0, "x1": 40.0, "y1": 18.0},
+                }
+            }
+        },
     )
     summary = AnalysisSummary()
 
@@ -435,7 +443,57 @@ def test_persist_finding_downgrades_met_when_no_citations_at_all(monkeypatch):
     )
 
     assert finding is session.finding
-    assert finding.met_status == "na"
+    assert finding.met_status == "met"
+    assert finding.requirement_metadata["analysis_trace"]["citation_resolution_mode"] == "top_context_fallback"
+    assert session.findings and session.findings[0].block_id == "p4_b7"
+
+
+def test_persist_finding_raises_when_grounded_verdict_has_no_citable_context(monkeypatch):
+    service = PersistenceService()
+    session = _Session()
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.persistence.persistence_service.SessionLocal",
+        lambda: _SessionContext(session),
+    )
+
+    review = SimpleNamespace(id=99)
+    category = SimpleNamespace(id=8, code="web_application")
+    parent = SimpleNamespace(id=17, title="Authentication", category_id=8)
+    parameter = SimpleNamespace(
+        id=26,
+        parent=parent,
+        stable_key="AUTH-1.2.6",
+        ordinal=1,
+        requirement_text="Use MFA for privileged access.",
+    )
+    debate_output = SimpleNamespace(
+        retrieval_result=None,
+        hunter_result=HunterResult(verdict="met", confidence=0.9, reasoning="Found control.", logic_summary="Found control.", evidence_found=True, citations=[]),
+        critic_result=CriticResult(revised_verdict="met", revised_confidence=0.9, reasoning="Found control.", logic_summary="Found control.", valid_citations=[]),
+        mediator_result=MediatorResult(
+            final_verdict="met",
+            confidence=0.9,
+            reasoning="The control is shown in the TSD.",
+            logic_summary="The control is shown in the TSD.",
+            final_citations=[],
+            finding_description="MFA is present for privileged access.",
+            recommendation=None,
+        ),
+        analysis_trace={"context_chunk_map": {}},
+    )
+    summary = AnalysisSummary()
+
+    with pytest.raises(ValueError):
+        service.persist_finding(
+            review,
+            PersistenceInput.model_construct(
+                parameter=parameter,
+                category=category,
+                ingestion_job=None,
+                debate_output=debate_output,
+            ),
+            summary,
+        )
 
 
 def test_persist_diagram_debate_finding_stores_pipeline_mode_and_extraction(monkeypatch):

@@ -1,5 +1,4 @@
 from __future__ import annotations
-
 import logging
 import time
 from typing import Any, Callable, Dict, List, Optional
@@ -8,6 +7,7 @@ from sdr.core.config import settings
 from sdr.apps.ai.retrieval.postprocessing.quote_grounding import is_quote_grounded, normalize_quote_text
 
 from sdr.apps.ai.agents.base import (
+    Citation,
     OUTCOME_UPHOLD,
     OUTCOME_OVERTURN,
     OUTCOME_PARTIAL,
@@ -147,14 +147,12 @@ class DebateService:
             )
             grounded_block_ids.update(c.block_id for c in hunter_result.citations)
             pre_stabilize_verdict = hunter_result.verdict
-            pre_stabilize_evidence_found = hunter_result.evidence_found
             hunter_result = self._stabilize_hunter_grounding(
                 hunter_result,
                 rejected_citations=hunter_rejected,
             )
             if (
                 pre_stabilize_verdict in (VERDICT_MET, VERDICT_NOT_MET)
-                and pre_stabilize_evidence_found
                 and not hunter_result.citations
                 and hunter_call_count < self.max_hunter_calls_per_parameter
             ):
@@ -227,7 +225,7 @@ class DebateService:
                 critic_result.invalid_citation_ids,
                 [citation.block_id for citation in critic_rejected],
             )
-            if critic_result.revised_verdict == VERDICT_MET and not critic_result.valid_citations:
+            if critic_result.revised_verdict in {VERDICT_MET, VERDICT_NOT_MET} and not critic_result.valid_citations:
                 pre_retry_revised_verdict = critic_result.revised_verdict
                 critic_result = self._retry_critic_for_citations(
                     parameter_text=parameter_text,
@@ -339,6 +337,12 @@ class DebateService:
         )
         timing["mediator_seconds"] = round(time.monotonic() - mediator_started, 4)
         mediator_result = self._normalize_reasoning_payload(mediator_result)
+        mediator_result, citation_grounding_trace = self._repair_mediator_grounding(
+            mediator_result=mediator_result,
+            hunter_result=hunter_result,
+            critic_result=critic_result,
+            context_chunk_map=context_chunk_map,
+        )
         if agent_completed_handler:
             agent_completed_handler("mediator", mediator_result.cot_trace or mediator_result.logic_summary or mediator_result.reasoning)
 
@@ -358,6 +362,11 @@ class DebateService:
                 "context_chunk_map": context_chunk_map,
                 "model_routing": model_routing,
                 "timing": timing,
+                "agent_raw_outputs": {
+                    "hunter": hunter_result.raw_response,
+                    "critic": critic_result.raw_response,
+                    "mediator": mediator_result.raw_response,
+                },
                 "hunter_claim": {
                     "verdict": hunter_result.verdict,
                     "confidence": hunter_result.confidence,
@@ -385,10 +394,16 @@ class DebateService:
                     "applicability_status": getattr(critic_result, "applicability_status", None),
                     "applicability_reason": getattr(critic_result, "applicability_reason", ""),
                     "missing_expected_evidence": list(getattr(critic_result, "missing_expected_evidence", []) or []),
+                    "requirement_object": getattr(critic_result, "requirement_object", ""),
+                    "requirement_polarity": getattr(critic_result, "requirement_polarity", None),
+                    "evidence_relation": getattr(critic_result, "evidence_relation", None),
+                    "risk_flags": list(getattr(critic_result, "risk_flags", []) or []),
+                    "clause_coverage": list(getattr(critic_result, "clause_coverage", []) or []),
                 },
                 "mediator_decision_basis": {
                     "final_verdict": mediator_result.final_verdict,
                     "raw_final_verdict": mediator_result.raw_final_verdict or mediator_result.final_verdict,
+                    "raw_response": mediator_result.raw_response,
                     "critic_upheld_citations": [c.block_id for c in critic_result.valid_citations],
                     "mediator_final_citation_ids": [c.block_id for c in mediator_result.final_citations],
                     "verified_evidence": list(mediator_result.verified_evidence),
@@ -397,6 +412,7 @@ class DebateService:
                     "applicability_status": getattr(mediator_result, "applicability_status", None),
                     "applicability_reason": getattr(mediator_result, "applicability_reason", ""),
                     "missing_expected_evidence": list(getattr(mediator_result, "missing_expected_evidence", []) or []),
+                    "citation_grounding": citation_grounding_trace,
                 },
                 "rejected_evidence": {
                     "hunter": [c.block_id for c in hunter_rejected],
@@ -512,17 +528,16 @@ class DebateService:
         *,
         rejected_citations: Optional[List[Any]] = None,
     ) -> HunterResult:
-        if result.verdict != VERDICT_MET or result.citations:
+        if result.verdict not in {VERDICT_MET, VERDICT_NOT_MET} or result.citations:
             return result
 
         rejected_ids = [getattr(citation, "block_id", None) for citation in (rejected_citations or []) if getattr(citation, "block_id", None)]
-        reason = "Hunter returned met without validated citations; downgraded to not_met."
+        reason = f"Hunter returned {result.verdict} without validated citations; retaining verdict for downstream citation repair."
         if rejected_ids:
             reason = f"{reason} Rejected citation ids: {', '.join(rejected_ids)}."
 
-        result.verdict = VERDICT_NOT_MET
-        result.evidence_found = False
-        result.confidence = min(float(result.confidence or 0.0), 0.45)
+        result.evidence_found = result.verdict == VERDICT_MET
+        result.confidence = min(float(result.confidence or 0.0), 0.65)
         result.reasoning = reason
         result.logic_summary = reason
         result.evidence_assessment = reason
@@ -534,18 +549,25 @@ class DebateService:
         *,
         rejected_citations: Optional[List[Any]] = None,
     ) -> CriticResult:
-        if result.revised_verdict != VERDICT_MET or result.valid_citations:
+        if result.revised_verdict not in {VERDICT_MET, VERDICT_NOT_MET} or result.valid_citations:
             return result
 
         rejected_ids = [getattr(citation, "block_id", None) for citation in (rejected_citations or []) if getattr(citation, "block_id", None)]
-        reason = "Critic returned met without validated citations; downgraded to not_met."
+        if result.revised_verdict == VERDICT_MET:
+            reason = "Critic returned met without validated citations; retaining met for downstream citation repair."
+            result.revised_confidence = min(float(result.revised_confidence or 0.0), 0.65)
+            result.outcome = OUTCOME_PARTIAL
+            result.decision = "challenge"
+            result.requires_rebuttal = True
+        else:
+            reason = "Critic returned not_met without validated citations; retaining not_met for downstream citation repair."
+            result.revised_verdict = VERDICT_NOT_MET
+            result.revised_confidence = min(float(result.revised_confidence or 0.0), 0.6)
+            result.outcome = OUTCOME_PARTIAL
+            result.decision = "challenge"
+            result.requires_rebuttal = True
         if rejected_ids:
             reason = f"{reason} Rejected citation ids: {', '.join(rejected_ids)}."
-
-        result.revised_verdict = VERDICT_NOT_MET
-        result.revised_confidence = min(float(result.revised_confidence or 0.0), 0.45)
-        result.outcome = OUTCOME_OVERTURN
-        result.decision = "reject"
         result.reasoning = reason
         result.logic_summary = reason
         return result
@@ -578,10 +600,10 @@ class DebateService:
             )
         retry_header = (
             f"--- CITATION RETRY ---\n"
-            f"Your previous verdict='{prior_verdict}' with evidence_found=true requires citations. "
+            f"Your previous verdict='{prior_verdict}' requires citations. "
             f"{citation_note} "
             f"Re-examine the context and cite the block_ids you relied on. "
-            f"If the requirement remains applicable but no citable support exists, keep or switch to 'not_met' and set evidence_found=false. "
+            f"If the requirement remains applicable but no direct satisfying evidence exists, keep or switch to 'not_met' and cite the closest inspected scope, partial implementation, or contradicting evidence block that proves what you checked. "
             f"Use 'na' only when the governed capability is clearly absent from the design."
         )
         retry_chunks = [retry_header] + list(current_context_chunks)
@@ -635,7 +657,7 @@ class DebateService:
             )
         else:
             citation_note = (
-                f"Your response upheld/overturned to 'met' with no valid_citations. "
+                f"Your response produced '{prior_revised_verdict}' with no valid_citations. "
                 f"Valid block_ids available are: {valid_ids_str}."
             )
         retry_header = (
@@ -643,8 +665,9 @@ class DebateService:
             f"Your previous revised_verdict='{prior_revised_verdict}' requires at least one "
             f"verified citation. {citation_note} "
             f"Re-examine the context and cite the block_id(s) you personally verified. "
-            f"If you cannot locate a verified citation, you MUST change revised_verdict to "
-            f"'not_met' (or 'na' only if the governed capability is architecturally absent)."
+            f"If you still conclude 'not_met', you MUST cite the closest inspected scope, "
+            f"partial implementation, or contradicting evidence block that justifies that conclusion. "
+            f"Use 'na' only when the governed capability is architecturally absent."
         )
         retry_chunks = [retry_header] + list(current_context_chunks)
         retry_result = self.critic.run(
@@ -716,6 +739,11 @@ class DebateService:
             missed_evidence=list(result.missed_evidence),
             objections=list(result.objections),
             requires_rebuttal=result.requires_rebuttal,
+            requirement_object=result.requirement_object,
+            requirement_polarity=result.requirement_polarity,
+            evidence_relation=result.evidence_relation,
+            risk_flags=list(result.risk_flags),
+            clause_coverage=list(result.clause_coverage),
             raw_response=result.raw_response,
             error=result.error,
         )
@@ -753,9 +781,80 @@ class DebateService:
             return True, escalation_round_granted
         if critic_result.requires_rebuttal:
             return True, escalation_round_granted
+        if round_number == 1 and self._needs_unanimous_met_escalation(parameter_text, hunter_result, critic_result):
+            return True, escalation_round_granted
         if hunter_result.error and not critic_result.error:
             return True, escalation_round_granted
         return False, escalation_round_granted
+
+    def _needs_unanimous_met_escalation(
+        self,
+        parameter_text: str,
+        hunter_result: HunterResult,
+        critic_result: CriticResult,
+    ) -> bool:
+        if getattr(hunter_result, "verdict", None) != VERDICT_MET:
+            return False
+        if getattr(critic_result, "outcome", None) != OUTCOME_UPHOLD:
+            return False
+        if getattr(critic_result, "revised_verdict", None) != VERDICT_MET:
+            return False
+
+        risk_flags = {
+            str(flag).strip().lower()
+            for flag in (getattr(critic_result, "risk_flags", []) or [])
+            if str(flag).strip().lower() and str(flag).strip().lower() != "none"
+        }
+        evidence_relation = str(getattr(critic_result, "evidence_relation", "") or "").strip().lower()
+        polarity = str(getattr(critic_result, "requirement_polarity", "") or "").strip().lower()
+        clause_coverage = list(getattr(critic_result, "clause_coverage", []) or [])
+        required_clauses = [
+            clause
+            for clause in clause_coverage
+            if str(clause.get("role") or "required").lower() == "required"
+        ]
+        unevidenced_required = [clause for clause in required_clauses if not bool(clause.get("evidenced"))]
+        thin_citation_set = len(getattr(critic_result, "valid_citations", []) or []) <= 1
+        admitted_gaps = bool(getattr(hunter_result, "missing_expected_evidence", []) or []) or bool(
+            getattr(critic_result, "missing_expected_evidence", []) or []
+        )
+
+        if risk_flags:
+            return True
+        if polarity in {"prohibition", "policy"}:
+            return True
+        if evidence_relation in {"universal", "equivalent", "partial", "none"}:
+            return True
+        if len(required_clauses) > 1 or unevidenced_required:
+            return True
+        if admitted_gaps:
+            return True
+        if thin_citation_set and self._requirement_text_has_risky_shape(parameter_text):
+            return True
+        return False
+
+    def _requirement_text_has_risky_shape(self, parameter_text: str) -> bool:
+        text = (parameter_text or "").lower()
+        risky_markers = [
+            " not ",
+            " no ",
+            " without ",
+            " prohibited",
+            " unsupported",
+            " insecure",
+            " deprecated",
+            " such as ",
+            " e.g.",
+            " or other",
+            " and ",
+            " policy",
+            " standard",
+            " classification",
+            " taxonomy",
+            " shared",
+            " default",
+        ]
+        return any(marker in text for marker in risky_markers)
 
     def _build_rebuttal_context_chunks(
         self,
@@ -785,10 +884,17 @@ class DebateService:
             weak_evidence,
             "Critic-flagged evidence you may have missed:",
             missed_evidence,
+            f"Critic requirement object: {critic_result.requirement_object or 'unknown'}",
+            f"Critic requirement polarity: {critic_result.requirement_polarity or 'unknown'}",
+            f"Critic evidence relation: {critic_result.evidence_relation or 'unknown'}",
+            f"Critic risk flags: {', '.join(getattr(critic_result, 'risk_flags', []) or []) or 'none'}",
+            f"Critic clause coverage: {critic_result.clause_coverage or []}",
             f"Valid citations: {valid_citations}",
             f"Invalid citations: {invalid_citations}",
             "Instruction: Re-check the original TSD context and respond directly to each Critic objection above.",
             "Defend valid evidence when Critic objections are unsupported; concede only when criticism disproves that the requirement is satisfied.",
+            "If both agents previously agreed on met, audit for concrete failures: object mismatch, missing prohibition/closed-list proof, generic-only scope, example literalism, OR alternatives, and truly essential AND clauses.",
+            "If evidence is direct, universal, equivalent, collective, or necessarily entailed by explicit design mandates, defend met and cite the exact text. If a truly essential part fails, return not_met with the closest inspected-scope citation.",
             "Only cite evidence that is explicitly present in the supplied TSD context.",
         ]
         rebuttal_chunk = "\n".join(rebuttal_lines)
@@ -812,6 +918,7 @@ class DebateService:
                 "checked_context": hunter_result.checked_context,
                 "evidence_quotes": list(hunter_result.evidence_quotes),
                 "evidence_assessment": hunter_result.evidence_assessment,
+                "citations": [c.to_dict() for c in hunter_result.citations],
                 "citation_ids": [c.block_id for c in hunter_result.citations],
                 "rejected_citation_ids": [c.block_id for c in hunter_rejected],
             },
@@ -821,6 +928,7 @@ class DebateService:
                 "revised_verdict": critic_result.revised_verdict,
                 "revised_confidence": critic_result.revised_confidence,
                 "reasoning": critic_result.logic_summary or critic_result.reasoning,
+                "valid_citations": [c.to_dict() for c in critic_result.valid_citations],
                 "valid_citation_ids": [c.block_id for c in critic_result.valid_citations],
                 "invalid_citation_ids": list(critic_result.invalid_citation_ids),
                 "rejected_citation_ids": [c.block_id for c in critic_rejected],
@@ -828,6 +936,11 @@ class DebateService:
                 "missed_evidence": list(critic_result.missed_evidence),
                 "objections": list(critic_result.objections),
                 "requires_rebuttal": critic_result.requires_rebuttal,
+                "requirement_object": critic_result.requirement_object,
+                "requirement_polarity": critic_result.requirement_polarity,
+                "evidence_relation": critic_result.evidence_relation,
+                "risk_flags": list(getattr(critic_result, "risk_flags", []) or []),
+                "clause_coverage": list(critic_result.clause_coverage),
             },
             "rebuttal_context": list(rebuttal_context),
         }
@@ -847,6 +960,169 @@ class DebateService:
                 }
             )
         return payload
+
+    def _repair_mediator_grounding(
+        self,
+        *,
+        mediator_result,
+        hunter_result: HunterResult,
+        critic_result: CriticResult,
+        context_chunk_map: Optional[Dict[str, Any]],
+    ) -> tuple[Any, Dict[str, Any]]:
+        trace: Dict[str, Any] = {
+            "required": mediator_result.final_verdict in {VERDICT_MET, VERDICT_NOT_MET},
+            "mode": "not_required",
+            "selected_block_ids": [],
+        }
+        if mediator_result.final_verdict not in {VERDICT_MET, VERDICT_NOT_MET}:
+            return mediator_result, trace
+
+        repaired = self._canonicalize_citations(
+            mediator_result.final_citations,
+            context_chunk_map=context_chunk_map,
+        )
+        if repaired:
+            mediator_result.final_citations = repaired
+            trace["mode"] = "agent_verified"
+            trace["selected_block_ids"] = [c.block_id for c in repaired]
+            return mediator_result, trace
+
+        fallback_sources = list(critic_result.valid_citations) or list(hunter_result.citations)
+        repaired = self._canonicalize_citations(
+            fallback_sources,
+            context_chunk_map=context_chunk_map,
+        )
+        if repaired:
+            mediator_result.final_citations = repaired
+            trace["mode"] = "citation_retry"
+            trace["selected_block_ids"] = [c.block_id for c in repaired]
+            return mediator_result, trace
+
+        preferred_ids = [
+            citation_id
+            for citation_id in (
+                [c.block_id for c in mediator_result.final_citations]
+                + [c.block_id for c in critic_result.valid_citations]
+                + [c.block_id for c in hunter_result.citations]
+            )
+            if citation_id and citation_id not in set(critic_result.invalid_citation_ids or [])
+        ]
+        scope_fallback = self._select_scope_fallback_citations(
+            preferred_ids,
+            context_chunk_map=context_chunk_map,
+        )
+        if scope_fallback:
+            mediator_result.final_citations = scope_fallback
+            trace["mode"] = "scope_fallback"
+            trace["selected_block_ids"] = [c.block_id for c in scope_fallback]
+            return mediator_result, trace
+
+        top_fallback = self._select_top_context_fallback(context_chunk_map=context_chunk_map)
+        if top_fallback:
+            mediator_result.final_citations = [top_fallback]
+            trace["mode"] = "top_context_fallback"
+            trace["selected_block_ids"] = [top_fallback.block_id]
+            return mediator_result, trace
+
+        raise ValueError(
+            f"Grounded verdict '{mediator_result.final_verdict}' could not be repaired because no citable source block exists."
+        )
+
+    def _canonicalize_citations(
+        self,
+        citations: List[Citation],
+        *,
+        context_chunk_map: Optional[Dict[str, Any]],
+    ) -> List[Citation]:
+        chunk_map = context_chunk_map or {}
+        repaired: List[Citation] = []
+        seen: set[str] = set()
+        for citation in citations or []:
+            block_id = getattr(citation, "block_id", None)
+            if not block_id or block_id in seen:
+                continue
+            payload = chunk_map.get(block_id) or {}
+            if payload.get("citation_grade", True) is False:
+                continue
+            text = str(payload.get("text") or "").strip()
+            if not text:
+                continue
+            quote = getattr(citation, "quoted_text", "") or ""
+            if not self._is_quote_grounded(quote, text):
+                quote = self._build_canonical_quote(text)
+            repaired.append(
+                Citation(
+                    block_id=block_id,
+                    page_number=int(payload.get("page_number") or payload.get("page") or citation.page_number or 0),
+                    quoted_text=quote,
+                    bbox_x0=payload.get("bbox_x0") if payload.get("bbox_x0") is not None else (payload.get("bbox") or {}).get("x0"),
+                    bbox_y0=payload.get("bbox_y0") if payload.get("bbox_y0") is not None else (payload.get("bbox") or {}).get("y0"),
+                    bbox_x1=payload.get("bbox_x1") if payload.get("bbox_x1") is not None else (payload.get("bbox") or {}).get("x1"),
+                    bbox_y1=payload.get("bbox_y1") if payload.get("bbox_y1") is not None else (payload.get("bbox") or {}).get("y1"),
+                )
+            )
+            seen.add(block_id)
+        return repaired
+
+    def _select_scope_fallback_citations(
+        self,
+        preferred_ids: List[str],
+        *,
+        context_chunk_map: Optional[Dict[str, Any]],
+    ) -> List[Citation]:
+        chunk_map = context_chunk_map or {}
+        for block_id in preferred_ids:
+            payload = chunk_map.get(block_id) or {}
+            if payload.get("citation_grade", True) is False:
+                continue
+            text = str(payload.get("text") or "").strip()
+            if not text:
+                continue
+            return self._canonicalize_citations(
+                [Citation(block_id=block_id, page_number=int(payload.get("page_number") or payload.get("page") or 0))],
+                context_chunk_map=chunk_map,
+            )
+        return []
+
+    def _select_top_context_fallback(
+        self,
+        *,
+        context_chunk_map: Optional[Dict[str, Any]],
+    ) -> Optional[Citation]:
+        candidates: List[tuple[Any, str, dict]] = []
+        for block_id, payload in (context_chunk_map or {}).items():
+            if payload.get("citation_grade", True) is False:
+                continue
+            text = str(payload.get("text") or "").strip()
+            if not text:
+                continue
+            candidates.append(
+                (
+                    int(payload.get("page_number") or payload.get("page") or 10**9),
+                    str(payload.get("bbox_y0") if payload.get("bbox_y0") is not None else (payload.get("bbox") or {}).get("y0") if (payload.get("bbox") or {}).get("y0") is not None else 10**9),
+                    block_id,
+                    payload,
+                )
+            )
+        if not candidates:
+            return None
+        _page, _y0, block_id, payload = sorted(candidates, key=lambda item: (item[0], item[1], item[2]))[0]
+        repaired = self._canonicalize_citations(
+            [Citation(block_id=block_id, page_number=int(payload.get("page_number") or payload.get("page") or 0))],
+            context_chunk_map=context_chunk_map,
+        )
+        return repaired[0] if repaired else None
+
+    def _build_canonical_quote(self, block_text: str, *, max_chars: int = 240) -> str:
+        text = (block_text or "").strip()
+        if not text:
+            return ""
+        excerpt = text[:max_chars].rstrip()
+        if len(text) > max_chars:
+            last_space = excerpt.rfind(" ")
+            if last_space > 40:
+                excerpt = excerpt[:last_space].rstrip()
+        return excerpt
 
     def _is_quote_grounded(self, quoted_text: str, block_text: str) -> bool:
         return is_quote_grounded(quoted_text, block_text)

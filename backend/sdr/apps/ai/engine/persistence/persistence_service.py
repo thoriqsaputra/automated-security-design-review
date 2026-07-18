@@ -76,9 +76,19 @@ class PersistenceService:
                 anchorable_citations or (mediator.final_citations or []),
                 debate_output.analysis_trace or {},
             )
-            if persisted_met_status == "met" and not (mediator.final_citations or []):
-                persisted_met_status = "na"
-                raw_final_verdict = "met_without_grounded_citations"
+            if persisted_met_status in {"met", "not_met"}:
+                repaired_citations, repaired_mode = self._repair_grounded_citations(
+                    mediator.final_citations or [],
+                    debate_output.analysis_trace or {},
+                )
+                if repaired_citations:
+                    mediator.final_citations = repaired_citations
+                    anchorable_citations = repaired_citations
+                    citation_resolution_mode = repaired_mode
+                    source_map = self._build_citation_source_map(
+                        anchorable_citations,
+                        debate_output.analysis_trace or {},
+                    )
             sanitized_description = self._strip_null_bytes(
                 self._sanitize_user_facing_text(mediator.finding_description or mediator.reasoning or "", source_map)
             )
@@ -800,6 +810,31 @@ class PersistenceService:
         mode = "+".join(sorted(modes)) if modes else "none"
         return resolved, mode
 
+    def _repair_grounded_citations(
+        self,
+        citations: List[Citation],
+        analysis_trace: Optional[dict],
+    ) -> tuple[List[Citation], str]:
+        resolved, mode = self._resolve_citations_for_anchoring(citations, analysis_trace)
+        if resolved:
+            return resolved, mode
+
+        chunk_map = (analysis_trace or {}).get("context_chunk_map") or {}
+        preferred_ids = [citation.block_id for citation in citations or [] if getattr(citation, "block_id", None)]
+        for block_id in preferred_ids:
+            payload = chunk_map.get(block_id) or {}
+            if not self._is_citation_grade_payload(payload, block_id):
+                continue
+            repaired = self._canonical_citation_from_payload(block_id, payload)
+            if repaired is not None:
+                return [repaired], "scope_fallback"
+
+        top_fallback = self._select_top_citable_context_citation(chunk_map)
+        if top_fallback is not None:
+            return [top_fallback], "top_context_fallback"
+
+        raise ValueError("Grounded verdict could not be persisted because no citable source block exists.")
+
     def _resolve_citation_within_page_spans(self, citation: Citation, payload: dict) -> Optional[Citation]:
         """Resolve a citation to the specific page/box its quote actually
         came from, within a chunk that merges several pages/blocks (e.g. a
@@ -995,6 +1030,56 @@ class PersistenceService:
 
     def _normalize_quote_text(self, value: Any) -> str:
         return re.sub(r"\s+", " ", str(value or "")).strip().lower()
+
+    def _build_canonical_quote(self, block_text: str, *, max_chars: int = 240) -> str:
+        text = (block_text or "").strip()
+        if not text:
+            return ""
+        excerpt = text[:max_chars].rstrip()
+        if len(text) > max_chars:
+            last_space = excerpt.rfind(" ")
+            if last_space > 40:
+                excerpt = excerpt[:last_space].rstrip()
+        return excerpt
+
+    def _canonical_citation_from_payload(self, block_id: str, payload: dict) -> Optional[Citation]:
+        text = str(payload.get("text") or "").strip()
+        if not text:
+            return None
+        bbox = payload.get("bbox") or {}
+        return Citation(
+            block_id=block_id,
+            page_number=self._safe_int(payload.get("page_number") or payload.get("page")),
+            quoted_text=self._build_canonical_quote(text),
+            bbox_x0=self._safe_float(payload.get("bbox_x0", bbox.get("x0"))),
+            bbox_y0=self._safe_float(payload.get("bbox_y0", bbox.get("y0"))),
+            bbox_x1=self._safe_float(payload.get("bbox_x1", bbox.get("x1"))),
+            bbox_y1=self._safe_float(payload.get("bbox_y1", bbox.get("y1"))),
+        )
+
+    def _select_top_citable_context_citation(self, chunk_map: dict) -> Optional[Citation]:
+        candidates: List[tuple[int, float, str, dict]] = []
+        for block_id, payload in (chunk_map or {}).items():
+            if not self._is_citation_grade_payload(payload, block_id):
+                continue
+            text = str(payload.get("text") or "").strip()
+            if not text:
+                continue
+            y0 = self._safe_float(payload.get("bbox_y0"))
+            if y0 is None:
+                y0 = self._safe_float((payload.get("bbox") or {}).get("y0"))
+            candidates.append(
+                (
+                    self._safe_int(payload.get("page_number") or payload.get("page") or 10**9),
+                    y0 if y0 is not None else float(10**9),
+                    block_id,
+                    payload,
+                )
+            )
+        if not candidates:
+            return None
+        _page, _y0, block_id, payload = sorted(candidates, key=lambda item: (item[0], item[1], item[2]))[0]
+        return self._canonical_citation_from_payload(block_id, payload)
 
     def _hydrate_citation_location(self, citation: Citation, chunk_map: dict) -> Citation:
         payload = (chunk_map or {}).get(citation.block_id) or {}

@@ -509,33 +509,24 @@ class MediatorAgent(BaseAgent):
         reasoning_fields: dict,
         parameter_text: str,
     ) -> tuple:
-        """Downgrade an ungrounded 'met' (zero surviving citations) to 'not_met'.
-
-        Unlike severity, final_verdict/final_citations are never recalculated
-        downstream — they flow straight into the persisted Finding, so a
-        'met' verdict with no surviving evidence must never escape here.
-        """
-        if final_verdict != VERDICT_MET or final_citations:
+        """Preserve grounded verdicts and mark them for downstream repair."""
+        if final_verdict not in {VERDICT_MET, VERDICT_NOT_MET} or final_citations:
             return final_verdict, confidence, recommendation, reasoning_fields
 
         self.logger.warning(
-            "MediatorAgent._enforce_citation_grounding: final_verdict='met' but "
-            "zero final_citations survived — downgrading to 'not_met' for "
+            "MediatorAgent._enforce_citation_grounding: final_verdict='%s' but "
+            "zero final_citations survived — retaining verdict for downstream repair for "
             "parameter '%s...'.",
+            final_verdict,
             parameter_text[:60],
         )
-        downgrade_msg = (
-            "Mediator reached 'met' but no citation survived Critic verification; "
-            "downgraded to not_met pending explicit grounded evidence."
+        repair_msg = (
+            f"Mediator reached '{final_verdict}' but no citation survived Critic verification; "
+            "downstream citation repair is required."
         )
-        reasoning_fields["logic_summary"] = downgrade_msg
-        reasoning_fields["reasoning"] = downgrade_msg
-        recommendation = recommendation or (
-            "Provide explicit, verifiable implementation evidence (e.g. citations "
-            "to configuration, code, or architecture) demonstrating that this "
-            "control is met."
-        )
-        return VERDICT_NOT_MET, min(confidence, 0.45), recommendation, reasoning_fields
+        reasoning_fields["logic_summary"] = repair_msg
+        reasoning_fields["reasoning"] = repair_msg
+        return final_verdict, confidence, recommendation, reasoning_fields
 
     # ------------------------------------------------------------------
     # Recommendation helper

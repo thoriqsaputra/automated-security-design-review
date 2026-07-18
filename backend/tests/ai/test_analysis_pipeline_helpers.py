@@ -268,7 +268,7 @@ def test_citation_validator_rejects_real_world_fabricated_quote_p24_b7():
     assert [c.block_id for c in rejected] == ["p24_b7"]
 
 
-def test_stabilize_critic_grounding_downgrades_met_without_valid_citations():
+def test_stabilize_critic_grounding_preserves_met_without_valid_citations():
     debate = DebateService()
     critic_result = CriticResult(
         outcome="OVERTURN",
@@ -284,11 +284,77 @@ def test_stabilize_critic_grounding_downgrades_met_without_valid_citations():
         critic_result, rejected_citations=[Citation(block_id="p24_b8", page_number=24)]
     )
 
-    assert stabilized.revised_verdict == "not_met"
-    assert stabilized.revised_confidence <= 0.45
-    assert stabilized.outcome == "OVERTURN"
-    assert stabilized.decision == "reject"
+    assert stabilized.revised_verdict == "met"
+    assert stabilized.revised_confidence <= 0.65
+    assert stabilized.outcome == "PARTIAL"
+    assert stabilized.decision == "challenge"
+    assert stabilized.requires_rebuttal is True
     assert "Rejected citation ids: p24_b8" in stabilized.logic_summary
+
+
+def test_stabilize_critic_grounding_preserves_not_met_without_valid_citations():
+    debate = DebateService()
+    critic_result = CriticResult(
+        outcome="UPHOLD",
+        revised_verdict="not_met",
+        revised_confidence=0.7,
+        reasoning="The control is missing.",
+        logic_summary="The control is missing.",
+        valid_citations=[],
+        decision="uphold",
+    )
+
+    stabilized = debate._stabilize_critic_grounding(
+        critic_result, rejected_citations=[Citation(block_id="p30_b2", page_number=30)]
+    )
+
+    assert stabilized.revised_verdict == "not_met"
+    assert stabilized.revised_confidence <= 0.6
+    assert stabilized.outcome == "PARTIAL"
+    assert stabilized.decision == "challenge"
+    assert stabilized.requires_rebuttal is True
+    assert "Rejected citation ids: p30_b2" in stabilized.logic_summary
+
+
+def test_repair_mediator_grounding_uses_top_context_fallback():
+    debate = DebateService()
+    mediator_result = MediatorResult(
+        final_verdict="not_met",
+        confidence=0.82,
+        reasoning="The control is not shown.",
+        logic_summary="The control is not shown.",
+        final_citations=[],
+    )
+    repaired, trace = debate._repair_mediator_grounding(
+        mediator_result=mediator_result,
+        hunter_result=HunterResult(verdict="not_met", confidence=0.7, citations=[]),
+        critic_result=CriticResult(revised_verdict="not_met", revised_confidence=0.8, valid_citations=[]),
+        context_chunk_map={
+            "p2_b3": {
+                "citation_grade": True,
+                "text": "Authentication requests pass through the API gateway.",
+                "page_number": 2,
+                "bbox": {"x0": 1.0, "y0": 12.0, "x1": 30.0, "y1": 20.0},
+            }
+        },
+    )
+
+    assert repaired.final_verdict == "not_met"
+    assert [c.block_id for c in repaired.final_citations] == ["p2_b3"]
+    assert repaired.final_citations[0].quoted_text == "Authentication requests pass through the API gateway."
+    assert trace["mode"] == "top_context_fallback"
+
+
+def test_repair_mediator_grounding_raises_when_no_citable_context_exists():
+    debate = DebateService()
+
+    with pytest.raises(ValueError):
+        debate._repair_mediator_grounding(
+            mediator_result=MediatorResult(final_verdict="met", confidence=0.9, final_citations=[]),
+            hunter_result=HunterResult(verdict="met", confidence=0.9, citations=[]),
+            critic_result=CriticResult(revised_verdict="met", revised_confidence=0.9, valid_citations=[]),
+            context_chunk_map={},
+        )
 
 
 def test_stabilize_critic_grounding_leaves_valid_results_unchanged():
@@ -307,6 +373,36 @@ def test_stabilize_critic_grounding_leaves_valid_results_unchanged():
 
     assert stabilized.revised_verdict == "met"
     assert stabilized.revised_confidence == 0.9
+
+
+def test_build_debate_history_entry_keeps_full_and_legacy_citation_shapes():
+    debate = DebateService()
+    hunter_result = HunterResult(
+        verdict="met",
+        confidence=0.9,
+        citations=[Citation(block_id="p1_b1", page_number=1, quoted_text="uses TLS")],
+    )
+    critic_result = CriticResult(
+        outcome="UPHOLD",
+        revised_verdict="met",
+        revised_confidence=0.9,
+        valid_citations=[Citation(block_id="p1_b1", page_number=1, quoted_text="uses TLS")],
+        decision="uphold",
+    )
+
+    entry = debate._build_debate_history_entry(
+        round_number=1,
+        hunter_result=hunter_result,
+        critic_result=critic_result,
+        hunter_rejected=[],
+        critic_rejected=[],
+        rebuttal_context=[],
+    )
+
+    assert entry["hunter"]["citation_ids"] == ["p1_b1"]
+    assert entry["hunter"]["citations"][0]["block_id"] == "p1_b1"
+    assert entry["critic"]["valid_citation_ids"] == ["p1_b1"]
+    assert entry["critic"]["valid_citations"][0]["block_id"] == "p1_b1"
 
 
 def test_hunter_citation_parser_accepts_aliases():
@@ -346,7 +442,7 @@ def test_cold_start_payload_contains_only_cited_blocks():
     ]
 
 
-def test_stabilize_hunter_grounding_downgrades_met_without_valid_citations():
+def test_stabilize_hunter_grounding_preserves_met_without_valid_citations():
     debate = DebateService()
     hunter_result = HunterResult(
         verdict="met",
@@ -360,9 +456,9 @@ def test_stabilize_hunter_grounding_downgrades_met_without_valid_citations():
 
     stabilized = debate._stabilize_hunter_grounding(hunter_result, rejected_citations=[Citation(block_id="x999", page_number=1)])
 
-    assert stabilized.verdict == "not_met"
-    assert stabilized.evidence_found is False
-    assert stabilized.confidence <= 0.45
+    assert stabilized.verdict == "met"
+    assert stabilized.evidence_found is True
+    assert stabilized.confidence <= 0.65
     assert "Rejected citation ids: x999" in stabilized.logic_summary
 
 
@@ -990,6 +1086,76 @@ def test_should_continue_debate_does_not_grant_escalation_twice():
 
     assert should_continue is False
     assert escalation_round_granted is True
+
+
+def test_should_continue_debate_escalates_risky_unanimous_met():
+    service = DebateService(hunter=SimpleNamespace(), critic=SimpleNamespace(), mediator=SimpleNamespace())
+    hunter_result = HunterResult(
+        verdict="met",
+        confidence=0.95,
+        citations=[Citation(block_id="p1_b1", page_number=1, quoted_text="React is used")],
+    )
+    critic_result = CriticResult(
+        outcome="UPHOLD",
+        revised_verdict="met",
+        revised_confidence=0.9,
+        valid_citations=[Citation(block_id="p1_b1", page_number=1, quoted_text="React is used")],
+        requirement_polarity="prohibition",
+        evidence_relation="partial",
+        risk_flags=["absence_inference"],
+    )
+
+    should_continue, escalation_round_granted = service._should_continue_debate(
+        "Verify unsupported, insecure, or deprecated client-side technologies such as Flash are not used.",
+        hunter_result,
+        critic_result,
+        1,
+        False,
+    )
+
+    assert should_continue is True
+    assert escalation_round_granted is False
+
+
+def test_should_continue_debate_does_not_escalate_clean_unanimous_met():
+    service = DebateService(hunter=SimpleNamespace(), critic=SimpleNamespace(), mediator=SimpleNamespace())
+    hunter_result = HunterResult(
+        verdict="met",
+        confidence=0.95,
+        citations=[Citation(block_id="p1_b1", page_number=1, quoted_text="mTLS for all service traffic")],
+    )
+    critic_result = CriticResult(
+        outcome="UPHOLD",
+        revised_verdict="met",
+        revised_confidence=0.9,
+        valid_citations=[
+            Citation(block_id="p1_b1", page_number=1, quoted_text="mTLS for all service traffic"),
+            Citation(block_id="p1_b2", page_number=1, quoted_text="all service calls are authenticated"),
+        ],
+        requirement_polarity="positive",
+        evidence_relation="direct",
+        risk_flags=[],
+        clause_coverage=[
+            {
+                "clause": "service traffic uses mTLS",
+                "role": "required",
+                "evidenced": True,
+                "evidence_relation": "direct",
+                "citation_id": "p1_b1",
+            }
+        ],
+    )
+
+    should_continue, escalation_round_granted = service._should_continue_debate(
+        "Verify service-to-service traffic uses mTLS.",
+        hunter_result,
+        critic_result,
+        1,
+        False,
+    )
+
+    assert should_continue is False
+    assert escalation_round_granted is False
 
 
 def test_run_debate_executes_escalation_round_on_low_confidence_overturn(monkeypatch):
