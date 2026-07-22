@@ -170,6 +170,9 @@ class BaseAgent:
     temperature: float = 0.05
     reasoning_effort: Optional[str] = None
     seed: Optional[int] = None
+    request_timeout_seconds: Optional[float] = None
+    request_attempts: Optional[int] = None
+    transport_retries: Optional[int] = None
 
     def __init__(self) -> None:
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
@@ -208,6 +211,12 @@ class BaseAgent:
             request_kwargs["reasoning"] = {"effort": reasoning_effort}
         if self.seed is not None:
             request_kwargs["seed"] = self.seed
+        if self.request_timeout_seconds is not None:
+            request_kwargs["request_timeout_seconds"] = self.request_timeout_seconds
+        if self.request_attempts is not None:
+            request_kwargs["request_attempts"] = self.request_attempts
+        if self.transport_retries is not None:
+            request_kwargs["transport_retries"] = self.transport_retries
         if stream_handler:
             stream = chat_completion(stream=True, **request_kwargs)
             content_parts: List[str] = []

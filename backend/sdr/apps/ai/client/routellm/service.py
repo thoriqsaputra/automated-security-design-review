@@ -85,12 +85,14 @@ class RouteLLMAIService(AIServiceInterface):
         self.api_key = getattr(settings, 'ROUTELLM_API_KEY', None)
         self.default_model = getattr(settings, 'ROUTELLM_DEFAULT_MODEL', 'gpt-4o')
         self.fast_model = getattr(settings, 'ROUTELLM_FAST_MODEL', 'gpt-4o-mini')
+        self.timeout_seconds = max(1, int(getattr(settings, 'ROUTELLM_TIMEOUT_SECONDS', 180)))
         
         self.client = None
         if self.api_key:
             self.client = OpenAI(
                 base_url="https://routellm.abacus.ai/v1",
-                api_key=self.api_key
+                api_key=self.api_key,
+                timeout=self.timeout_seconds,
             )
         self.rate_limiter = get_rate_limiter("routellm")
 
@@ -165,10 +167,22 @@ class RouteLLMAIService(AIServiceInterface):
                         raise
                 return generate()
             
+            request_attempts = max(1, int(kwargs.get("request_attempts", 3)))
+            request_timeout_seconds = max(
+                1.0, float(kwargs.get("request_timeout_seconds", self.timeout_seconds))
+            )
+            transport_retries = max(0, int(kwargs.get("transport_retries", 2)))
+            request_client = self.client
+            if hasattr(request_client, "with_options"):
+                request_client = request_client.with_options(
+                    timeout=request_timeout_seconds,
+                    max_retries=transport_retries,
+                )
+
             # Standard request with custom retry for JSONDecodeError
-            for attempt in range(3):
+            for attempt in range(request_attempts):
                 try:
-                    response = self.client.chat.completions.create(**request_kwargs)
+                    response = request_client.chat.completions.create(**request_kwargs)
                     content = response.choices[0].message.content or ""
                     
                     if response_format and response_format.get("type") == "json_object":
@@ -176,8 +190,12 @@ class RouteLLMAIService(AIServiceInterface):
                         try:
                             json.loads(content)
                         except json.JSONDecodeError:
-                            if attempt < 2:
-                                logger.warning(f"RouteLLM JSON parse failed, retrying ({attempt+1}/3)")
+                            if attempt < request_attempts - 1:
+                                logger.warning(
+                                    "RouteLLM JSON parse failed, retrying (%d/%d)",
+                                    attempt + 1,
+                                    request_attempts,
+                                )
                                 time.sleep(1)
                                 continue
                             else:
@@ -186,7 +204,7 @@ class RouteLLMAIService(AIServiceInterface):
                                     content=content,
                                     model=model_to_use,
                                     provider=AIProvider.ROUTELLM,
-                                    error="Failed to return valid JSON after 3 attempts."
+                                    error=f"Failed to return valid JSON after {request_attempts} attempt(s)."
                                 )
                                 
                     usage_dict = {
@@ -212,7 +230,7 @@ class RouteLLMAIService(AIServiceInterface):
                         has_image,
                         annotated_error,
                     )
-                    if attempt == 2:
+                    if attempt == request_attempts - 1:
                         return AIResponse(
                             content="",
                             model=model_to_use,

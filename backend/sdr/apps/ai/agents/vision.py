@@ -70,6 +70,18 @@ class VisionAgent(BaseAgent):
     top_p: float = 0.9
     seed: int = 42
 
+    def __init__(self) -> None:
+        super().__init__()
+        self.request_timeout_seconds = max(
+            1, float(getattr(settings, "AI_VISION_LLM_TIMEOUT_SECONDS", 90))
+        )
+        self.request_attempts = max(
+            1, int(getattr(settings, "AI_VISION_LLM_REQUEST_ATTEMPTS", 1))
+        )
+        self.transport_retries = max(
+            0, int(getattr(settings, "AI_VISION_LLM_TRANSPORT_RETRIES", 0))
+        )
+
     def run_multimodal(
         self,
         *,

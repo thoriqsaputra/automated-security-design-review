@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import base64
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -814,6 +816,94 @@ def test_pipeline_diagram_analysis_counts_total_parameters_for_errors_and_succes
     assert summary.error_count == 1
     assert summary.total_parameters == 2
     assert summary.met_count + summary.not_met_count + summary.na_count <= summary.total_parameters
+
+
+def test_pipeline_persists_fast_diagram_before_slow_diagram_finishes(monkeypatch, settings_override):
+    settings_override(
+        AI_VISION_ENABLED=True,
+        AI_VISION_MIN_DIAGRAM_BYTES=512,
+        AI_VISION_MAX_CONCURRENCY=2,
+    )
+
+    slow_started = threading.Event()
+    release_slow = threading.Event()
+    fast_persisted = threading.Event()
+    persisted_ids = []
+
+    class _FakePersistence:
+        def persist_diagram_debate_finding(self, review, category, diagram_debate_output, summary):
+            diagram_id = diagram_debate_output.diagram.diagram_id
+            persisted_ids.append(diagram_id)
+            summary.diagram_findings_count += 1
+            if diagram_id == "p2_d0":
+                fast_persisted.set()
+            return SimpleNamespace(id=len(persisted_ids))
+
+    pipeline = TSDAnalysisPipeline(
+        ingestion_service=SimpleNamespace(),
+        retrieval_service=SimpleNamespace(),
+        debate_service=SimpleNamespace(),
+        persistence_service=_FakePersistence(),
+    )
+
+    def _run_diagram(*, diagram, requirements, **_kwargs):
+        if diagram.diagram_id == "p3_d1":
+            slow_started.set()
+            assert release_slow.wait(timeout=5)
+        return SimpleNamespace(
+            diagram=diagram,
+            hunter_result={},
+            critic_result={},
+            mediator_result={"finding_description": diagram.diagram_id},
+            requirements=requirements,
+            debate_rounds=1,
+            error=None,
+        )
+
+    pipeline.diagram_analysis.diagram_debate_service = SimpleNamespace(
+        run_diagram_debate_voted=_run_diagram,
+    )
+    pipeline.diagram_analysis.requirement_selector = SimpleNamespace(
+        select_for_diagram=lambda **_kwargs: [_requirement()],
+    )
+    pipeline.diagram_analysis.workflow_repository = SimpleNamespace(
+        list_diagram_requirements=lambda **_kwargs: [_requirement()],
+    )
+    pipeline.diagram_analysis.progress_service = None
+    pipeline.diagram_analysis.run_state = None
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.debate.diagram_analysis_coordinator.review_debate_event_store.seed_debates",
+        lambda *_args, **_kwargs: None,
+    )
+    monkeypatch.setattr(
+        "sdr.apps.ai.engine.debate.diagram_analysis_coordinator.review_debate_event_store.complete_debate",
+        lambda *_args, **_kwargs: None,
+    )
+
+    first = _FakeDiagramBlock()
+    first.diagram_id = "p2_d0"
+    tsd_document = SimpleNamespace(
+        all_diagrams=[first, _FakeDiagramBlockTwo()],
+        full_text="Gateway architecture.",
+        pages=[],
+    )
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        run_future = executor.submit(
+            pipeline.diagram_analysis.run,
+            review=SimpleNamespace(id=1, status="running"),
+            tsd_document=tsd_document,
+            category=SimpleNamespace(id=10, code="web_application"),
+            ingestion_job=SimpleNamespace(id=11),
+            summary=AnalysisSummary(),
+        )
+        assert slow_started.wait(timeout=5)
+        assert fast_persisted.wait(timeout=5), "fast diagram waited for the slow diagram"
+        release_slow.set()
+        run_future.result(timeout=5)
+
+    assert persisted_ids[0] == "p2_d0"
+    assert set(persisted_ids) == {"p2_d0", "p3_d1"}
 
 
 def test_backend_runtime_source_has_no_legacy_vision_agent_usage():

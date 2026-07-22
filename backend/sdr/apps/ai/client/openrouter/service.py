@@ -108,10 +108,24 @@ class OpenRouterAIService(AIServiceInterface):
                         raise
                 return generate()
             
-            # Standard request with custom retry for JSONDecodeError
-            for attempt in range(3):
+            request_attempts = max(1, int(kwargs.get("request_attempts", 3)))
+            request_timeout_seconds = max(
+                1.0, float(kwargs.get("request_timeout_seconds", self.timeout_seconds))
+            )
+            transport_retries = max(0, int(kwargs.get("transport_retries", 2)))
+            request_client = self.client
+            if hasattr(request_client, "with_options"):
+                request_client = request_client.with_options(
+                    timeout=request_timeout_seconds,
+                    max_retries=transport_retries,
+                )
+
+            # Standard request with a caller-configurable retry budget. Diagram
+            # agents set this to one because their pipeline already owns the
+            # completeness/citation retry policy.
+            for attempt in range(request_attempts):
                 try:
-                    response = self.client.chat.completions.create(**request_kwargs)
+                    response = request_client.chat.completions.create(**request_kwargs)
                     content_text = response.choices[0].message.content or ""
                     finish_reason = getattr(response.choices[0], "finish_reason", None)
                     
@@ -133,9 +147,14 @@ class OpenRouterAIService(AIServiceInterface):
                         finish_reason=finish_reason,
                     )
                 except (json.JSONDecodeError, APIConnectionError, APIError) as e:
-                    if attempt == 2:
+                    if attempt == request_attempts - 1:
                         raise
-                    logger.warning(f"OpenRouter API glitch (attempt {attempt+1}/3): {e}")
+                    logger.warning(
+                        "OpenRouter API glitch (attempt %d/%d): %s",
+                        attempt + 1,
+                        request_attempts,
+                        e,
+                    )
                     time.sleep(2 ** attempt)
 
         except SoftTimeLimitExceeded:

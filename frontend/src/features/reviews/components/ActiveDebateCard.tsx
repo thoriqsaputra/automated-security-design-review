@@ -8,6 +8,13 @@ interface ActiveDebateCardProps {
   onSelect: () => void;
 }
 
+const WORK_PHASE_LABELS = {
+  queued: 'Queued',
+  retrieval: 'Retrieving evidence',
+  debate: 'Debating',
+  persistence: 'Persisting result',
+} as const;
+
 export default function ActiveDebateCard({ debate, selected, onSelect }: ActiveDebateCardProps) {
   return (
     <Card
@@ -32,7 +39,8 @@ export default function ActiveDebateCard({ debate, selected, onSelect }: ActiveD
           {debate.finding_type === 'diagram' ? 'Diagram' : 'Requirement'}
         </span>
         <span>{debate.execution_mode}</span>
-        {debate.active_agent && <span>· {debate.active_agent}</span>}
+        {debate.work_phase && <span>· {WORK_PHASE_LABELS[debate.work_phase]}</span>}
+        {debate.active_agent && debate.work_phase === 'debate' && <span>· {debate.active_agent}</span>}
         {debate.requires_rebuttal && (
           <span className="rounded-full border border-flame/30 bg-flame/10 px-2 py-0.5 text-[10px] text-flame">
             Needs rebuttal

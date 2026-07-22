@@ -126,7 +126,12 @@ export default function ReviewWorkspace({ reviewId, reviewState, showControls = 
       )}
 
       {!['completed_clean', 'completed_with_findings', 'approved', 'rejected'].includes(review.status) && (
-        <ReviewPipeline reviewStatus={review.status} currentStage={currentStage} />
+        <ReviewPipeline
+          reviewStatus={review.status}
+          currentStage={currentStage}
+          debates={debates}
+          analysisMode={selectedAnalysisMode}
+        />
       )}
 
       <div className="no-scrollbar mb-6 flex gap-6 overflow-x-auto border-b border-surface-border px-2">

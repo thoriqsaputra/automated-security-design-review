@@ -61,26 +61,26 @@ class TextDebateCoordinator:
             parameters=parameters,
             execution_mode="single",
         )
-        category_stats = summary.category_stats.setdefault(category_code, {})
-        if int(category_stats.get("analysis_total_count") or 0) == 0 and parameters:
-            self.progress_service.initialize_category_progress(
-                summary=summary,
-                category_code=category_code,
-                total_count=len(parameters),
-            )
-            with summary.lock:
-                summary.debate_total_parameters += len(parameters)
-                summary.debate_remaining_parameters += len(parameters)
-                summary.persistence_total_parameters += len(parameters)
-                summary.persistence_remaining_parameters += len(parameters)
-            self.progress_service.sync_analysis_aliases(summary=summary, category_code=category_code)
-            self.run_state.persist_summary_snapshot(review, summary)
+        self.progress_service.register_analysis_work(
+            summary=summary,
+            category_code=category_code,
+            total_count=len(parameters),
+        )
+        self.run_state.persist_summary_snapshot(review, summary)
         max_concurrency = self.config.batch_debate_max_concurrency
         killed_snapshot = list(killed_assumptions_memory)
 
         def _run_single(parameter):
             if self.run_state.is_cancelled(review):
                 return None
+            self.publish_work_phase(
+                review=review,
+                parameter=parameter,
+                debate_id=self.build_live_debate_id(parameter),
+                work_phase="retrieval",
+                last_snippet="Retrieving and ranking supporting evidence.",
+                progress_percent=2,
+            )
             return self.analyze_single_child(
                 review=review,
                 category=category,
@@ -131,6 +131,14 @@ class TextDebateCoordinator:
                         parameter_ids=[parameter.id],
                         log_prefix="TextDebateCoordinator.debate",
                         source="single",
+                    )
+                    self.publish_work_phase(
+                        review=review,
+                        parameter=parameter,
+                        debate_id=self.build_live_debate_id(parameter),
+                        work_phase="persistence",
+                        last_snippet="Persisting the completed analysis.",
+                        progress_percent=95,
                     )
                     self.persist_debate_output(
                         review=review,
@@ -525,6 +533,7 @@ class TextDebateCoordinator:
             "section_title": section_title,
             "category_code": category_code,
             "execution_mode": execution_mode,
+            "work_phase": "queued",
         }
 
     def seed_live_debates(
@@ -553,6 +562,24 @@ class TextDebateCoordinator:
         if phase == "started":
             return {"hunter": 5, "critic": 40, "mediator": 72}.get(agent_key, 0)
         return {"hunter": 33, "critic": 66, "mediator": 90}.get(agent_key, 0)
+
+    def publish_work_phase(
+        self,
+        *,
+        review: Review,
+        parameter: Any,
+        debate_id: str,
+        work_phase: str,
+        last_snippet: str,
+        progress_percent: int,
+    ) -> None:
+        review_debate_event_store.set_work_phase(
+            review.id,
+            debate_id=debate_id or self.build_live_debate_id(parameter),
+            work_phase=work_phase,
+            last_snippet=last_snippet,
+            progress_percent=progress_percent,
+        )
 
     def publish_live_agent_start(
         self,

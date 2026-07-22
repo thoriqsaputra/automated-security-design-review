@@ -10,6 +10,13 @@ interface DebateLiveStreamProps {
   debate: DebateStreamState | null;
 }
 
+const WORK_PHASE_LABELS = {
+  queued: 'Queued',
+  retrieval: 'Retrieving evidence',
+  debate: 'Debating',
+  persistence: 'Persisting result',
+} as const;
+
 export default function DebateLiveStream({ debate }: DebateLiveStreamProps) {
   const [selectedAgent, setSelectedAgent] = useState<DebateAgent | null>(null);
   const lastDebateIdRef = useRef<string | undefined>(debate?.debate_id);
@@ -49,6 +56,11 @@ export default function DebateLiveStream({ debate }: DebateLiveStreamProps) {
         </div>
         <div className="flex items-center gap-3">
           <DebateStatusBadge status={debate.status} />
+          {debate.work_phase && (
+            <span className="rounded-full border border-surface-border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
+              {WORK_PHASE_LABELS[debate.work_phase]}
+            </span>
+          )}
           {debate.active_agent && (
             <span className="rounded-full border border-surface-border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] text-text-secondary">
               {debate.active_agent}

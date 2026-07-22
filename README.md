@@ -237,10 +237,10 @@ MINIO_BUCKET_NAME=sdr-media
 NVIDIA_API_KEY=nvapi-...
 OPENROUTER_API_KEY=sk-or-...
 
-# -- Model Selection (defaults use NVIDIA NIM) --
-AI_MODEL_HUNTER=meta/llama-3.1-70b-instruct
-AI_MODEL_CRITIC=meta/llama-3.1-70b-instruct
-AI_MODEL_MEDIATOR=meta/llama-3.1-70b-instruct
+# -- Model Selection --
+AI_MODEL_HUNTER=deepseek-ai/DeepSeek-V4-Flash|routellm
+AI_MODEL_CRITIC=deepseek-ai/DeepSeek-V4-Flash|routellm
+AI_MODEL_MEDIATOR=deepseek-ai/DeepSeek-V4-Flash|routellm
 AI_MODEL_VISION=meta/llama-3.2-90b-vision-instruct
 AI_MODEL_EMBEDDING=nvidia/nv-embedqa-e5-v5
 

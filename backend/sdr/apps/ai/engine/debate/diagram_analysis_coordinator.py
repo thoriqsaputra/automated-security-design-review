@@ -133,12 +133,11 @@ class DiagramAnalysisCoordinator:
         category_code = getattr(category, "code", None) or "unknown"
 
         if self.progress_service is not None and self.run_state is not None:
-            with summary.lock:
-                summary.debate_total_parameters += len(eligible_diagrams)
-                summary.debate_remaining_parameters += len(eligible_diagrams)
-                summary.persistence_total_parameters += len(eligible_diagrams)
-                summary.persistence_remaining_parameters += len(eligible_diagrams)
-            self.progress_service.sync_analysis_aliases(summary=summary, category_code=category_code)
+            self.progress_service.register_analysis_work(
+                summary=summary,
+                category_code=category_code,
+                total_count=len(eligible_diagrams),
+            )
             self.run_state.persist_summary_snapshot(review, summary)
 
         review_debate_event_store.seed_debates(
@@ -150,7 +149,7 @@ class DiagramAnalysisCoordinator:
             ],
         )
 
-        diagram_outputs = []
+        persisted_count = 0
         with ThreadPoolExecutor(
             max_workers=self.config.vision_max_concurrency,
             thread_name_prefix="DiagramDebate",
@@ -180,8 +179,7 @@ class DiagramAnalysisCoordinator:
                         pass
                 diagram = futures[future]
                 try:
-                    diagram_outputs.append(future.result())
-                    self._record_debate_progress(summary=summary, review=review, category_code=category_code)
+                    output = future.result()
                 except Exception as exc:
                     self.logger.exception(
                         "DiagramAnalysisCoordinator.run: debate failed for diagram_id=%s: %s",
@@ -194,52 +192,75 @@ class DiagramAnalysisCoordinator:
                         agent=self.terminal_agent,
                         error_message=str(exc)[:500] or "Diagram debate failed unexpectedly.",
                     )
-                    # This diagram never produces an output, so it never reaches
-                    # the persistence loop below — count both phases as done now
-                    # so "remaining" still reaches 0 instead of stalling.
+                    # This diagram never produces an output, so count both
+                    # phases as done now to keep "remaining" from stalling.
                     self._record_debate_progress(summary=summary, review=review, category_code=category_code)
                     self._record_persistence_progress(summary=summary, review=review, category_code=category_code)
-
-        persisted_count = 0
-        for output in diagram_outputs:
-            with summary.lock:
-                summary.total_parameters += 1
-                if output.error:
-                    summary.error_count += 1
-                    self.logger.error(
-                        "DiagramAnalysisCoordinator.run: diagram_id=%s dropped — %s",
-                        output.diagram.diagram_id,
-                        output.error,
-                    )
-                    review_debate_event_store.fail_agent(
-                        review.id,
-                        debate_id=build_debate_id(None, diagram_id=output.diagram.diagram_id),
-                        agent=self.terminal_agent,
-                        error_message=output.error[:500],
-                    )
-                    self._record_persistence_progress(summary=summary, review=review, category_code=category_code)
                     continue
-            finding = self.persistence.persist_diagram_debate_finding(
-                review=review,
-                category=category,
-                diagram_debate_output=output,
-                summary=summary,
-            )
-            self._record_persistence_progress(summary=summary, review=review, category_code=category_code)
-            if finding is not None:
-                persisted_count += 1
-                review_debate_event_store.complete_debate(
-                    review.id,
-                    debate_id=build_debate_id(None, diagram_id=output.diagram.diagram_id),
-                    finding_id=finding.id,
-                    last_snippet=(output.mediator_result or {}).get("finding_description") or "",
-                    terminal_agent=self.terminal_agent,
-                )
+
+                self._record_debate_progress(summary=summary, review=review, category_code=category_code)
+                if self._persist_completed_output(
+                    output=output,
+                    review=review,
+                    category=category,
+                    summary=summary,
+                    category_code=category_code,
+                ):
+                    persisted_count += 1
 
         self.logger.info(
             "DiagramAnalysisCoordinator.run: COMPLETE — %d diagram findings persisted",
             persisted_count,
         )
+
+    def _persist_completed_output(
+        self,
+        *,
+        output,
+        review,
+        category,
+        summary,
+        category_code: str,
+    ) -> bool:
+        """Persist one diagram as soon as its analysis future completes."""
+        with summary.lock:
+            summary.total_parameters += 1
+            if output.error:
+                summary.error_count += 1
+
+        if output.error:
+            self.logger.error(
+                "DiagramAnalysisCoordinator.run: diagram_id=%s dropped — %s",
+                output.diagram.diagram_id,
+                output.error,
+            )
+            review_debate_event_store.fail_agent(
+                review.id,
+                debate_id=build_debate_id(None, diagram_id=output.diagram.diagram_id),
+                agent=self.terminal_agent,
+                error_message=output.error[:500],
+            )
+            self._record_persistence_progress(summary=summary, review=review, category_code=category_code)
+            return False
+
+        finding = self.persistence.persist_diagram_debate_finding(
+            review=review,
+            category=category,
+            diagram_debate_output=output,
+            summary=summary,
+        )
+        self._record_persistence_progress(summary=summary, review=review, category_code=category_code)
+        if finding is None:
+            return False
+
+        review_debate_event_store.complete_debate(
+            review.id,
+            debate_id=build_debate_id(None, diagram_id=output.diagram.diagram_id),
+            finding_id=finding.id,
+            last_snippet=(output.mediator_result or {}).get("finding_description") or "",
+            terminal_agent=self.terminal_agent,
+        )
+        return True
 
     def _select_requirements_and_run_debate(
         self,

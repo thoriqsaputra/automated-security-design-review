@@ -133,6 +133,7 @@ export interface Review {
 }
 
 export type DebateAgent = 'hunter' | 'critic' | 'mediator' | 'extractor' | 'reasoner' | 'system';
+export type DebateWorkPhase = 'queued' | 'retrieval' | 'debate' | 'persistence';
 export type DebateStatus = 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
 export type DebateExecutionMode = 'single' | 'batch' | 'fallback';
 export type DebateFindingType = 'requirement' | 'diagram';
@@ -194,6 +195,7 @@ export interface DebateStreamState {
   category_code: string | null;
   status: DebateStatus;
   active_agent: DebateAgent | null;
+  work_phase?: DebateWorkPhase | null;
   execution_mode: DebateExecutionMode;
   pipeline_mode?: DebatePipelineMode;
   progress_percent: number;

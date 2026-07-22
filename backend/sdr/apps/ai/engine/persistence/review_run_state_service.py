@@ -44,11 +44,15 @@ class ReviewRunStateService:
 
     def persist_summary_snapshot(self, review: Review, summary: AnalysisSummary) -> None:
         try:
-            self._sync_llm_usage(review, summary)
+            # Keep serialization and the database write in the same critical
+            # section. Text and diagram branches persist concurrently; if the
+            # lock is released after to_dict(), an older text-only snapshot can
+            # commit after a newer combined snapshot and erase diagram totals.
             with summary.lock:
+                self._sync_llm_usage(review, summary)
                 summary_dict = summary.to_dict()
-            self.workflow_repository.save_summary_snapshot(review.id, summary=summary_dict)
-            review.summary_json = summary_dict
+                self.workflow_repository.save_summary_snapshot(review.id, summary=summary_dict)
+                review.summary_json = summary_dict
         except Exception as exc:
             self.logger.exception(
                 "ReviewRunStateService.persist_summary_snapshot: failed for review_id=%s: %s",

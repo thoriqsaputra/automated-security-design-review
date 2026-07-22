@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     ROUTELLM_API_KEY: str | None = Field(default=None)
     ROUTELLM_DEFAULT_MODEL: str = Field(default="gpt-4o")
     ROUTELLM_FAST_MODEL: str = Field(default="gpt-4o-mini")
+    ROUTELLM_TIMEOUT_SECONDS: int = Field(default=180)
 
     AI_MODEL_STANDARD_EXTRACTION: str = Field(default="meta/llama-3.1-8b-instruct")
     AI_MODEL_STANDARD_CATEGORY_VALIDATION: str = Field(
@@ -149,6 +150,12 @@ class Settings(BaseSettings):
     # batches — a total failure is a cheap, likely-transient generation hiccup
     # worth retrying harder, not a persistent completeness/reasoning gap.
     AI_VISION_REASONER_FULL_FAILURE_RETRY_LIMIT: int = Field(default=2)
+    # Bound each provider round-trip used by diagram agents. Provider SDKs
+    # otherwise apply their own hidden retries, which can leave one diagram
+    # future blocked for many minutes while completed diagrams wait behind it.
+    AI_VISION_LLM_TIMEOUT_SECONDS: int = Field(default=90)
+    AI_VISION_LLM_REQUEST_ATTEMPTS: int = Field(default=1)
+    AI_VISION_LLM_TRANSPORT_RETRIES: int = Field(default=0)
     AI_MODEL_VISION_EXTRACTOR: str = Field(default="")
     AI_MODEL_VISION_REASONER: str = Field(default="")
 

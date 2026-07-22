@@ -8,57 +8,120 @@ import {
   Background,
   BackgroundVariant,
 } from '@xyflow/react';
+import type { DebateStreamState, ReviewAnalysisMode } from '../../api/reviews';
 import '@xyflow/react/dist/style.css';
 
-const stageColors: Record<string, { bg: string; border: string; text: string }> = {
-  pending:  { bg: '#2a1435', border: '#3e2050', text: '#8a6e9c' },
-  active:   { bg: '#F05941', border: '#BE3144', text: '#ffffff' },
-  done:     { bg: '#10b981', border: '#059669', text: '#ffffff' },
-  error:    { bg: '#BE3144', border: '#872341', text: '#ffffff' },
+type StageState = 'pending' | 'active' | 'done' | 'error';
+
+const stageColors: Record<StageState, { bg: string; border: string; text: string }> = {
+  pending: { bg: '#2a1435', border: '#3e2050', text: '#8a6e9c' },
+  active: { bg: '#F05941', border: '#BE3144', text: '#ffffff' },
+  done: { bg: '#10b981', border: '#059669', text: '#ffffff' },
+  error: { bg: '#BE3144', border: '#872341', text: '#ffffff' },
 };
 
-const STAGE_WEIGHTS: Record<string, number> = {
-  '4_parameter_resolution': 0,
-  '6_7_concurrent_debate': 1, // backend emits this before per-branch stages
-  '6_text_debate': 1,
-  '7_diagram_debate': 1,
-  '8_overview': 2,
-};
+const ANALYSIS_STAGES = new Set(['6_7_concurrent_debate', '6_text_debate', '7_diagram_debate']);
+const TERMINAL_DEBATE_STATUSES = new Set(['completed', 'failed', 'cancelled']);
+const COMPLETED_REVIEW_STATUSES = new Set(['completed_clean', 'completed_with_findings', 'approved', 'rejected']);
 
-function getStageState(reviewStatus: string, currentStage: string | undefined, nodeStageId: string): string {
-  if (reviewStatus === 'failed') return 'error';
-  if (reviewStatus === 'completed_clean' || reviewStatus === 'completed_with_findings') return 'done';
-  if (reviewStatus === 'pending') return 'pending';
+function isTerminalDebate(debate: DebateStreamState): boolean {
+  return TERMINAL_DEBATE_STATUSES.has(debate.status);
+}
 
-  if (!currentStage) return 'active'; // Fallback if missing
+function hasReachedDebate(debate: DebateStreamState): boolean {
+  return (
+    isTerminalDebate(debate) ||
+    debate.work_phase === 'debate' ||
+    debate.work_phase === 'persistence' ||
+    debate.active_agent !== null
+  );
+}
 
-  if (currentStage === '6_7_concurrent_debate') {
-    if (nodeStageId === '4_parameter_resolution') return 'done';
-    if (nodeStageId === '7_diagram_debate') return 'active';
-    return 'pending';
+function isWaitingForRetrieval(debate: DebateStreamState): boolean {
+  if (isTerminalDebate(debate)) return false;
+  if (debate.work_phase === 'queued' || debate.work_phase === 'retrieval') return true;
+  if (debate.work_phase === 'debate' || debate.work_phase === 'persistence') return false;
+
+  // Older stream snapshots may not contain work_phase. An active agent means
+  // retrieval has already handed the parameter to the debate pipeline.
+  return debate.active_agent === null;
+}
+
+function derivePipelineStates(
+  reviewStatus: string,
+  currentStage: string | undefined,
+  debates: DebateStreamState[],
+) {
+  const failed = reviewStatus === 'failed';
+  const completed = COMPLETED_REVIEW_STATUSES.has(reviewStatus);
+  const atAnalysis = currentStage !== undefined && ANALYSIS_STAGES.has(currentStage);
+  const atOverview = currentStage === '8_overview';
+  const textDebates = debates.filter((debate) => debate.finding_type === 'requirement');
+  const diagramDebates = debates.filter((debate) => debate.finding_type === 'diagram');
+
+  if (failed) {
+    return {
+      parameter: 'error' as StageState,
+      retrieval: 'error' as StageState,
+      text: 'error' as StageState,
+      diagram: 'error' as StageState,
+      overview: 'error' as StageState,
+    };
   }
 
-  const currentWeight = STAGE_WEIGHTS[currentStage] ?? -1;
+  let parameter: StageState = 'pending';
+  if (completed || atAnalysis || atOverview) parameter = 'done';
+  else if (currentStage === '4_parameter_resolution' || (reviewStatus === 'running' && !currentStage)) parameter = 'active';
 
-  let nodeWeight = -1;
-  if (nodeStageId === '4_parameter_resolution') nodeWeight = 0;
-  if (nodeStageId === '6_text_debate' || nodeStageId === '7_diagram_debate') nodeWeight = 1; // concurrent
-  if (nodeStageId === '8_overview') nodeWeight = 2;
+  let retrieval: StageState = 'pending';
+  let text: StageState = 'pending';
+  let diagram: StageState = 'pending';
+  let overview: StageState = 'pending';
 
-  if (currentWeight === -1 || nodeWeight === -1) return 'pending';
-  if (nodeWeight < currentWeight) return 'done';
-  if (nodeWeight === currentWeight) return 'active';
-  return 'pending';
+  if (completed || atOverview) {
+    retrieval = 'done';
+    text = 'done';
+    diagram = 'done';
+  } else if (atAnalysis) {
+    // The retrieval branch is complete only after every text parameter has
+    // either entered debate/persistence or reached a terminal state.
+    retrieval = textDebates.length > 0 && !textDebates.some(isWaitingForRetrieval) ? 'done' : 'active';
+
+    if (textDebates.length > 0 && textDebates.every(isTerminalDebate)) {
+      text = 'done';
+    } else if (textDebates.some(hasReachedDebate)) {
+      text = 'active';
+    }
+
+    if (diagramDebates.length > 0 && diagramDebates.every(isTerminalDebate)) {
+      diagram = 'done';
+    } else {
+      // Diagram discovery/filtering happens before its first live debate is
+      // published, so the branch is active even while its list is still empty.
+      diagram = 'active';
+    }
+  }
+
+  if (completed) overview = 'done';
+  else if (atOverview) overview = 'active';
+
+  return { parameter, retrieval, text, diagram, overview };
 }
 
 interface Props {
   reviewStatus: string;
   currentStage?: string;
+  debates: DebateStreamState[];
+  analysisMode: ReviewAnalysisMode;
 }
 
-export default function ReviewPipeline({ reviewStatus, currentStage }: Props) {
+export default function ReviewPipeline({ reviewStatus, currentStage, debates, analysisMode }: Props) {
   const { nodes, edges } = useMemo(() => {
-    const createNode = (id: string, label: string, x: number, y: number, state: string) => {
+    const states = derivePipelineStates(reviewStatus, currentStage, debates);
+    const showText = analysisMode !== 'diagram_only';
+    const showDiagram = analysisMode !== 'text_only';
+
+    const createNode = (id: string, label: string, x: number, y: number, state: StageState) => {
       const colors = stageColors[state];
       return {
         id,
@@ -82,48 +145,59 @@ export default function ReviewPipeline({ reviewStatus, currentStage }: Props) {
       };
     };
 
-    const ns: Node[] = [
-      createNode('n4', '1. Parameter Resolution', 0, 40, getStageState(reviewStatus, currentStage, '4_parameter_resolution')),
-      createNode('n6', '2A. Text Debate', 300, 0, getStageState(reviewStatus, currentStage, '6_text_debate')),
-      createNode('n7', '2B. Diagram Debate', 300, 80, getStageState(reviewStatus, currentStage, '7_diagram_debate')),
-      createNode('n8', '3. Generate Overview', 600, 40, getStageState(reviewStatus, currentStage, '8_overview')),
-    ];
+    const ns: Node[] = [];
+    if (showText && showDiagram) {
+      ns.push(
+        createNode('parameter', '1. Parameter Resolution', 0, 60, states.parameter),
+        createNode('retrieval', '2A. Retrieval', 270, 0, states.retrieval),
+        createNode('text', '3A. Text Debate', 540, 0, states.text),
+        createNode('diagram', '2B. Diagram Analysis', 405, 120, states.diagram),
+        createNode('overview', '4. Generate Overview', 810, 60, states.overview),
+      );
+    } else if (showText) {
+      ns.push(
+        createNode('parameter', '1. Parameter Resolution', 0, 40, states.parameter),
+        createNode('retrieval', '2. Retrieval', 270, 40, states.retrieval),
+        createNode('text', '3. Text Debate', 540, 40, states.text),
+        createNode('overview', '4. Generate Overview', 810, 40, states.overview),
+      );
+    } else {
+      ns.push(
+        createNode('parameter', '1. Parameter Resolution', 0, 40, states.parameter),
+        createNode('diagram', '2. Diagram Analysis', 320, 40, states.diagram),
+        createNode('overview', '3. Generate Overview', 640, 40, states.overview),
+      );
+    }
 
-    const isEdgeActive = (targetStageId: string) => {
-      if (reviewStatus !== 'running') return false;
-      if (!currentStage) return true; // animate all if we don't know
-      if (currentStage === '6_7_concurrent_debate') {
-        return targetStageId === '7_diagram_debate';
-      }
-      const currentWeight = STAGE_WEIGHTS[currentStage] ?? -1;
-      let targetWeight = -1;
-      if (targetStageId === '4_parameter_resolution') targetWeight = 0;
-      if (targetStageId === '6_text_debate' || targetStageId === '7_diagram_debate') targetWeight = 1;
-      if (targetStageId === '8_overview') targetWeight = 2;
-      return currentWeight >= targetWeight;
-    };
-
-    const createEdge = (source: string, target: string, animated: boolean) => ({
+    const createEdge = (source: string, target: string, targetState: StageState) => ({
       id: `e-${source}-${target}`,
       source,
       target,
-      animated,
+      animated: reviewStatus === 'running' && targetState === 'active',
       style: { stroke: '#872341', strokeWidth: 2 },
       markerEnd: { type: MarkerType.ArrowClosed, color: '#872341', width: 16, height: 16 },
     });
 
-    const es: Edge[] = [
-      createEdge('n4', 'n6', isEdgeActive('6_text_debate')),
-      createEdge('n4', 'n7', isEdgeActive('7_diagram_debate')),
-      createEdge('n6', 'n8', isEdgeActive('8_overview')),
-      createEdge('n7', 'n8', isEdgeActive('8_overview')),
-    ];
+    const es: Edge[] = [];
+    if (showText) {
+      es.push(
+        createEdge('parameter', 'retrieval', states.retrieval),
+        createEdge('retrieval', 'text', states.text),
+        createEdge('text', 'overview', states.overview),
+      );
+    }
+    if (showDiagram) {
+      es.push(
+        createEdge('parameter', 'diagram', states.diagram),
+        createEdge('diagram', 'overview', states.overview),
+      );
+    }
 
     return { nodes: ns, edges: es };
-  }, [reviewStatus, currentStage]);
+  }, [reviewStatus, currentStage, debates, analysisMode]);
 
   return (
-    <div className="h-48 w-full rounded-xl border border-surface-border overflow-hidden bg-midnight">
+    <div className="h-64 w-full overflow-hidden rounded-xl border border-surface-border bg-midnight">
       <ReactFlow
         nodes={nodes}
         edges={edges}

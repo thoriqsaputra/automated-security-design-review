@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from collections import deque
 from types import SimpleNamespace
+import threading
 import pytest
 
 from sdr.apps.ai.agents.base import Citation, CriticResult, HunterResult, MediatorResult
@@ -14,6 +15,7 @@ from sdr.apps.ai.engine.dto import AnalysisSummary, DebateOutput
 from sdr.apps.ai.engine.persistence.persistence_service import PersistenceService
 from sdr.apps.ai.engine.persistence.review_run_state_service import AnalysisCancelledError
 from sdr.apps.ai.engine.pipeline import TSDAnalysisPipeline
+from sdr.apps.ai.client.session import get_current_request_metadata, job_session_context
 from sdr.apps.standards.models.parameters import CategoryParameterChild, CategoryParameterParent
 from unittest.mock import Mock
 
@@ -1060,6 +1062,80 @@ def test_category_analysis_coordinator_skips_text_path_in_diagram_only_mode(monk
     assert calls["diagram"] == 1
     assert stages[-1] == "7_diagram_debate"
     assert summary.total_parameters == 0
+
+
+def test_category_analysis_coordinator_runs_default_branches_concurrently_with_context():
+    coordinator = _category_analysis_coordinator()
+    parameter = _parameter(1)
+    barrier = threading.Barrier(2, timeout=2)
+    observed_sessions = {}
+    completed = []
+
+    coordinator.workflow_repository.get_latest_active_ingestion_job = lambda _category_id: SimpleNamespace(id=11)
+    coordinator.workflow_repository.list_category_parameters = lambda **_kwargs: [parameter]
+    coordinator.progress_service.prepare_category_stats = lambda **_kwargs: None
+    coordinator.run_state.update_stage = lambda *_args, **_kwargs: None
+    coordinator.run_state.is_cancelled = lambda _review: False
+
+    def _branch(name):
+        observed_sessions[name] = get_current_request_metadata().get("session_id")
+        barrier.wait()
+        completed.append(name)
+
+    coordinator.text_debate.run_single_analysis_for_category = lambda **_kwargs: _branch("text")
+    coordinator.diagram_analysis.run = lambda **_kwargs: _branch("diagram")
+
+    with job_session_context(session_id="test-review-session", job_type="test", job_id=1):
+        coordinator.run_category(
+            review=SimpleNamespace(id=1, status="running", analysis_mode="default", ingestion_job=None),
+            category=SimpleNamespace(id=5, code="web_application"),
+            indexes=SimpleNamespace(),
+            tsd_document=SimpleNamespace(),
+            summary=AnalysisSummary(),
+            killed_assumptions_memory=deque(),
+        )
+
+    assert sorted(completed) == ["diagram", "text"]
+    assert observed_sessions == {
+        "diagram": "test-review-session",
+        "text": "test-review-session",
+    }
+
+
+def test_category_analysis_coordinator_waits_for_other_branch_before_raising():
+    coordinator = _category_analysis_coordinator()
+    parameter = _parameter(1)
+    text_failed = threading.Event()
+    diagram_finished = threading.Event()
+
+    coordinator.workflow_repository.get_latest_active_ingestion_job = lambda _category_id: SimpleNamespace(id=11)
+    coordinator.workflow_repository.list_category_parameters = lambda **_kwargs: [parameter]
+    coordinator.progress_service.prepare_category_stats = lambda **_kwargs: None
+    coordinator.run_state.update_stage = lambda *_args, **_kwargs: None
+    coordinator.run_state.is_cancelled = lambda _review: False
+
+    def _fail_text(**_kwargs):
+        text_failed.set()
+        raise RuntimeError("text branch failed")
+
+    def _finish_diagram(**_kwargs):
+        assert text_failed.wait(timeout=2)
+        diagram_finished.set()
+
+    coordinator.text_debate.run_single_analysis_for_category = _fail_text
+    coordinator.diagram_analysis.run = _finish_diagram
+
+    with pytest.raises(RuntimeError, match="text branch failed"):
+        coordinator.run_category(
+            review=SimpleNamespace(id=1, status="running", analysis_mode="default", ingestion_job=None),
+            category=SimpleNamespace(id=5, code="web_application"),
+            indexes=SimpleNamespace(),
+            tsd_document=SimpleNamespace(),
+            summary=AnalysisSummary(),
+            killed_assumptions_memory=deque(),
+        )
+
+    assert diagram_finished.is_set()
 
 
 def test_should_continue_debate_grants_one_escalation_round_on_overturn():

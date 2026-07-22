@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from collections import deque
 from types import SimpleNamespace
 
 from sdr.apps.ai.engine.debate.category_analysis_coordinator import CategoryAnalysisCoordinator
 from sdr.apps.ai.engine.debate.text_debate_coordinator import TextDebateCoordinator
 from sdr.apps.ai.engine.dto import AnalysisSummary
+from sdr.apps.ai.engine.persistence.progress_tracker import SummaryProgressService
+from sdr.apps.ai.engine.persistence.review_run_state_service import ReviewRunStateService
 from sdr.apps.ai.engine.preparation.retrieval_service import RetrievalService
 from sdr.apps.ai.retrieval.core import AdvancedRetrievalConfig, RetrievalResult
 from sdr.apps.ai.retrieval.routing.router import HybridRetrievalRouter
@@ -181,8 +184,7 @@ def test_run_single_analysis_for_category_runs_parameters_concurrently():
         persistence_service=SimpleNamespace(),
         debate_input_factory=SimpleNamespace(),
         progress_service=SimpleNamespace(
-            initialize_category_progress=lambda **kwargs: None,
-            sync_analysis_aliases=lambda **kwargs: None,
+            register_analysis_work=lambda **kwargs: None,
         ),
         run_state_service=SimpleNamespace(
             raise_if_cancelled=lambda *args, **kwargs: None,
@@ -192,6 +194,7 @@ def test_run_single_analysis_for_category_runs_parameters_concurrently():
         mediator_agent_factory=lambda: None,
     )
     coordinator.seed_live_debates = lambda **kwargs: None
+    coordinator.publish_work_phase = lambda **kwargs: None
     coordinator.extract_killed_assumptions_from_output = lambda output, parameter: []
 
     lock = threading.Lock()
@@ -235,3 +238,76 @@ def test_run_single_analysis_for_category_runs_parameters_concurrently():
     assert peak_in_flight <= 3
     assert elapsed < 0.2 * len(parameters), "concurrent run should be faster than the fully sequential baseline"
     assert sorted(persisted_ids) == [1, 2, 3, 4, 5, 6]
+
+
+def test_register_analysis_work_is_additive_across_concurrent_branches():
+    service = SummaryProgressService()
+    summary = AnalysisSummary()
+
+    with ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [
+            executor.submit(
+                service.register_analysis_work,
+                summary=summary,
+                category_code="web_application",
+                total_count=count,
+            )
+            for count in (58, 3)
+        ]
+        for future in futures:
+            future.result()
+
+    stats = summary.category_stats["web_application"]
+    assert stats["debate_total_count"] == 61
+    assert stats["debate_remaining_count"] == 61
+    assert stats["persistence_total_count"] == 61
+    assert stats["persistence_remaining_count"] == 61
+    assert summary.debate_total_parameters == 61
+    assert summary.persistence_total_parameters == 61
+
+
+def test_summary_snapshot_cannot_commit_stale_text_total_after_diagram_total():
+    import threading
+
+    first_save_started = threading.Event()
+    release_first_save = threading.Event()
+    diagram_thread_started = threading.Event()
+    saved_totals = []
+
+    class _Repository:
+        def save_summary_snapshot(self, _review_id, *, summary):
+            total = summary["debate_total_parameters"]
+            if total == 58:
+                first_save_started.set()
+                assert release_first_save.wait(timeout=2)
+            saved_totals.append(total)
+
+    summary = AnalysisSummary(debate_total_parameters=58, debate_remaining_parameters=58)
+    service = ReviewRunStateService(workflow_repository=_Repository())
+    review = SimpleNamespace(id=1, summary_json=None)
+    progress = SummaryProgressService()
+
+    text_thread = threading.Thread(target=service.persist_summary_snapshot, args=(review, summary))
+
+    def _register_and_persist_diagrams():
+        diagram_thread_started.set()
+        progress.register_analysis_work(
+            summary=summary,
+            category_code="web_application",
+            total_count=3,
+        )
+        service.persist_summary_snapshot(review, summary)
+
+    diagram_thread = threading.Thread(target=_register_and_persist_diagrams)
+    text_thread.start()
+    assert first_save_started.wait(timeout=2)
+    diagram_thread.start()
+    assert diagram_thread_started.wait(timeout=2)
+    release_first_save.set()
+    text_thread.join(timeout=2)
+    diagram_thread.join(timeout=2)
+
+    assert not text_thread.is_alive()
+    assert not diagram_thread.is_alive()
+    assert saved_totals == [58, 61]
+    assert review.summary_json["debate_total_parameters"] == 61

@@ -220,6 +220,7 @@ class ReviewDebateEventStore:
                     "category_code": debate.get("category_code"),
                     "status": existing.get("status") or "pending",
                     "active_agent": existing.get("active_agent"),
+                    "work_phase": debate.get("work_phase") or existing.get("work_phase") or "queued",
                     "execution_mode": debate.get("execution_mode") or existing.get("execution_mode") or "single",
                     "pipeline_mode": debate.get("pipeline_mode") or existing.get("pipeline_mode") or "debate",
                     "progress_percent": int(existing.get("progress_percent") or 0),
@@ -237,6 +238,35 @@ class ReviewDebateEventStore:
                 "review_id": review_id,
                 "review_status": review_status,
                 "debates": changed,
+            }
+
+        self._mutate(review_id, mutate)
+
+    def set_work_phase(
+        self,
+        review_id: int,
+        *,
+        debate_id: str,
+        work_phase: str,
+        last_snippet: str,
+        progress_percent: Optional[int] = None,
+    ) -> None:
+        """Expose non-agent work without adding a synthetic transcript entry."""
+        def mutate(snapshot: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+            debate_state = (snapshot.get("debates") or {}).get(debate_id)
+            if not debate_state:
+                return None
+            debate_state["status"] = "running"
+            debate_state["work_phase"] = work_phase
+            debate_state["active_agent"] = None if work_phase == "retrieval" else debate_state.get("active_agent")
+            debate_state["last_snippet"] = last_snippet
+            debate_state["updated_at"] = utc_now_iso()
+            if progress_percent is not None:
+                debate_state["progress_percent"] = max(0, min(100, int(progress_percent)))
+            return {
+                "type": "debate.updated",
+                "review_id": review_id,
+                "debate": self._strip_internal_fields(debate_state),
             }
 
         self._mutate(review_id, mutate)
@@ -271,6 +301,7 @@ class ReviewDebateEventStore:
             }
             debate_state["status"] = "running"
             debate_state["active_agent"] = agent
+            debate_state["work_phase"] = "debate"
             debate_state["progress_percent"] = max(0, min(100, int(progress_percent)))
             debate_state["last_snippet"] = content
             debate_state["updated_at"] = now
@@ -410,6 +441,7 @@ class ReviewDebateEventStore:
                 message["completed_at"] = now
                 message["updated_at"] = now
             debate_state["status"] = "failed"
+            debate_state["work_phase"] = None
             debate_state["last_snippet"] = error_message[-280:]
             debate_state["updated_at"] = now
             debate_state["active_agent"] = agent
@@ -436,6 +468,7 @@ class ReviewDebateEventStore:
             if not debate_state:
                 return None
             debate_state["status"] = "completed"
+            debate_state["work_phase"] = None
             debate_state["active_agent"] = terminal_agent
             debate_state["progress_percent"] = 100
             debate_state["finding_id"] = finding_id
@@ -457,6 +490,7 @@ class ReviewDebateEventStore:
                 if str(debate.get("status") or "").lower() in {"completed", "failed", "cancelled"}:
                     continue
                 debate["status"] = "cancelled"
+                debate["work_phase"] = None
                 debate["last_snippet"] = error_message
                 debate["updated_at"] = now
                 debate["active_agent"] = debate.get("active_agent") or "system"
@@ -681,6 +715,7 @@ class ReviewDebateEventStore:
             "category_code": debate.get("category_code"),
             "status": existing.get("status") or "pending",
             "active_agent": existing.get("active_agent"),
+            "work_phase": debate.get("work_phase") or existing.get("work_phase") or "queued",
             "execution_mode": execution_mode or existing.get("execution_mode") or "single",
             "pipeline_mode": debate.get("pipeline_mode") or existing.get("pipeline_mode") or "debate",
             "progress_percent": int(existing.get("progress_percent") or 0),

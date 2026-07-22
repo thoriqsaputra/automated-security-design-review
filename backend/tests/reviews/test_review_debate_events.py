@@ -173,6 +173,45 @@ def test_complete_debate_sets_custom_terminal_agent():
     assert persisted["pipeline_mode"] == "extract_reason"
 
 
+def test_work_phase_updates_without_creating_a_transcript_agent():
+    store = ReviewDebateEventStore()
+    store._redis_client = _FakeRedis()
+    review_id = 22
+    debate = {
+        "debate_id": "text:22",
+        "parameter_id": 22,
+        "execution_mode": "single",
+        "work_phase": "queued",
+    }
+
+    store.seed_debates(review_id, review_status="running", debates=[debate])
+    store.set_work_phase(
+        review_id,
+        debate_id="text:22",
+        work_phase="retrieval",
+        last_snippet="Retrieving and ranking supporting evidence.",
+        progress_percent=2,
+    )
+
+    persisted = store.load_snapshot(review_id)["debates"][0]
+    assert persisted["status"] == "running"
+    assert persisted["work_phase"] == "retrieval"
+    assert persisted["progress_percent"] == 2
+    assert persisted["transcript"] == []
+
+    store.start_agent(
+        review_id,
+        debate=debate,
+        agent="hunter",
+        execution_mode="single",
+        content="Hunter is analyzing this requirement.",
+        progress_percent=5,
+    )
+    persisted = store.load_snapshot(review_id)["debates"][0]
+    assert persisted["work_phase"] == "debate"
+    assert [message["agent"] for message in persisted["transcript"]] == ["hunter"]
+
+
 def test_complete_agent_merges_extra_fields():
     store = ReviewDebateEventStore()
     store._redis_client = _FakeRedis()

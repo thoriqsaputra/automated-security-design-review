@@ -6,6 +6,31 @@ from sdr.apps.ai.engine.dto import AnalysisSummary
 
 
 class SummaryProgressService:
+    def register_analysis_work(
+        self,
+        *,
+        summary: AnalysisSummary,
+        category_code: str,
+        total_count: int,
+    ) -> None:
+        """Atomically add work discovered by a concurrent analysis branch."""
+        count = max(0, int(total_count))
+        if count == 0:
+            return
+        with summary.lock:
+            category_stats = summary.category_stats.setdefault(category_code, {})
+            category_stats.setdefault("debate_completed_count", 0)
+            category_stats.setdefault("persistence_completed_count", 0)
+            category_stats["debate_total_count"] = int(category_stats.get("debate_total_count") or 0) + count
+            category_stats["debate_remaining_count"] = int(category_stats.get("debate_remaining_count") or 0) + count
+            category_stats["persistence_total_count"] = int(category_stats.get("persistence_total_count") or 0) + count
+            category_stats["persistence_remaining_count"] = int(category_stats.get("persistence_remaining_count") or 0) + count
+            summary.debate_total_parameters += count
+            summary.debate_remaining_parameters += count
+            summary.persistence_total_parameters += count
+            summary.persistence_remaining_parameters += count
+            self.sync_analysis_aliases(summary=summary, category_code=category_code)
+
     def prepare_category_stats(
         self,
         *,
