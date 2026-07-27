@@ -15,9 +15,13 @@ def _router() -> HybridRetrievalRouter:
     router.raptor_top_k = 5
     router.max_context_chunks = 12
     router.advanced_config = AdvancedRetrievalConfig()
-    router._raptor_searcher = SimpleNamespace()
+    router._raptor_searcher = SimpleNamespace(
+        search_multi_level=lambda **kwargs: RAPTORSearchResponse(results=[]),
+    )
     router._keyword_searcher = SimpleNamespace()
-    router._reranker = SimpleNamespace(rerank=lambda query, candidates, top_k: list(candidates))
+    router._reranker = SimpleNamespace(
+        rerank=lambda query, candidates, top_k, **kwargs: list(candidates)
+    )
     return router
 
 

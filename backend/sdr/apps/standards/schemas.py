@@ -77,7 +77,7 @@ class CategoryParameterChildSchema(BaseModel):
 
     requirement_text_normalized: str
     ordinal: int
-    requirement_category: str = "design"
+    requirement_category: str
     is_active: bool = True
 
     model_config = ConfigDict(from_attributes=True)

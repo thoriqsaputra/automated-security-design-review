@@ -1,10 +1,19 @@
-from langchain_text_splitters import RecursiveCharacterTextSplitter
 import tiktoken
 
 from typing import Dict, List
 
 import logging
 logger = logging.getLogger(__name__)
+
+
+def _text_splitter_class():
+    # Importing langchain_text_splitters eagerly also imports
+    # sentence-transformers and sklearn. Keep that heavyweight dependency out
+    # of module import and pytest collection; it is only needed when chunking
+    # actually runs.
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+
+    return RecursiveCharacterTextSplitter
 
 
 def chunk_text_with_context(
@@ -60,7 +69,7 @@ def chunk_text_with_context(
             return len(encoding.encode(s))
         return len(s) // 4  # character fallback
 
-    splitter = RecursiveCharacterTextSplitter(
+    splitter = _text_splitter_class()(
         separators=["\n\n\n", "\n\n", "\n", ". ", " ", ""],
         chunk_size=chunk_size,
         chunk_overlap=overlap,
@@ -119,7 +128,7 @@ def chunk_text_semantically(
             return len(encoding.encode(s))
         return len(s) // 4
 
-    splitter = RecursiveCharacterTextSplitter(
+    splitter = _text_splitter_class()(
         separators=["\n\n\n\n", "\n\n\n", "\n\n", "\n", " "],
         chunk_size=chunk_size,
         chunk_overlap=0,
@@ -144,4 +153,4 @@ def chunk_text_semantically(
     return [
         {"text": f"--- DOCUMENT CHUNK {idx} OF {total} ---\n\n{chunk}"}
         for idx, chunk in enumerate(raw_chunks, start=1)
-    ]
+    ]

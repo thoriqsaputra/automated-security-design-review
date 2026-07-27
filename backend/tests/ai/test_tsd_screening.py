@@ -73,7 +73,7 @@ def test_screening_allows_low_confidence_non_tsd(monkeypatch):
     doc = _document([_page(1, "Overview", "This document has limited architecture detail.")])
 
     monkeypatch.setattr(
-        "sdr.apps.ai.engine.ingestion_service.chat_completion",
+        "sdr.apps.ai.engine.preparation.ingestion_service.chat_completion",
         lambda **kwargs: _response(
             {
                 "is_tsd": False,
@@ -94,7 +94,7 @@ def test_screening_rejects_clear_high_confidence_non_tsd(monkeypatch):
     doc = _document([_page(1, "Terms", "This legal contract defines commercial payment terms.")])
 
     monkeypatch.setattr(
-        "sdr.apps.ai.engine.ingestion_service.chat_completion",
+        "sdr.apps.ai.engine.preparation.ingestion_service.chat_completion",
         lambda **kwargs: _response(
             {
                 "is_tsd": False,
@@ -137,7 +137,7 @@ def test_screening_accepts_tsd_evidence_after_toc(monkeypatch):
         )
 
     monkeypatch.setattr(
-        "sdr.apps.ai.engine.ingestion_service.chat_completion",
+        "sdr.apps.ai.engine.preparation.ingestion_service.chat_completion",
         fake_completion,
     )
 
@@ -153,7 +153,7 @@ def test_screening_api_error_allows_document(monkeypatch):
     doc = _document([_page(1, "Policy", "This may be ambiguous.")])
 
     monkeypatch.setattr(
-        "sdr.apps.ai.engine.ingestion_service.chat_completion",
+        "sdr.apps.ai.engine.preparation.ingestion_service.chat_completion",
         lambda **kwargs: AIResponse(
             content="",
             model="test-model",

@@ -48,7 +48,18 @@ def load_labeled_samples(
     gt_data: dict, labels: tuple[str, ...] = ("met", "not_met")
 ) -> list[RealLabeledSample]:
     """Flatten the ground-truth JSON into one row per relevant, labeled (diagram, requirement) pair."""
-    hint_map = _load_requirement_hint_map(gt_data)
+    candidate_rows = [
+        req
+        for item in gt_data.get("items", [])
+        for req in item.get("candidate_requirements", [])
+        if req.get("relevant") is True
+        and str(req.get("label") or "").lower().strip() in labels
+    ]
+    hint_map = (
+        _load_requirement_hint_map(gt_data)
+        if any(not str(req.get("verification_hint") or "").strip() for req in candidate_rows)
+        else {}
+    )
     samples: list[RealLabeledSample] = []
     for item in gt_data.get("items", []):
         diagram_id = str(item.get("diagram_id", "")).strip()

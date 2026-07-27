@@ -106,4 +106,4 @@ def test_already_present_protected_candidate_is_not_duplicated():
     result = _enforce_protected_slots(reranked, list(reranked), protected, max_context_chunks=16)
 
     assert [c.id for c in result] == ["gold", "other"]
-    assert "protected_slot_source" not in gold.metadata
+    assert gold.metadata["protected_slot_source"] == "dense"

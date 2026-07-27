@@ -327,16 +327,22 @@ def _persist_extracted_requirements(
             next_ordinal = ordinals_by_section.get(section_name, 0) + 1
             ordinals_by_section[section_name] = next_ordinal
             child_key = f"{stable_key(normalized)}-{str(source_doc.id)[:8]}-{next_ordinal:06d}"
-            raw_category = str(req.get("requirement_category", "design")).lower().strip()
+            raw_category = str(
+                req.get("requirement_category", "") or ""
+            ).lower().strip()
+            if raw_category not in _VALID_REQUIREMENT_CATEGORIES:
+                raise ValueError(
+                    "Cannot persist requirement without a valid LLM-assigned "
+                    f"category: section={section_name!r} requirement={raw_text[:120]!r} "
+                    f"category={raw_category!r}"
+                )
             child = CategoryParameterChild(
                 parent_id=parent.id,
                 stable_key=child_key,
                 requirement_text=raw_text,
                 requirement_text_normalized=normalized,
                 ordinal=next_ordinal,
-                requirement_category=(
-                    raw_category if raw_category in _VALID_REQUIREMENT_CATEGORIES else "design"
-                ),
+                requirement_category=raw_category,
             )
             db.add(child)
             db.flush()

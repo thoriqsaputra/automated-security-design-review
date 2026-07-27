@@ -87,3 +87,31 @@ def test_non_items_are_still_skipped():
     kept = _kept_requirements(items)
 
     assert kept == []
+
+
+def test_category_is_never_changed_by_keyword_rules():
+    items = [
+        {
+            "requirement": "1.1.1 Store secrets in a key vault behind a firewall.",
+            "context_marker": "V1.1",
+            "requirement_category": "design",
+        },
+        {
+            "requirement": "1.1.2 Validate the TLS certificate chain.",
+            "context_marker": "V1.1",
+            "requirement_category": "design",
+        },
+        {
+            "requirement": "1.1.3 Capture security requirements in the backlog.",
+            "context_marker": "V1.1",
+            "requirement_category": "design",
+        },
+    ]
+
+    result = canonicalize_requirement_items(items)
+
+    assert [item["requirement_category"] for item in result] == [
+        "design",
+        "design",
+        "design",
+    ]

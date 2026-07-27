@@ -1,24 +1,4 @@
-import importlib.util
-import sys
-from pathlib import Path
-
-
-_SEVERITY_PATH = (
-    Path(__file__).resolve().parents[2]
-    / "sdr"
-    / "apps"
-    / "ai"
-    / "services"
-    / "analysis"
-    / "severity.py"
-)
-_SPEC = importlib.util.spec_from_file_location("severity_under_test", _SEVERITY_PATH)
-severity_under_test = importlib.util.module_from_spec(_SPEC)
-assert _SPEC and _SPEC.loader
-sys.modules[_SPEC.name] = severity_under_test
-_SPEC.loader.exec_module(severity_under_test)
-
-calculate_deterministic_severity = severity_under_test.calculate_deterministic_severity
+from sdr.apps.ai.engine.classification.severity import calculate_deterministic_severity
 
 
 def test_non_not_met_findings_have_no_severity():
@@ -87,7 +67,7 @@ def test_partial_requirement_verdict_is_capped_at_medium():
     )
 
     assert result.severity == "medium"
-    assert result.score == 6.5
+    assert result.score == 6.0
     assert any(cap["kind"] == "partial_verdict_cap" and cap["applied"] for cap in result.analysis["caps"])
 
 

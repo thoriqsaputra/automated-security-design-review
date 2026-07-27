@@ -19,6 +19,7 @@ def _build_review(*, review_id: int = 7, status: str = Review.STATUS_PENDING):
     return SimpleNamespace(
         id=review_id,
         design_id=11,
+        design=SimpleNamespace(can_start_analysis=True),
         status=status,
         celery_task_id=None,
         started_at=None,

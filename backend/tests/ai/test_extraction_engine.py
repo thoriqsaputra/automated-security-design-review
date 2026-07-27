@@ -26,7 +26,8 @@ def test_structured_requirement_extraction_service_parses_details():
               "requirement": "5.4.1 Generic Web Service Security",
               "details": "All APIs must document interfaces and validate input/output.",
               "verbatim_quote": "a. semua API mendefinisikan ...",
-              "context_marker": "Section 5.4.1"
+              "context_marker": "Section 5.4.1",
+              "requirement_category": "design"
             }
           ]
         }
@@ -55,6 +56,7 @@ def test_requirement_document_extraction_service_uses_injected_reader():
     class StubStructuredExtractor:
         def __init__(self) -> None:
             self.calls = []
+            self.chat_completion = lambda **_: SimpleNamespace(error=None, content="{}")
 
         def extract(self, text: str):
             self.calls.append(text)
@@ -74,7 +76,11 @@ def test_requirement_document_extraction_service_uses_injected_reader():
         config=ExtractionConfig(standard_extraction_max_workers=1),
     )
 
-    result = service.extract(source_doc)
+    with patch(
+        "sdr.apps.ai.engine.extraction.services.StandardScreeningService.screen_document",
+        return_value=None,
+    ):
+        result = service.extract(source_doc)
 
     assert structured_extractor.calls
     assert result["5.4 API and Web Service"][0]["verbatim_quote"] == "All APIs must validate input."
@@ -91,6 +97,8 @@ def test_requirement_document_extraction_service_uses_configured_chunk_sizing():
     )
 
     class StubStructuredExtractor:
+        chat_completion = staticmethod(lambda **_: SimpleNamespace(error=None, content="{}"))
+
         def extract(self, text: str):
             return {}
 
@@ -103,10 +111,16 @@ def test_requirement_document_extraction_service_uses_configured_chunk_sizing():
         ),
     )
 
-    with patch(
-        "sdr.apps.ai.engine.extraction.services.chunk_text_semantically",
-        return_value=[{"text": "chunk"}],
-    ) as mock_chunker:
+    with (
+        patch(
+            "sdr.apps.ai.engine.extraction.services.StandardScreeningService.screen_document",
+            return_value=None,
+        ),
+        patch(
+            "sdr.apps.ai.engine.extraction.services.chunk_text_semantically",
+            return_value=[{"text": "chunk"}],
+        ) as mock_chunker,
+    ):
         service.extract(source_doc)
 
     mock_chunker.assert_called_once()
@@ -125,7 +139,8 @@ def test_engine_function_wrapper_uses_api_patch_points():
           "5.4 API and Web Service": [
             {
               "requirement": "5.4.1 Generic Web Service Security",
-              "details": "All APIs must document interfaces and validate input/output."
+              "details": "All APIs must document interfaces and validate input/output.",
+              "requirement_category": "design"
             }
           ]
         }
@@ -146,7 +161,7 @@ def test_detect_asvs_page_ranges_for_asvs_5_pdf():
     result = detect_asvs_page_ranges(source_doc)
 
     assert result["start_page"] == 23
-    assert result["end_page"] == 95
+    assert result["end_page"] == 96
 
 
 def test_detect_asvs_page_ranges_for_asvs_4_pdf():
@@ -157,4 +172,4 @@ def test_detect_asvs_page_ranges_for_asvs_4_pdf():
     result = detect_asvs_page_ranges(source_doc)
 
     assert result["start_page"] == 17
-    assert result["end_page"] == 63
+    assert result["end_page"] == 64

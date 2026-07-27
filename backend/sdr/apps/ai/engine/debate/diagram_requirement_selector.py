@@ -326,7 +326,7 @@ class DiagramRequirementSelector:
                 for rank, req in enumerate(fused)
             ]
 
-        effective_k = max(_MIN_RESULTS, min(len(fused), top_k))
+        effective_k = min(len(fused), max(0, top_k))
         selected = fused[:effective_k]
 
         # Adaptive confidence cutoff: trim the fused tail once scores collapse
@@ -337,7 +337,12 @@ class DiagramRequirementSelector:
         if floor_ratio > 0 and selected:
             top_score = rrf_score(selected[0])
             floored = [req for req in selected if rrf_score(req) >= floor_ratio * top_score]
-            selected = floored if len(floored) >= _MIN_RESULTS else selected[:_MIN_RESULTS]
+            minimum_results = min(_MIN_RESULTS, effective_k)
+            selected = (
+                floored
+                if len(floored) >= minimum_results
+                else selected[:minimum_results]
+            )
 
         return selected
 

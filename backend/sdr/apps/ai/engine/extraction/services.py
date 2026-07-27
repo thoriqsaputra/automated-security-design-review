@@ -43,6 +43,10 @@ _VALID_REQUIREMENT_CATEGORIES = {"design", "code", "infrastructure", "process"}
 _CONTROL_ID_RE = re.compile(r"\b(?:[A-Z]{2,}(?:-[A-Z0-9]+)+|[Vv]?\d+\.\d+\.\d+(?:\.\d+)*)\b")
 
 
+class RequirementCategoryValidationError(ValueError):
+    """Raised when neither LLM classification stage yields a valid category."""
+
+
 def _annotate_chunks_with_chapter_context(
     chunks: List[Dict[str, Any]],
 ) -> List[Dict[str, Any]]:
@@ -237,6 +241,10 @@ def _extract_document_requirements(
                 )
             try:
                 chunk_result, chunk_tokens = future.result()
+            except RequirementCategoryValidationError:
+                for pending_future in future_to_chunk:
+                    pending_future.cancel()
+                raise
             except Exception as exc:
                 logger.error(
                     "extract_requirements_from_document: [MAP %d/%d] ✗ chunk failed with exception %s for standard '%s'",
@@ -300,7 +308,9 @@ class RequirementCategoryValidationService:
                         "index": local_index,
                         "control_id": control_id_match.group(0) if control_id_match else "",
                         "requirement_text": requirement_text,
-                        "extracted_category": str(item.get("requirement_category", "design")).lower(),
+                        "extracted_category": str(
+                            item.get("requirement_category", "") or ""
+                        ).lower().strip(),
                     }
                 )
 
@@ -352,11 +362,28 @@ class RequirementCategoryValidationService:
             for local_index, (_section, _item_index, item) in enumerate(batch):
                 item["requirement_category"] = labels[local_index]
 
-        for _section, _item_index, item in indexed_items:
-            current_category = str(item.get("requirement_category", "design")).lower().strip()
+        invalid_items = []
+        for section, item_index, item in indexed_items:
+            current_category = str(
+                item.get("requirement_category", "") or ""
+            ).lower().strip()
             if current_category not in _VALID_REQUIREMENT_CATEGORIES:
-                current_category = "design"
+                invalid_items.append(
+                    {
+                        "section": section,
+                        "item_index": item_index,
+                        "requirement": str(item.get("requirement", ""))[:120],
+                        "category": current_category,
+                    }
+                )
+                continue
             item["requirement_category"] = current_category
+
+        if invalid_items:
+            raise RequirementCategoryValidationError(
+                "LLM category classification did not produce a valid category "
+                f"for {len(invalid_items)} requirement(s): {invalid_items[:3]}"
+            )
 
         return requirements_by_section
 
@@ -423,6 +450,8 @@ class StructuredRequirementExtractionService:
                 max_tokens=8192,
             )
             return self.category_validator.validate(clean_structured_requirements(parsed))
+        except RequirementCategoryValidationError:
+            raise
         except Exception as exc:
             self.logger.error(
                 "extract_structured_requirements: unexpected error processing AI response: %s (type=%s)",

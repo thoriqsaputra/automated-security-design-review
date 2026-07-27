@@ -122,24 +122,25 @@ def _debate_output(parameter, *, verdict="not_met", confidence=0.9, citations=No
     )
 
 
-def test_xml_context_builder_uses_stable_ids():
+def test_xml_context_builder_does_not_infer_block_id_from_chunk_text():
     xml_chunks = _pipeline()._build_xml_context_chunks(
         ["--- DOCUMENT CHUNK 1 OF 1 ---\np4_b2 Service A calls Service B over mTLS."]
     )
 
     assert len(xml_chunks) == 1
-    assert '<CONTEXT_CHUNK id="p4_b2"' in xml_chunks[0]
+    assert '<CONTEXT_CHUNK id="chunk_1"' in xml_chunks[0]
+    assert 'citable="false"' in xml_chunks[0]
     assert "Service A calls Service B over mTLS." in xml_chunks[0]
 
 
-def test_context_chunk_map_uses_source_block_id_when_chunk_has_no_id():
+def test_context_chunk_map_does_not_treat_supplemental_id_as_chunk_provenance():
     chunk_map = _pipeline()._build_context_chunk_map(
         ["Token validation is enforced at the API gateway."],
         source_block_ids=["p8_b4"],
     )
 
-    assert "p8_b4" in chunk_map
-    assert chunk_map["p8_b4"]["citation_grade"] is True
+    assert "chunk_1" in chunk_map
+    assert chunk_map["chunk_1"]["citation_grade"] is False
 
 
 def test_citation_validator_rejects_unknown_ids():
@@ -868,14 +869,12 @@ def test_build_retrieval_snapshot_serializes_raptor_only():
     assert snapshot["raptor"]["nodes"][1]["parent_id"] == "root-1"
 
 
-def test_resolve_parameters_prefers_first_selected_category(monkeypatch):
+def test_resolve_parameters_uses_review_category(monkeypatch):
     pipeline = _pipeline()
     category_a = SimpleNamespace(id=1, code="web_application")
-    category_b = SimpleNamespace(id=2, code="mobile")
     review = SimpleNamespace(
-        selected_categories=[category_a, category_b],
+        category=category_a,
         ingestion_job=None,
-        standards=[],
     )
 
     class _ScalarResult:
@@ -920,6 +919,8 @@ def test_debate_service_stops_before_critic_when_cancelled():
         killed_assumptions=[],
         retrieval_query_details={},
         context_chunks=["--- DOCUMENT CHUNK 1 OF 1 ---\np1_b1 Evidence."],
+        original_context_chunks=["--- DOCUMENT CHUNK 1 OF 1 ---\np1_b1 Evidence."],
+        retrieval_refresh_callback=None,
         context_chunk_map={
             "p1_b1": {
                 "text": "Evidence.",
@@ -943,7 +944,7 @@ def test_debate_service_stops_before_critic_when_cancelled():
                 confidence=0.42,
                 reasoning="Hunter found evidence.",
                 logic_summary="Hunter found evidence.",
-                citations=[Citation(block_id="p1_b1", page_number=1)],
+                citations=[Citation(block_id="p1_b1", page_number=1, quoted_text="Evidence.")],
                 evidence_found=True,
             )
 
@@ -960,7 +961,7 @@ def test_debate_service_stops_before_critic_when_cancelled():
 
     def cancel_check():
         cancel_calls["count"] += 1
-        return cancel_calls["count"] >= 5
+        return cancel_calls["count"] >= 3
 
     with pytest.raises(AnalysisCancelledError):
         service.run_debate(
@@ -970,7 +971,7 @@ def test_debate_service_stops_before_critic_when_cancelled():
             cancel_check=cancel_check,
         )
 
-    assert cancel_calls["count"] >= 5
+    assert cancel_calls["count"] >= 3
 
 
 def test_debate_output_can_embed_retrieval_result_without_forward_ref_error():
@@ -1003,7 +1004,6 @@ def test_category_analysis_coordinator_skips_diagrams_in_text_only_mode(monkeypa
     calls = {"text": 0, "diagram": 0}
     stages = []
     summary = AnalysisSummary()
-    summary.asvs["categories"] = {}
 
     coordinator.workflow_repository.get_latest_active_ingestion_job = lambda _category_id: SimpleNamespace(id=11)
     coordinator.workflow_repository.list_category_parameters = lambda **_kwargs: [parameter]
@@ -1036,7 +1036,6 @@ def test_category_analysis_coordinator_skips_text_path_in_diagram_only_mode(monk
     calls = {"text": 0, "diagram": 0}
     stages = []
     summary = AnalysisSummary()
-    summary.asvs["categories"] = {}
 
     coordinator.workflow_repository.get_latest_active_ingestion_job = lambda _category_id: SimpleNamespace(id=11)
     coordinator.workflow_repository.list_category_parameters = lambda **_kwargs: [parameter]
@@ -1261,6 +1260,8 @@ def test_run_debate_executes_escalation_round_on_low_confidence_overturn(monkeyp
         killed_assumptions=[],
         retrieval_query_details={},
         context_chunks=["--- DOCUMENT CHUNK 1 OF 1 ---\np1_b1 Evidence."],
+        original_context_chunks=["--- DOCUMENT CHUNK 1 OF 1 ---\np1_b1 Evidence."],
+        retrieval_refresh_callback=None,
         context_chunk_map={
             "p1_b1": {
                 "text": "Evidence.",

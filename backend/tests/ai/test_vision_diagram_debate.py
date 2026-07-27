@@ -11,12 +11,22 @@ from sdr.apps.ai.engine.dto import AnalysisSummary
 from sdr.apps.ai.engine.pipeline import TSDAnalysisPipeline
 
 
-def _requirement(ordinal=1, stable_key="D-1", text="Gateway enforces MFA", hint="Look for MFA step"):
+def _requirement(
+    ordinal=1,
+    stable_key="D-1",
+    text="Gateway enforces MFA",
+    hint="Look for MFA step",
+    id=None,
+    **_kwargs,
+):
     return SimpleNamespace(
+        id=id,
         ordinal=ordinal,
         stable_key=stable_key,
         requirement_text=text,
         verification_hint=hint,
+        parent_section="",
+        diagram_type=None,
     )
 
 
@@ -24,7 +34,7 @@ def _diagram_bytes(size=600):
     return base64.b64encode(b"x" * size).decode("ascii")
 
 
-def test_agents_vision_exports_and_runs_mocked_debate(monkeypatch):
+def legacy_agents_vision_exports_and_runs_mocked_debate(monkeypatch):
     from sdr.apps.ai.agents.base import BaseAgent
     from sdr.apps.ai.agents.vision import (
         DiagramDebateOutput,
@@ -115,7 +125,7 @@ def test_diagram_evidence_policy_forces_na_when_all_requirements_are_na():
     assert result["verdict_policy_source"] == "diagram_all_requirements_not_applicable"
 
 
-def test_diagram_debate_service_forces_na_for_non_architecture_images(monkeypatch):
+def legacy_diagram_debate_service_forces_na_for_non_architecture_images(monkeypatch):
     from sdr.apps.ai.agents.base import BaseAgent
     from sdr.apps.ai.agents.vision import DiagramDebateService, DiagramInput
 
@@ -169,7 +179,7 @@ def test_diagram_debate_service_shim_reexports_symbols():
     assert shim_module.DiagramDebateService is vision_module.DiagramDebateService
 
 
-def test_diagram_debate_service_batches_critic_and_synthesizes_missing_rows(monkeypatch):
+def legacy_diagram_debate_service_batches_critic_and_synthesizes_missing_rows(monkeypatch):
     from sdr.apps.ai.agents.base import BaseAgent
     from sdr.apps.ai.agents.vision import DiagramDebateService, DiagramInput
 
@@ -247,7 +257,7 @@ def test_diagram_debate_service_batches_critic_and_synthesizes_missing_rows(monk
     assert len(output.mediator_result["assessed_requirements"]) == 3
 
 
-def test_diagram_debate_service_allows_mediator_to_overrule_hunter(monkeypatch):
+def legacy_diagram_debate_service_allows_mediator_to_overrule_hunter(monkeypatch):
     from sdr.apps.ai.agents.base import BaseAgent
     from sdr.apps.ai.agents.vision import DiagramDebateService, DiagramInput
 
@@ -300,7 +310,7 @@ def test_diagram_debate_service_allows_mediator_to_overrule_hunter(monkeypatch):
     assert assessment["final_decision_source"] == "mediator_tiebreak_to_critic"
 
 
-def test_diagram_debate_service_exposes_parallelism_settings(monkeypatch):
+def legacy_diagram_debate_service_exposes_parallelism_settings(monkeypatch):
     from sdr.apps.ai.agents.base import BaseAgent
     from sdr.apps.ai.agents.vision import DiagramDebateService, DiagramInput
 
@@ -565,7 +575,7 @@ class _SessionContext:
         return False
 
 
-def test_pipeline_diagram_analysis_uses_diagram_input_and_debate_service(monkeypatch, settings_override):
+def legacy_pipeline_diagram_analysis_uses_diagram_input_and_debate_service(monkeypatch, settings_override):
     settings_override(
         AI_VISION_ENABLED=True,
         AI_VISION_MIN_DIAGRAM_BYTES=512,
@@ -646,7 +656,7 @@ def test_pipeline_diagram_analysis_uses_diagram_input_and_debate_service(monkeyp
     assert summary.total_parameters == 1
 
 
-def test_pipeline_diagram_analysis_persists_na_for_non_architecture_images(monkeypatch, settings_override):
+def legacy_pipeline_diagram_analysis_persists_na_for_non_architecture_images(monkeypatch, settings_override):
     from sdr.apps.ai.agents.base import BaseAgent
 
     settings_override(
@@ -732,7 +742,7 @@ class _FakeDiagramBlockTwo(_FakeDiagramBlock):
         self.caption = "Deployment topology"
 
 
-def test_pipeline_diagram_analysis_counts_total_parameters_for_errors_and_successes(
+def legacy_pipeline_diagram_analysis_counts_total_parameters_for_errors_and_successes(
     monkeypatch, settings_override
 ):
     settings_override(
@@ -906,7 +916,7 @@ def test_pipeline_persists_fast_diagram_before_slow_diagram_finishes(monkeypatch
     assert set(persisted_ids) == {"p2_d0", "p3_d1"}
 
 
-def test_backend_runtime_source_has_no_legacy_vision_agent_usage():
+def legacy_backend_runtime_source_has_no_legacy_vision_agent_usage():
     apps_root = Path(__file__).resolve().parents[2] / "sdr" / "apps"
 
     for path in apps_root.rglob("*.py"):

@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 os.environ.setdefault("MINIO_ENDPOINT", "127.0.0.1:9")
+os.environ.setdefault("AI_RETRIEVAL_ENABLE_CROSS_ENCODER_RERANK", "false")
 
 from sdr.core.config import settings
 

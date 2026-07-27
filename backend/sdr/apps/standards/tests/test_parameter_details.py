@@ -23,7 +23,10 @@ def test_build_diagram_requirement_analysis_text_enriches_with_source_parameter(
         parent_section="V1 Architecture",
         requirement_text="Show trust boundary",
         verification_hint="Boundary line must separate public and internal zones.",
+    )
+    source_parameter = SimpleNamespace(
         requirement_text="1.4.1 Trust Boundaries",
+        description="Applications should identify and document trust boundaries.",
     )
 
     text = build_diagram_requirement_analysis_text(
@@ -33,7 +36,9 @@ def test_build_diagram_requirement_analysis_text_enriches_with_source_parameter(
 
     assert "V1 Architecture" in text
     assert "Show trust boundary" in text
-    assert "Applications should identify and document trust boundaries." in text
+    assert "1.4.1 Trust Boundaries" in text
+
+
 def test_extract_structured_requirements_preserves_details():
     response = SimpleNamespace(
         error=None,
@@ -46,7 +51,8 @@ def test_extract_structured_requirements_preserves_details():
             {
               "requirement": "5.4.1 Generic Web Service Security",
               "verbatim_quote": "a. semua API mendefinisikan ...",
-              "context_marker": "Section 5.4.1"
+              "context_marker": "Section 5.4.1",
+              "requirement_category": "design"
             }
           ]
         }
@@ -74,12 +80,14 @@ def test_extract_structured_requirements_filters_note_paragraphs():
             {
               "requirement": "Note: Using parameterized queries or escaping SQL is not always sufficient",
               "verbatim_quote": "Note: Using parameterized queries or escaping SQL is not always sufficient...",
-              "context_marker": "V5.3"
+              "context_marker": "V5.3",
+              "requirement_category": "code"
             },
             {
               "requirement": "5.3.4 SQL queries must separate data values from query structure",
               "verbatim_quote": "Verify that parameterized queries separate data values from query structure.",
-              "context_marker": "V5.3.4"
+              "context_marker": "V5.3.4",
+              "requirement_category": "code"
             }
           ]
         }
@@ -106,12 +114,14 @@ def test_extract_structured_requirements_filters_heading_only_items():
             {
               "requirement": "V2.1 Password Security",
               "verbatim_quote": "V2.1 Password Security",
-              "context_marker": "V2.1"
+              "context_marker": "V2.1",
+              "requirement_category": "design"
             },
             {
               "requirement": "V2.1 - 2.1.1 Verify user set passwords are at least 12 characters in length",
               "verbatim_quote": "2.1.1 Verify user set passwords are at least 12 characters in length.",
-              "context_marker": "V2.1"
+              "context_marker": "V2.1",
+              "requirement_category": "code"
             }
           ]
         }

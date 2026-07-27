@@ -16,9 +16,13 @@ def _router() -> HybridRetrievalRouter:
     router.raptor_top_k = 5
     router.max_context_chunks = 12
     router.advanced_config = AdvancedRetrievalConfig()
-    router._raptor_searcher = SimpleNamespace()
+    router._raptor_searcher = SimpleNamespace(
+        search_multi_level=lambda **kwargs: RAPTORSearchResponse(results=[]),
+    )
     router._keyword_searcher = SimpleNamespace()
-    router._reranker = SimpleNamespace(rerank=lambda query, candidates, top_k: list(candidates))
+    router._reranker = SimpleNamespace(
+        rerank=lambda query, candidates, top_k, **kwargs: list(candidates)
+    )
     return router
 
 
@@ -75,7 +79,12 @@ def test_execute_raptor_high_populates_context_chunk_levels():
     assert len(result.context_chunks) == len(result.context_chunk_levels)
 
 
-def test_execute_hybrid_populates_context_chunk_levels_from_candidate_metadata():
+def test_execute_hybrid_populates_context_chunk_levels_from_candidate_metadata(monkeypatch):
+    monkeypatch.setattr(
+        "sdr.apps.ai.retrieval.routing.executors.settings.AI_RETRIEVAL_SECONDARY_SEARCH_ENABLED",
+        False,
+        raising=False,
+    )
     router = _router()
     raptor_node = RAPTORNode(node_id="level0_node0", level=0, text="Literal page text.", source_block_ids=["p1_b1"])
     router._raptor_searcher.search_collapsed_raptor = lambda **kwargs: RAPTORSearchResponse(
@@ -96,7 +105,10 @@ def test_execute_hybrid_populates_context_chunk_levels_from_candidate_metadata()
         query_text="Use MFA for admin access",
         category=SimpleNamespace(id=1, code="web_application"),
         ingestion_job=SimpleNamespace(id=1),
-        raptor_tree=SimpleNamespace(is_empty=lambda: False),
+        raptor_tree=SimpleNamespace(
+            is_empty=lambda: False,
+            get_all_nodes=lambda: [],
+        ),
         query_embedding=[0.1, 0.2],
         keywords=["mfa"],
     )

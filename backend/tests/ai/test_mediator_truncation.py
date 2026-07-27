@@ -41,4 +41,7 @@ def test_mediator_returns_degraded_result_when_llm_response_is_truncated(monkeyp
     assert result.final_verdict == "not_met"
     assert result.error is not None
     assert "truncated" in result.error.lower()
-    assert result.logic_summary.startswith("[DEGRADED")
+    assert result.logic_summary == (
+        "Mediator reached 'not_met' but no citation survived Critic verification; "
+        "downstream citation repair is required."
+    )

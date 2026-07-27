@@ -23,7 +23,10 @@ def test_resolve_diagram_ground_truth_path_prefers_canonical(tmp_path, monkeypat
 
 
 def test_design_scoped_ground_truth_has_no_review_only_fields():
-    path = Path("backend/sdr/apps/ai/evaluations/data/diagram_ground_truth_design_15.json")
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "sdr/apps/ai/evaluations/data/diagram_ground_truth_design_15.json"
+    )
     data = json.loads(path.read_text())
 
     assert data["design_id"] == 15
@@ -36,7 +39,10 @@ def test_design_scoped_ground_truth_has_no_review_only_fields():
 
 
 def test_load_labeled_samples_reads_design_scoped_ground_truth():
-    path = Path("backend/sdr/apps/ai/evaluations/data/diagram_ground_truth_design_15.json")
+    path = (
+        Path(__file__).resolve().parents[2]
+        / "sdr/apps/ai/evaluations/data/diagram_ground_truth_design_15.json"
+    )
     data = json.loads(path.read_text())
     samples = load_labeled_samples(data)
 

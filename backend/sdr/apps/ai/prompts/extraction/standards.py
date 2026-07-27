@@ -82,8 +82,8 @@ OUTPUT: Valid JSON only. No markdown fences, no analysis, no reasoning.
 
 
 REQUIREMENT_CATEGORY_VALIDATION_SYSTEM_PROMPT = """\
-You are a deterministic security-requirement classifier. Classify each item
-using the TSD-verifiability rubric exactly as written. Return strict JSON only.
+You are a security-requirement classifier. Classify each item using the
+TSD-verifiability rubric exactly as written. Return strict JSON only.
 Do not add, remove, reorder, or rewrite items.
 """
 

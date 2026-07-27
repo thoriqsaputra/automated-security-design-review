@@ -294,7 +294,7 @@ def test_persist_finding_keeps_met_when_citation_quotes_are_missing(monkeypatch)
     assert summary.citation_count == 1
 
 
-def test_persist_finding_keeps_met_when_citations_cannot_be_anchored(monkeypatch):
+def test_persist_finding_rejects_met_when_citations_cannot_be_anchored(monkeypatch):
     # Regression: findings 1839/1846 (review 57), 1884/1906/1911/1898 (review
     # 58) — the debate's own verdict_policy said "met" with Critic-verified
     # citations, but the persisted finding came out "na" because
@@ -366,9 +366,8 @@ def test_persist_finding_keeps_met_when_citations_cannot_be_anchored(monkeypatch
         summary,
     )
 
-    assert finding is session.finding
-    assert finding.met_status == "met"
-    assert summary.met_count == 1
+    assert finding is None
+    assert summary.error_count == 1
 
 
 def test_persist_finding_repairs_met_when_no_citations_at_all(monkeypatch):
@@ -448,7 +447,7 @@ def test_persist_finding_repairs_met_when_no_citations_at_all(monkeypatch):
     assert session.findings and session.findings[0].block_id == "p4_b7"
 
 
-def test_persist_finding_raises_when_grounded_verdict_has_no_citable_context(monkeypatch):
+def test_persist_finding_records_error_when_grounded_verdict_has_no_citable_context(monkeypatch):
     service = PersistenceService()
     session = _Session()
     monkeypatch.setattr(
@@ -483,17 +482,19 @@ def test_persist_finding_raises_when_grounded_verdict_has_no_citable_context(mon
     )
     summary = AnalysisSummary()
 
-    with pytest.raises(ValueError):
-        service.persist_finding(
-            review,
-            PersistenceInput.model_construct(
-                parameter=parameter,
-                category=category,
-                ingestion_job=None,
-                debate_output=debate_output,
-            ),
-            summary,
-        )
+    finding = service.persist_finding(
+        review,
+        PersistenceInput.model_construct(
+            parameter=parameter,
+            category=category,
+            ingestion_job=None,
+            debate_output=debate_output,
+        ),
+        summary,
+    )
+
+    assert finding is None
+    assert summary.error_count == 1
 
 
 def test_persist_diagram_debate_finding_stores_pipeline_mode_and_extraction(monkeypatch):

@@ -7,13 +7,6 @@ from sdr.apps.ai.retrieval.core.candidates import RetrievalCandidate
 
 logger = logging.getLogger(__name__)
 
-try:
-    from sentence_transformers import CrossEncoder  # type: ignore
-
-    CROSS_ENCODER_AVAILABLE = True
-except Exception:
-    CROSS_ENCODER_AVAILABLE = False
-
 
 class BaseReranker:
     def rerank(
@@ -47,16 +40,19 @@ class SafeOptionalReranker(BaseReranker):
         max_window_chars: int = 1800,
     ) -> None:
         self._fallback = NoOpReranker()
-        self.enable_cross_encoder = enable_cross_encoder and CROSS_ENCODER_AVAILABLE
+        self.enable_cross_encoder = bool(enable_cross_encoder)
         self.score_weight = min(1.0, max(0.0, float(score_weight)))
         self.max_window_chars = max(200, int(max_window_chars))
         self._cross_encoder = None
         if self.enable_cross_encoder:
             try:
+                from sentence_transformers import CrossEncoder  # type: ignore
+
                 self._cross_encoder = CrossEncoder(cross_encoder_model)
             except Exception:
                 logger.exception("Failed to initialize cross-encoder reranker; using fallback.")
                 self._cross_encoder = None
+                self.enable_cross_encoder = False
 
     def rerank(
         self,

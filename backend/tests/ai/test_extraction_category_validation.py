@@ -1,8 +1,11 @@
 import json
 from types import SimpleNamespace
 
+import pytest
+
 from sdr.apps.ai.engine.extraction.config import ExtractionConfig
 from sdr.apps.ai.engine.extraction.services import (
+    RequirementCategoryValidationError,
     RequirementCategoryValidationService,
     StructuredRequirementExtractionService,
 )
@@ -115,7 +118,7 @@ def test_structured_extraction_uses_validator_category_as_final_label():
     ]
 
 
-def test_category_validator_applies_local_overrides_after_llm_validation():
+def test_category_validator_uses_complete_llm_response_without_local_overrides():
     chat_completion_fn = lambda **_: _response(
         json.dumps(
             {
@@ -153,14 +156,14 @@ def test_category_validator_applies_local_overrides_after_llm_validation():
     result = validator.validate(requirements)
 
     assert [item["requirement_category"] for item in result["V"]] == [
+        "design",
         "code",
         "infrastructure",
-        "process",
-        "design",
+        "code",
     ]
 
 
-def test_category_validator_applies_local_overrides_when_llm_output_is_unusable():
+def test_category_validator_preserves_valid_initial_labels_when_llm_output_is_unusable():
     chat_completion_fn = lambda **_: _response('{"items":[{"index":0,"requirement_category":"code"}]}')
     validator = RequirementCategoryValidationService(chat_completion_fn=chat_completion_fn, config=_config())
     requirements = {
@@ -179,12 +182,12 @@ def test_category_validator_applies_local_overrides_when_llm_output_is_unusable(
     result = validator.validate(requirements)
 
     assert [item["requirement_category"] for item in result["V"]] == [
+        "design",
         "code",
-        "infrastructure",
     ]
 
 
-def test_category_validator_normalizes_unicode_dashes_and_ocr_variants_for_overrides():
+def test_category_validator_does_not_override_complete_llm_labels_from_text_patterns():
     chat_completion_fn = lambda **_: _response(
         json.dumps(
             {
@@ -217,7 +220,59 @@ def test_category_validator_normalizes_unicode_dashes_and_ocr_variants_for_overr
     result = validator.validate(requirements)
 
     assert [item["requirement_category"] for item in result["V"]] == [
-        "infrastructure",
-        "infrastructure",
-        "design",
+        "code",
+        "code",
+        "code",
     ]
+
+
+def test_category_validator_rejects_missing_initial_label_when_llm_output_is_unusable():
+    chat_completion_fn = lambda **_: _response(
+        '{"items":[{"index":0,"requirement_category":"code"}]}'
+    )
+    validator = RequirementCategoryValidationService(
+        chat_completion_fn=chat_completion_fn,
+        config=_config(),
+    )
+    requirements = {
+        "V": [
+            {
+                "requirement": "1.1.1 Verify that a security control is documented.",
+                "requirement_category": "",
+            },
+            {
+                "requirement": "1.1.2 Verify that another security control is documented.",
+                "requirement_category": "design",
+            },
+        ]
+    }
+
+    with pytest.raises(RequirementCategoryValidationError):
+        validator.validate(requirements)
+
+
+def test_structured_extraction_propagates_category_validation_failure():
+    responses = iter(
+        [
+            _response(
+                json.dumps(
+                    {
+                        "V1": [
+                            {
+                                "requirement": "1.1.1 Verify that a security control is documented.",
+                                "context_marker": "V1.1",
+                            }
+                        ]
+                    }
+                )
+            ),
+            _response("{}", error="validator unavailable"),
+        ]
+    )
+    service = StructuredRequirementExtractionService(
+        chat_completion_fn=lambda **_: next(responses),
+        config=_config(),
+    )
+
+    with pytest.raises(RequirementCategoryValidationError):
+        service.extract("1.1.1 Verify that a security control is documented.")

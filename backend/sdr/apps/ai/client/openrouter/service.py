@@ -110,7 +110,13 @@ class OpenRouterAIService(AIServiceInterface):
             
             request_attempts = max(1, int(kwargs.get("request_attempts", 3)))
             request_timeout_seconds = max(
-                1.0, float(kwargs.get("request_timeout_seconds", self.timeout_seconds))
+                1.0,
+                float(
+                    kwargs.get(
+                        "request_timeout_seconds",
+                        getattr(self, "timeout_seconds", 180),
+                    )
+                ),
             )
             transport_retries = max(0, int(kwargs.get("transport_retries", 2)))
             request_client = self.client

@@ -85,7 +85,7 @@ def test_hybrid_executor_caps_worker_count_to_active_branches(monkeypatch):
     router._raptor_results_to_candidates = lambda response: []
     router._apply_keyword_coverage_boost = lambda candidates, keywords: candidates
     router._grade_and_filter_candidates = lambda candidates, **kwargs: (candidates, {})
-    router._reranker = SimpleNamespace(rerank=lambda query, candidates, top_k: [])
+    router._reranker = SimpleNamespace(rerank=lambda query, candidates, top_k, **kwargs: [])
     router._collect_candidate_block_ids = lambda candidates: []
 
     result = executors_module.RetrievalRouteExecutor().execute_hybrid(
@@ -126,11 +126,16 @@ def test_hybrid_executor_includes_dense_and_raptor_branches_when_tree_available(
     router.raptor_top_k = 5
     router.max_context_chunks = 12
     router.advanced_config = AdvancedRetrievalConfig(hybrid_max_workers=9)
-    router._raptor_searcher = SimpleNamespace(search_collapsed_raptor=lambda **kwargs: dense_response)
+    router._raptor_searcher = SimpleNamespace(
+        search_collapsed_raptor=lambda **kwargs: dense_response,
+        search_multi_level=lambda **kwargs: dense_response,
+    )
     router._keyword_searcher = SimpleNamespace(search=lambda **kwargs: [])
     router._apply_keyword_coverage_boost = lambda candidates, keywords: candidates
     router._grade_and_filter_candidates = lambda candidates, **kwargs: (candidates, {})
-    router._reranker = SimpleNamespace(rerank=lambda query, candidates, top_k: candidates)
+    router._reranker = SimpleNamespace(
+        rerank=lambda query, candidates, top_k, **kwargs: candidates
+    )
     router._collect_candidate_block_ids = lambda candidates: []
 
     result = executors_module.RetrievalRouteExecutor().execute_hybrid(

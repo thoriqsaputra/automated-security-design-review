@@ -1132,12 +1132,19 @@ class DebateService:
         block = normalize_quote_text(block_text)
         if not quote or not block:
             return False
-        quote_words = {w for w in quote.split() if len(w) > 3}
+        quote_tokens = quote.split()
+        block_tokens = block.split()
+        # A quote cannot be grounded when it is longer than its alleged
+        # source. This blocks the common hallucination pattern where the LLM
+        # copies a real prefix and appends an invented conclusion.
+        if len(quote_tokens) > len(block_tokens):
+            return False
+        quote_words = {w for w in quote_tokens if len(w) > 3}
         if not quote_words:
             return False
-        block_words = set(block.split())
+        block_words = set(block_tokens)
         overlap = len(quote_words & block_words) / len(quote_words)
-        return overlap >= 0.6
+        return overlap >= 0.8
 
     def _validate_citations(self, citations, allowed_ids, agent_name, context_chunk_map=None, grounded_ids=None):
         allowed = set(allowed_ids)

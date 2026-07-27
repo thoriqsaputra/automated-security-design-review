@@ -283,7 +283,7 @@ def test_critic_not_met_without_absence_evidence_is_downgraded_to_na():
     )
 
     assert result["assessed_requirements"][0]["verdict"] == "na"
-    assert result["assessed_requirements"][0]["verdict_policy_source"] == "diagram_mediator_not_met_without_absence_evidence"
+    assert result["assessed_requirements"][0]["verdict_policy_source"] == "diagram_not_met_without_absence_evidence"
     assert result["final_verdict"] == "na"
 
 
@@ -460,7 +460,7 @@ def test_missing_critic_requirement_review_does_not_downgrade_not_met():
     assert result["final_verdict"] == "not_met"
 
 
-def test_mediator_judged_not_met_is_not_overwritten_by_critic_met():
+def test_mediator_not_met_without_absence_evidence_is_downgraded_to_na():
     result = _apply_diagram_evidence_policy(
         {
             "final_verdict": "not_met",
@@ -491,9 +491,13 @@ def test_mediator_judged_not_met_is_not_overwritten_by_critic_met():
         {"diagram_scope_verdict": "architecture_relevant"},
     )
 
-    assert result["assessed_requirements"][0]["verdict"] == "not_met"
-    assert result["final_verdict"] == "not_met"
-    assert result["assessed_requirements"][0]["final_decision_source"] == "mediator_tiebreak_to_critic"
+    assert result["assessed_requirements"][0]["verdict"] == "na"
+    assert (
+        result["assessed_requirements"][0]["verdict_policy_source"]
+        == "diagram_not_met_without_absence_evidence"
+    )
+    assert result["final_verdict"] == "na"
+    assert result["assessed_requirements"][0]["final_decision_source"] == "policy_downgraded_to_na"
 
 
 def test_mediator_judged_met_is_not_forced_back_to_critic_na():

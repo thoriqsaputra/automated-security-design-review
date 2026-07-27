@@ -44,7 +44,7 @@ class CategoryParameterChild(Base, StandardsBigIntBase):
 
     requirement_text_normalized: Mapped[str] = mapped_column(String)
     ordinal: Mapped[int] = mapped_column(Integer, default=0)
-    requirement_category: Mapped[str] = mapped_column(String(20), default="design", server_default="design", nullable=False)
+    requirement_category: Mapped[str] = mapped_column(String(20), nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True, server_default="true")
 
     # Relationships
