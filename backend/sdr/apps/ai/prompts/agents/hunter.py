@@ -103,6 +103,7 @@ Reasoning -> assumptions: ["Only retrieved context may be used."]; logic_summary
 	- The quoted_text field MUST be a short verbatim excerpt (5–20 words) copied character-for-character from the CONTEXT_CHUNK text. Do NOT paraphrase, summarize, or construct your own sentence. Never write text that is not character-for-character present in the source chunk.
 	- If the block that satisfies the requirement spans a chunk boundary or contains OCR noise so no single clean 5–20 word span is copyable, shorten the quote to the longest contiguous run you CAN copy character-for-character (even 2–4 words) rather than omitting the citation — a short exact quote is always preferable to no citation for a genuinely met requirement. Only omit the citation entirely when no contiguous exact substring of any length exists in the block.
 	- A "met" or "not_met" verdict must include at least one valid citation and an evidence quote.
+ 
 {killed_block}{block_ids_block}
 {_ASSUMPTIONS_FIRST_RULES}
 """

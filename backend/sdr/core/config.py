@@ -68,8 +68,6 @@ class Settings(BaseSettings):
     AI_MODEL_HUNTER: str = Field(default="deepseek-ai/DeepSeek-V4-Flash|routellm")
     AI_MODEL_CRITIC: str = Field(default="deepseek-ai/DeepSeek-V4-Flash|routellm")
     AI_MODEL_MEDIATOR: str = Field(default="deepseek-ai/DeepSeek-V4-Flash|routellm")
-    # Deliberately a different model family from Hunter/Critic/Mediator so the eval
-    # harness doesn't grade answers with the same model that produced them.
     AI_MODEL_EVAL_JUDGE: str = Field(default="anthropic/claude-sonnet-4.5")
     AI_MODEL_VISION: str = Field(default="meta/llama-3.2-90b-vision-instruct")
     AI_MODEL_EMBEDDING: str = Field(default="nvidia/nv-embedqa-e5-v5")
@@ -117,15 +115,7 @@ class Settings(BaseSettings):
     AI_VISION_DEBATE_BATCH_RETRY_LIMIT: int = Field(default=1)
     AI_VISION_DEBATE_BATCH_MAX_CONCURRENCY: int = Field(default=6)
     AI_VISION_DEBATE_REBUTTAL_MAX_CONCURRENCY: int = Field(default=6)
-    # Self-consistency voting: run each diagram's full debate this many times
-    # and take the majority verdict (DiagramDebateService.run_diagram_debate_voted).
-    # Literature-backed lever for stabilizing debate outputs against the kind
-    # of batch-dependent instability observed empirically (design 18: identical
-    # Hunter hallucination pattern corrected on one diagram, missed entirely on
-    # another in the same run). 1 = disabled (single run, current behavior).
     AI_VISION_DEBATE_VOTES: int = Field(default=1)
-    # Diagram requirement selection (hybrid BM25+dense over short requirement
-    # texts): query segmentation, weighted RRF, priors, and adaptive cutoff.
     AI_VISION_DIAGRAM_QUERY_PAGE_WINDOW_CHARS: int = Field(default=1800)
     AI_VISION_DIAGRAM_RRF_K: int = Field(default=60)
     AI_VISION_DIAGRAM_RRF_VECTOR_WEIGHT: float = Field(default=1.0)
@@ -134,10 +124,6 @@ class Settings(BaseSettings):
     AI_VISION_DIAGRAM_CHAPTER_PRIOR_BONUS: float = Field(default=0.0)
     AI_VISION_DIAGRAM_SCORE_FLOOR_RATIO: float = Field(default=0.0)
 
-    # Extract-then-reason pipeline (DiagramExtractReasonService): decouples
-    # perception (Stage 1, vision-in-the-loop structured extraction, voted
-    # via self-consistency) from reasoning (Stage 2, text-only verdicts over
-    # the extraction) — an alternative to the debate pipeline above.
     AI_VISION_EXTRACTION_VOTES: int = Field(default=3)
     AI_VISION_EXTRACTION_MERGE_THRESHOLD: float = Field(default=0.5)
     AI_VISION_EXTRACTION_FUZZY_MATCH_THRESHOLD: float = Field(default=0.75)
@@ -145,14 +131,7 @@ class Settings(BaseSettings):
     AI_VISION_REASONER_BATCH_SIZE: int = Field(default=10)
     AI_VISION_REASONER_BATCH_MAX_CONCURRENCY: int = Field(default=6)
     AI_VISION_REASONER_CITATION_RETRY_LIMIT: int = Field(default=1)
-    # Batches where the reasoner's response failed entirely (empty/unparseable,
-    # nothing answered at all) get a larger retry budget than partial-omission
-    # batches — a total failure is a cheap, likely-transient generation hiccup
-    # worth retrying harder, not a persistent completeness/reasoning gap.
     AI_VISION_REASONER_FULL_FAILURE_RETRY_LIMIT: int = Field(default=2)
-    # Bound each provider round-trip used by diagram agents. Provider SDKs
-    # otherwise apply their own hidden retries, which can leave one diagram
-    # future blocked for many minutes while completed diagrams wait behind it.
     AI_VISION_LLM_TIMEOUT_SECONDS: int = Field(default=90)
     AI_VISION_LLM_REQUEST_ATTEMPTS: int = Field(default=1)
     AI_VISION_LLM_TRANSPORT_RETRIES: int = Field(default=0)
@@ -168,46 +147,15 @@ class Settings(BaseSettings):
     AI_RETRIEVAL_HYBRID_MAX_WORKERS: int = Field(default=3)
     AI_RETRIEVAL_MANY_MAX_CONCURRENCY: int = Field(default=2)
     AI_RETRIEVAL_ENABLE_CROSS_ENCODER_RERANK: bool = Field(default=True)
-    # Primary fusion step in execute_hybrid: "agreement_boost" (dedupe + additive
-    # per-source score bump) or "rrf" (Reciprocal Rank Fusion over each searcher's
-    # ranked list). Previously read by AdvancedRetrievalConfig.from_settings() but
-    # never declared here, which silently pinned production to agreement_boost.
     AI_RETRIEVAL_FUSION_METHOD: str = Field(default="agreement_boost")
     AI_RETRIEVAL_RRF_K: int = Field(default=60)
     AI_RETRIEVAL_MAX_CONTEXT_CHUNKS: int = Field(default=16)
-    # Recall-safety floor: the final hybrid context always includes the top-N
-    # candidates from each constituent signal's PRIMARY-query ranking (dense
-    # leaf cosine / BM25 / multi-level RAPTOR), inserted at the tail if fusion,
-    # tier ordering, reranking, or truncation would otherwise drop them. A
-    # hybrid ensemble should never return a context strictly worse than any of
-    # its single signals. The dense floor deliberately equals the raptor_low
-    # arm's top-k (7): hybrid's final context is then a superset of what the
-    # flat leaf-cosine searcher alone would have returned, so hybrid recall is
-    # bounded below by raptor_low recall by construction. The raptor floor
-    # protects deep enough into hybrid's own multi-level branch (up to 9
-    # distinct nodes from search_multi_level's 3-levels*top_k_per_level=3) to
-    # rescue the specific raptor_high-only wins observed in practice (ranked
-    # up to position 7) — set to 7, not the full 9, because protected_dense +
-    # protected_bm25 + protected_raptor must stay comfortably under
-    # max_context_chunks=16 or the floors themselves start evicting genuinely
-    # good fused candidates (measured regression: raising this to 9 dropped
-    # HIT_LEAF from 264->228 in diagnosis). 0 disables a floor.
     AI_RETRIEVAL_PROTECTED_DENSE_TOP_N: int = Field(default=7)
     AI_RETRIEVAL_PROTECTED_BM25_TOP_N: int = Field(default=2)
     AI_RETRIEVAL_PROTECTED_RAPTOR_TOP_N: int = Field(default=7)
-    # How many distinct literal leaf descendants to ground per surviving
-    # hierarchical_summary candidate — a summary can union many blocks, one
-    # leaf isn't enough coverage for a multi-block-expected query, but more
-    # than 1 measurably crowds the budget (see note above). Default 1.
     AI_RETRIEVAL_SUMMARY_LEAVES_PER_GROUNDING: int = Field(default=1)
-    # Candidate-pool width for the hybrid arm. Dense and BM25 intentionally
-    # collect deeper than the final context size so the agreement/rerank stage
-    # can rescue literal leaves that were previously absent from the pool.
     AI_RETRIEVAL_HYBRID_DENSE_TOP_K: int = Field(default=20)
     AI_RETRIEVAL_HYBRID_BM25_TOP_K: int = Field(default=20)
-    # Cross-encoder rerank is a strong semantic signal, but it must not erase
-    # hybrid agreement/fusion. Final rerank score blends normalized cross-
-    # encoder relevance with the pre-rerank hybrid score.
     AI_RETRIEVAL_RERANK_SCORE_WEIGHT: float = Field(default=0.72)
     AI_EMBEDDING_BATCH_SIZE: int = Field(default=32)
     AI_RAPTOR_EMBED_BATCH_SIZE: int = Field(default=32)
